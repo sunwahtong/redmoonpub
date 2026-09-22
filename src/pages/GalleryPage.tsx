@@ -58,7 +58,7 @@ const SHOTS: Shot[] = [
     tag: 'este',
     title: 'AFTER DARK',
     caption: 'SeeCity naplemente után.',
-    src: '/assets/loading-v10.jpg',
+    src: '/assets/red-moon-cinematic-v27',
     span: 'md:col-span-2'
   },
   {
