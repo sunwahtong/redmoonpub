@@ -102,7 +102,7 @@ export function registerStaffRoutes(router: Router): void {
     const {rows} = await db.query<{id: string}>(
       `insert into public.staff_accounts (username, name, nickname, title, role, jobs, password_hash, id_number, show_public, must_change_password, created_by)
        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) returning id`,
-      [body.username, body.name, body.nickname, body.title, body.role, body.jobs, hashPassword(body.password), body.idNumber, body.showPublic, body.mustChangePassword, me.id]
+      [body.username, body.name, body.nickname, body.title, body.role, body.jobs, await hashPassword(body.password), body.idNumber, body.showPublic, body.mustChangePassword, me.id]
     );
     const account = (await loadAccount(db, rows[0].id))!;
     account.signatureSvg = await ensureSignature(db, account);
@@ -148,7 +148,7 @@ export function registerStaffRoutes(router: Router): void {
     if (body.password) {
       const problem = passwordProblem(body.password);
       if (problem) throw bad(problem);
-      set('password_hash', hashPassword(body.password));
+      set('password_hash', await hashPassword(body.password));
       set('must_change_password', body.mustChangePassword ?? true);
       passwordChanged = true;
     }

@@ -9,7 +9,7 @@ import {
   capabilitiesOf,
   clearSessionCookie,
   createSession,
-  DUMMY_HASH,
+  dummyHash,
   ensureSignature,
   hashPassword,
   loadAccount,
@@ -57,7 +57,7 @@ export function registerSessionRoutes(router: Router): void {
     );
     const row = rows[0];
     // Unknown users still cost a hash check, so timing does not reveal them.
-    const valid = row ? verifyPassword(body.password, row.password_hash) : verifyPassword(body.password, DUMMY_HASH);
+    const valid = row ? await verifyPassword(body.password, row.password_hash) : await verifyPassword(body.password, await dummyHash());
     if (!row || !valid || !row.active) {
       await recordLoginAttempt(db, usernameLower, ip, false);
       throw unauthorized('Hibás felhasználónév vagy jelszó');
@@ -71,7 +71,7 @@ export function registerSessionRoutes(router: Router): void {
     if (live.length) await revokeUserSessions(db, row.id, 'takeover');
 
     if (needsRehash(row.password_hash)) {
-      await db.query('update public.staff_accounts set password_hash = $2 where id = $1', [row.id, hashPassword(body.password)]);
+      await db.query('update public.staff_accounts set password_hash = $2 where id = $1', [row.id, await hashPassword(body.password)]);
     }
     await db.query('update public.staff_accounts set last_login_at = now(), last_active_at = now() where id = $1', [row.id]);
     await recordLoginAttempt(db, usernameLower, ip, true);
@@ -174,11 +174,11 @@ export function registerSessionRoutes(router: Router): void {
     const body = parse(passwordChange, await readJson(req));
     const {rows} = await db.query<{password_hash: string}>('select password_hash from public.staff_accounts where id = $1', [me.id]);
     if (!rows[0]) throw unauthorized('A fiók nem található');
-    if (!verifyPassword(body.currentPassword, rows[0].password_hash)) throw unauthorized('A jelenlegi jelszó nem megfelelő.');
+    if (!(await verifyPassword(body.currentPassword, rows[0].password_hash))) throw unauthorized('A jelenlegi jelszó nem megfelelő.');
     if (body.currentPassword === body.newPassword) throw bad('Az új jelszó nem egyezhet meg a jelenlegivel.');
     const problem = passwordProblem(body.newPassword);
     if (problem) throw bad(problem);
-    await db.query('update public.staff_accounts set password_hash = $2, must_change_password = false where id = $1', [me.id, hashPassword(body.newPassword)]);
+    await db.query('update public.staff_accounts set password_hash = $2, must_change_password = false where id = $1', [me.id, await hashPassword(body.newPassword)]);
     const revoked = await revokeUserSessions(db, me.id, 'password_changed', me.tokenHash);
     await audit(db, me, 'PASSWORD_CHANGE', `Jelszó megváltoztatva · ${revoked} másik munkamenet lezárva`);
     return {ok: true};

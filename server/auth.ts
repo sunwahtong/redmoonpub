@@ -1,15 +1,15 @@
 /**
  * Accounts, passwords, sessions and permissions.
  *
- * Passwords are hashed with scrypt (memory-hard, built into Node, no native
- * dependency). Hashes created by the previous version (PBKDF2) still verify
- * and are re-hashed on the next successful login.
+ * Passwords are hashed with Argon2id. Hashes created by previous versions
+ * (scrypt, PBKDF2) still verify and are re-hashed on the next successful login.
  *
  * A session is a random 256-bit token; only its SHA-256 is stored, so the
  * table is useless to anyone who reads it. The cookie is HttpOnly, SameSite,
  * and Secure whenever the request arrived over HTTPS.
  */
 import crypto from 'node:crypto';
+import {argon2id, argon2Verify} from 'hash-wasm';
 import type {ServerResponse} from 'node:http';
 import {config} from './config.ts';
 import {clientIp, forbidden, formatPhone, isSecure, parseCookies, setCookie, sha256, tooMany, unauthorized} from './http.ts';
@@ -28,17 +28,35 @@ export const roleAtLeast = (role: string, need: Role): boolean => (RANK[role] ||
 /* Passwords                                                           */
 /* ------------------------------------------------------------------ */
 
-const SCRYPT = {N: 2 ** 15, r: 8, p: 1, keylen: 32, maxmem: 64 * 1024 * 1024};
+/**
+ * Argon2id (RFC 9106), the current OWASP first choice: memory-hard like
+ * scrypt, plus resistance to side-channel and GPU/ASIC attacks in one mode.
+ * Implemented in WebAssembly (hash-wasm), so it runs identically on Windows,
+ * Linux and Vercel with no native build. 64 MiB, 3 passes, 1 lane — above the
+ * OWASP minimum; roughly 100–200 ms per hash, paid only at login and password
+ * changes.
+ *
+ * Hashes from earlier versions (scrypt, PBKDF2) still verify and are upgraded
+ * on the next successful login.
+ */
+const ARGON2 = {memorySize: 64 * 1024, iterations: 3, parallelism: 1, hashLength: 32};
+const SCRYPT_MAXMEM = 64 * 1024 * 1024;
 
-export function hashPassword(password: string): string {
-  const salt = crypto.randomBytes(16);
-  const hash = crypto.scryptSync(String(password), salt, SCRYPT.keylen, SCRYPT);
-  return `scrypt$${SCRYPT.N}$${SCRYPT.r}$${SCRYPT.p}$${salt.toString('base64')}$${hash.toString('base64')}`;
+export async function hashPassword(password: string): Promise<string> {
+  return argon2id({
+    password: String(password),
+    salt: crypto.randomBytes(16),
+    ...ARGON2,
+    outputType: 'encoded'
+  });
 }
 
-export function verifyPassword(password: string, encoded: string | null | undefined): boolean {
+export async function verifyPassword(password: string, encoded: string | null | undefined): Promise<boolean> {
   const value = String(encoded || '');
   try {
+    if (value.startsWith('$argon2id$')) {
+      return await argon2Verify({password: String(password), hash: value});
+    }
     if (value.startsWith('scrypt$')) {
       const [, N, r, p, salt, hash] = value.split('$');
       const expected = Buffer.from(hash, 'base64');
@@ -46,7 +64,7 @@ export function verifyPassword(password: string, encoded: string | null | undefi
         N: Number(N),
         r: Number(r),
         p: Number(p),
-        maxmem: SCRYPT.maxmem
+        maxmem: SCRYPT_MAXMEM
       });
       return crypto.timingSafeEqual(got, expected);
     }
@@ -63,9 +81,15 @@ export function verifyPassword(password: string, encoded: string | null | undefi
 }
 
 /** A hash of a random password, verified for unknown users so timing does not reveal them. */
-export const DUMMY_HASH = hashPassword(crypto.randomBytes(24).toString('hex'));
+let dummyHashPromise: Promise<string> | null = null;
+export const dummyHash = (): Promise<string> => {
+  if (!dummyHashPromise) dummyHashPromise = hashPassword(crypto.randomBytes(24).toString('hex'));
+  return dummyHashPromise;
+};
 
-export const needsRehash = (encoded: string): boolean => !String(encoded || '').startsWith('scrypt$');
+/** True for any hash not produced by the current algorithm and parameters. */
+export const needsRehash = (encoded: string): boolean =>
+  !String(encoded || '').startsWith(`$argon2id$v=19$m=${ARGON2.memorySize},t=${ARGON2.iterations},p=${ARGON2.parallelism}$`);
 
 export function passwordProblem(password: string): string | null {
   const value = String(password || '');

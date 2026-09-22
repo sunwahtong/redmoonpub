@@ -51,7 +51,7 @@ try {
   if (existing && !args.reset) throw new Error(`"${username}" already exists. Pass --reset to set a new password.`);
 
   if (existing) {
-    await db.query(`update public.staff_accounts set password_hash = $2, must_change_password = true, active = true where id = $1`, [existing.id, hashPassword(password)]);
+    await db.query(`update public.staff_accounts set password_hash = $2, must_change_password = true, active = true where id = $1`, [existing.id, await hashPassword(password)]);
     await db.query(`update public.sessions set revoked_at = now(), revoked_reason = 'cli_reset' where user_id = $1 and revoked_at is null`, [existing.id]);
     console.log(`password reset for ${username} (must change on next login)`);
   } else {
@@ -59,7 +59,7 @@ try {
     const {rows} = await db.query<{id: string}>(
       `insert into public.staff_accounts (username, name, nickname, role, jobs, password_hash, must_change_password, show_public)
        values ($1, $2, $3, $4, $5, $6, false, $7) returning id`,
-      [username, name, String(args.nickname || name.split(' ').pop()), role, jobs, hashPassword(password), role !== 'staff']
+      [username, name, String(args.nickname || name.split(' ').pop()), role, jobs, await hashPassword(password), role !== 'staff']
     );
     if (role !== 'staff') {
       await db.query('update public.staff_accounts set signature_svg = $2, signature_at = now() where id = $1', [rows[0].id, generateSignatureSvg(name, rows[0].id)]);

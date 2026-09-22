@@ -82,8 +82,8 @@ booth, `biztonsag` may run supply orders, managers open the house, owners
 can do everything. An owner creates accounts at `/staff/users`; every new or
 reset account must change its temporary password on first login.
 
-Passwords are scrypt-hashed; legacy PBKDF2 hashes still verify and are
-upgraded at login. Sessions are random tokens stored hashed, HttpOnly cookies,
+Passwords are Argon2id-hashed (64 MiB, 3 passes, via hash-wasm, so no native
+build); legacy scrypt and PBKDF2 hashes still verify and are upgraded at login. Sessions are random tokens stored hashed, HttpOnly cookies,
 one active session per account, idle and absolute expiry, login throttling per
 user and per IP, same-origin checks on every mutation. All tables have RLS on
 with no policies and no grants for the Supabase API roles: only the backend

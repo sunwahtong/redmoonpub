@@ -134,7 +134,7 @@ async function bootstrapOwner(db: Db): Promise<void> {
   await db.query(
     `insert into public.staff_accounts (id, username, name, nickname, role, password_hash, signature_svg, signature_at, show_public)
      values ($1, $2, $3, $4, 'owner', $5, $6, now(), true)`,
-    [id, config.ownerUsername, config.ownerName, config.ownerName.split(' ').pop() || 'Owner', hashPassword(config.ownerPassword), generateSignatureSvg(config.ownerName, id)]
+    [id, config.ownerUsername, config.ownerName, config.ownerName.split(' ').pop() || 'Owner', await hashPassword(config.ownerPassword), generateSignatureSvg(config.ownerName, id)]
   );
   await db.query('update public.house set owner_user_id = $1 where id = 1 and owner_user_id is null', [id]);
   console.log(`[seed] owner account "${config.ownerUsername}" created`);

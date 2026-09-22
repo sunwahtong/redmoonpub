@@ -128,6 +128,12 @@ async function migrate(db: Db): Promise<void> {
 export function getDb(): Promise<Db> {
   if (!readyPromise) {
     readyPromise = (async () => {
+      if (!config.databaseUrl && config.serverless) {
+        throw new Error('DATABASE_URL is not set. A serverless deployment has no disk for the embedded database; set the Supabase pooler connection string in the project environment and redeploy.');
+      }
+      if (/\[(DB-PASSWORD|REGION|YOUR-PASSWORD|PROJECT-REF)\]/i.test(config.databaseUrl)) {
+        throw new Error('DATABASE_URL still contains a placeholder such as [DB-PASSWORD] or [REGION]. Replace it with the real value from Supabase → Project Settings → Database.');
+      }
       const db = config.databaseUrl ? await createPgBackend() : await createPgliteBackend();
       await migrate(db);
       backend = db;
