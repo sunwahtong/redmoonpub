@@ -1,0 +1,42 @@
+/**
+ * Red Moon design tokens.
+ *
+ * Recovered from the legacy cascade (v17-signature.css :root, v52-heading-system.css
+ * :root, v45/v68 starfield). The legacy build spread these across ~50 stylesheets
+ * that overrode each other; these are the values that actually won.
+ */
+:root {
+    --rm-bg: #050304;
+    --rm-bg-raise: #09090b;
+    --rm-bg-card: #0a0a0c;
+
+    --rm-ink: #f5f1eb;
+    --rm-muted: #918b89;
+    --rm-dim: #777170;
+
+    /* Brand red, and the hotter neon used for glows/stars. */
+    --rm-red: #e3284e;
+    --rm-red-neon: #ff2b4f;
+    --rm-red-bright: #ff4668;
+    --rm-red-deep: #8a0c24;
+
+    --rm-line: rgba(255, 255, 255, 0.10);
+    --rm-line-red: rgba(227, 40, 78, 0.38);
+
+    /* Legacy geometry: the Red Moon identity is square-cornered, not pill-shaped. */
+    --rm-radius: 1px;
+    --rm-section-pad: clamp(72px, 9vw, 125px);
+    --rm-gutter: 8vw;
+}
+
+/* Site-wide ambient bloom — legacy `body:before`. */
+body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    background:
+        radial-gradient(circle at 75% 10%, rgba(213, 31, 60, 0.12), transparent 26%),
+        radial-gradient(circle at 15% 55%, rgba(115, 11, 30, 0.08), transparent 32%);
+}

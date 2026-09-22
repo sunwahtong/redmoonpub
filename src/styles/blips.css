@@ -1,0 +1,187 @@
+/**
+ * Map blip markers.
+ *
+ * Injected into the <gta-v-map> shadow root at runtime: document stylesheets do
+ * not cross a shadow boundary, so these rules would never reach the markers.
+ */
+
+/* ------------------------------------------------------------------ */
+
+/* Leaflet divIcon wrapper — no chrome of its own. */
+.rm-blip-icon {
+    background: none;
+    border: 0;
+}
+
+.rm-blip {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: 100%;
+    height: 100%;
+    cursor: pointer;
+}
+
+/* Expanding sonar ring. Only the important categories carry it. */
+.rm-blip-pulse {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    border: 1px solid var(--blip-color);
+    opacity: 0;
+}
+
+.rm-blip.is-major .rm-blip-pulse {
+    animation: rmBlipPulse 2.6s ease-out infinite;
+}
+
+.rm-blip-ring {
+    position: absolute;
+    inset: 4px;
+    border-radius: 50%;
+    border: 1px solid color-mix(in srgb, var(--blip-color) 55%, transparent);
+    transition: inset 0.25s ease, border-color 0.25s ease;
+}
+
+.rm-blip-disc {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #fff 0%, var(--blip-color) 60%, #2b0209 100%);
+    box-shadow:
+        0 0 0 1px rgba(0, 0, 0, 0.55),
+        0 0 10px var(--blip-color),
+        0 0 22px color-mix(in srgb, var(--blip-color) 45%, transparent);
+    color: #12040a;
+    font-size: 11px;
+    line-height: 1;
+    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.35);
+    transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.25s ease;
+}
+
+.rm-blip.is-major .rm-blip-disc {
+    width: 28px;
+    height: 28px;
+    font-size: 14px;
+}
+
+/* Name plate, revealed on hover. */
+.rm-blip-label {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 50%;
+    transform: translate(-50%, -4px);
+    padding: 3px 8px;
+    border: 1px solid color-mix(in srgb, var(--blip-color) 45%, transparent);
+    background: rgba(9, 9, 11, 0.94);
+    color: #f5f1eb;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.rm-blip:hover .rm-blip-disc {
+    transform: scale(1.28);
+    box-shadow:
+        0 0 0 1px rgba(0, 0, 0, 0.55),
+        0 0 18px var(--blip-color),
+        0 0 40px color-mix(in srgb, var(--blip-color) 70%, transparent);
+}
+
+.rm-blip:hover .rm-blip-ring {
+    inset: -2px;
+    border-color: var(--blip-color);
+}
+
+.rm-blip:hover .rm-blip-label {
+    opacity: 1;
+    transform: translate(-50%, 0);
+}
+
+.rm-blip:active .rm-blip-disc {
+    transform: scale(0.94);
+}
+
+@keyframes rmBlipPulse {
+    0% { transform: scale(0.45); opacity: 0.85; }
+    70% { opacity: 0.12; }
+    100% { transform: scale(1.5); opacity: 0; }
+}
+
+/* Popup, restyled to match the Red Moon surfaces. */
+.leaflet-popup-content-wrapper {
+    border-radius: 1px;
+    border: 1px solid var(--rm-line);
+    background: rgba(9, 9, 11, 0.97);
+    color: var(--rm-ink);
+    box-shadow: 0 18px 50px rgba(0, 0, 0, 0.6);
+}
+
+.leaflet-popup-tip {
+    background: rgba(9, 9, 11, 0.97);
+}
+
+.rm-blip-popup span {
+    display: block;
+    color: var(--rm-red);
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: 0.25em;
+}
+
+.rm-blip-popup strong {
+    display: block;
+    margin-top: 4px;
+    font-family: Cinzel, serif;
+    font-size: 17px;
+    color: #fff;
+}
+
+.rm-blip-popup p {
+    margin: 6px 0 0;
+    font-size: 11px;
+    line-height: 1.7;
+    color: #8d8584;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .rm-blip.is-major .rm-blip-pulse { animation: none; }
+}
+
+/* The blip panel sits over the top-left corner, so Leaflet's own controls
+   move out from under it. */
+.leaflet-top.leaflet-left {
+    margin-left: 272px;
+}
+
+.leaflet-control-zoom a {
+    background: rgba(9, 9, 11, 0.92);
+    border-color: rgba(255, 255, 255, 0.1);
+    color: #f5f1eb;
+}
+
+.leaflet-control-zoom a:hover {
+    background: rgba(213, 31, 60, 0.28);
+    color: #fff;
+}
+
+.leaflet-control-layers {
+    background: rgba(9, 9, 11, 0.94);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 1px;
+    color: #f5f1eb;
+}
+
+@media (max-width: 720px) {
+    .leaflet-top.leaflet-left {
+        margin-left: 0;
+        margin-top: 220px;
+    }
+}

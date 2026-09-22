@@ -1,0 +1,420 @@
+/**
+ * Hero environment — ported from v17-signature.css (V25 → V27) and v43/v45 guards.
+ *
+ * V27 retired the CSS-sphere moon entirely (`.rm17-moon{display:none}`) and made
+ * the cinematic artwork the real environment. The layer order that the legacy
+ * `!important` war finally settled on is preserved here as plain z-indexes:
+ *   0 media → 1 fog/grid/vignette → 5 starfield → 8 content
+ */
+
+.rm-hero {
+    position: relative;
+    min-height: 100svh;
+    display: flex;
+    align-items: flex-end;
+    padding: 0 var(--rm-gutter) 11vh;
+    overflow: hidden;
+    background: #060608;
+    isolation: isolate;
+}
+
+.rm-hero-media {
+    position: absolute;
+    inset: -2%;
+    z-index: 0;
+    background-image:
+        linear-gradient(90deg, rgba(2, 2, 3, 0.94) 0%, rgba(2, 2, 3, 0.74) 27%, rgba(4, 2, 3, 0.18) 57%, rgba(3, 2, 3, 0.14) 100%),
+        linear-gradient(0deg, rgba(3, 3, 4, 0.96) 0%, rgba(3, 3, 4, 0.38) 20%, transparent 48%, rgba(2, 2, 3, 0.18) 100%),
+        url('/assets/red-moon-cinematic-v27.webp');
+    background-position: center center;
+    background-size: cover;
+    background-repeat: no-repeat;
+    filter: saturate(0.9) contrast(1.08) brightness(0.78);
+    transform: scale(1.025);
+    transition: transform 1.5s ease;
+}
+
+.rm-hero-media::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+        radial-gradient(ellipse at 62% 43%, transparent 0 27%, rgba(255, 35, 62, 0.045) 35%, transparent 50%),
+        radial-gradient(ellipse at 72% 50%, rgba(189, 8, 37, 0.08), transparent 43%),
+        linear-gradient(90deg, rgba(0, 0, 0, 0.3), transparent 45%);
+    mix-blend-mode: screen;
+    opacity: 0.9;
+}
+
+.rm-hero-fog {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    opacity: 0.26;
+    background:
+        radial-gradient(ellipse at 78% 82%, rgba(145, 0, 25, 0.16), transparent 34%),
+        radial-gradient(ellipse at 23% 75%, rgba(91, 0, 19, 0.10), transparent 31%);
+    filter: blur(28px);
+    animation: rmFog 14s ease-in-out infinite alternate;
+}
+
+.rm-hero-grid {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    opacity: 0.12;
+    mix-blend-mode: soft-light;
+    background:
+        linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+    background-size: 90px 90px;
+    -webkit-mask-image: linear-gradient(to bottom, transparent, black 30%, transparent);
+    mask-image: linear-gradient(to bottom, transparent, black 30%, transparent);
+}
+
+/* Vignette — legacy `.rm17-hero::after`. */
+.rm-hero::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    background:
+        radial-gradient(ellipse at center, transparent 45%, rgba(0, 0, 0, 0.2) 77%, rgba(0, 0, 0, 0.52) 100%),
+        linear-gradient(90deg, rgba(2, 2, 3, 0.42), transparent 38%);
+}
+
+.rm-hero-content {
+    position: relative;
+    z-index: 8;
+    max-width: 850px;
+}
+
+.rm-hero-scroll {
+    position: absolute;
+    right: 4vw;
+    /* Clears the status pill and keeps the gradient rule inside the viewport. */
+    bottom: 16vh;
+    white-space: nowrap;
+    z-index: 8;
+    writing-mode: vertical-rl;
+    font-size: 8px;
+    letter-spacing: 0.3em;
+    color: var(--rm-dim);
+}
+
+.rm-hero-scroll::after {
+    content: "";
+    display: block;
+    height: 70px;
+    width: 1px;
+    background: linear-gradient(var(--rm-red), transparent);
+    margin: 15px auto 0;
+}
+
+@keyframes rmFog {
+    to {
+        transform: translate3d(3%, -2%, 0) scale(1.05);
+    }
+}
+
+@media (min-width: 901px) and (pointer: fine) {
+    .rm-hero:hover .rm-hero-media {
+        transform: scale(1.045);
+    }
+}
+
+@media (max-width: 900px), (pointer: coarse) {
+    .rm-hero-media {
+        inset: 0;
+        transform: none !important;
+        transition: none;
+        background-position: 64% center;
+        filter: saturate(0.82) contrast(1.06) brightness(0.66);
+    }
+
+    .rm-hero-media::before {
+        mix-blend-mode: normal;
+        opacity: 0.55;
+    }
+
+    .rm-hero-fog {
+        animation: none;
+        filter: none;
+        opacity: 0.14;
+    }
+
+    .rm-hero-grid {
+        opacity: 0.07;
+    }
+
+    .rm-hero::after {
+        background:
+            linear-gradient(90deg, rgba(2, 2, 3, 0.82), rgba(2, 2, 3, 0.28) 68%, rgba(2, 2, 3, 0.18)),
+            linear-gradient(0deg, rgba(2, 2, 3, 0.88), transparent 52%);
+    }
+
+    .rm-hero-scroll {
+        display: none;
+    }
+}
+
+@media (max-width: 560px) {
+    .rm-hero-media {
+        background-position: 67% center;
+    }
+}
+
+/* ------------------------------------------------------------------ */
+/* V51 — Red Moon signature mark (the hero wordmark)                   */
+/* ------------------------------------------------------------------ */
+
+.rm-signature {
+    position: relative;
+    display: inline-flex;
+    flex-direction: column;
+    align-items: flex-start;
+    width: min(92vw, 980px);
+    margin: 25px 0 30px;
+    isolation: isolate;
+    overflow: visible;
+}
+
+.rm-signature::before {
+    content: "";
+    position: absolute;
+    left: -2.5%;
+    top: 17%;
+    width: 58%;
+    height: 62%;
+    border-radius: 50%;
+    border: 1px solid rgba(255, 43, 79, 0.10);
+    border-left-color: transparent;
+    border-bottom-color: rgba(255, 43, 79, 0.18);
+    transform: rotate(-11deg);
+    filter: drop-shadow(0 0 10px rgba(255, 38, 76, 0.08));
+    pointer-events: none;
+    z-index: -2;
+}
+
+.rm-signature::after {
+    content: "";
+    position: absolute;
+    left: 5%;
+    bottom: 12%;
+    width: 84%;
+    height: 1px;
+    background: linear-gradient(90deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.3), rgba(255, 43, 79, 0.22), transparent);
+    box-shadow: 0 0 12px rgba(255, 40, 78, 0.10);
+    pointer-events: none;
+    z-index: -1;
+}
+
+/* "RED" — polished metal fill. */
+.rm-signature-red {
+    position: relative;
+    display: block;
+    margin-left: clamp(6px, 1vw, 15px);
+    font-family: Cinzel, serif;
+    font-size: clamp(42px, 7vw, 92px);
+    line-height: 0.78;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    background: linear-gradient(180deg, #fff 0%, #f7f1f3 48%, #c9c0c4 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    text-shadow: 0 0 1px rgba(255, 255, 255, 0.55), 0 8px 24px rgba(0, 0, 0, 0.35);
+    filter: drop-shadow(0 0 7px rgba(255, 45, 84, 0.08));
+    z-index: 3;
+}
+
+.rm-signature-red::after {
+    content: "";
+    position: absolute;
+    left: -10%;
+    right: 16%;
+    bottom: -12px;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.32), rgba(255, 42, 79, 0.42), transparent);
+    opacity: 0.7;
+}
+
+/* "MOON" — hollow neon letters, each one offset and weighted differently. */
+.rm-signature-moon {
+    position: relative;
+    display: flex;
+    align-items: flex-end;
+    gap: clamp(1px, 0.3vw, 7px);
+    margin-top: clamp(9px, 1.4vw, 20px);
+    margin-left: clamp(1px, 0.2vw, 4px);
+    z-index: 4;
+    transform: skewX(-3deg);
+}
+
+.rm-signature-moon i {
+    position: relative;
+    display: inline-block;
+    font-family: Cinzel, serif;
+    font-style: normal;
+    font-size: clamp(68px, 12vw, 166px);
+    line-height: 0.7;
+    font-weight: 600;
+    letter-spacing: -0.075em;
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+    -webkit-text-stroke: 1px rgba(247, 243, 245, 0.72);
+    text-shadow:
+        0 0 1px rgba(255, 255, 255, 0.85),
+        0 0 5px rgba(255, 255, 255, 0.12),
+        0 0 13px rgba(255, 40, 78, 0.13);
+    transition: filter 0.2s ease, transform 0.45s cubic-bezier(0.2, 0.8, 0.2, 1), -webkit-text-stroke 0.2s ease;
+}
+
+/* Red chromatic ghost, offset 2px — the "misregistered neon" trick. */
+.rm-signature-moon i::before {
+    content: attr(data-letter);
+    position: absolute;
+    inset: 0;
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+    -webkit-text-stroke: 1px rgba(255, 37, 76, 0.18);
+    transform: translate(2px, 2px);
+    filter: blur(0.2px);
+    pointer-events: none;
+}
+
+.rm-signature-moon i::after {
+    content: "";
+    position: absolute;
+    right: 10%;
+    top: 18%;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: #ff3b61;
+    box-shadow: 0 0 7px rgba(255, 43, 79, 0.7), 0 0 16px rgba(255, 43, 79, 0.28);
+    opacity: 0.22;
+}
+
+.rm-signature-moon i:nth-child(1) { transform: translateY(5px); -webkit-text-stroke-color: rgba(247, 243, 245, 0.82); }
+.rm-signature-moon i:nth-child(2) { transform: translateY(-3px); -webkit-text-stroke-color: rgba(247, 243, 245, 0.64); }
+.rm-signature-moon i:nth-child(3) { transform: translateY(3px); -webkit-text-stroke-color: rgba(247, 243, 245, 0.70); }
+.rm-signature-moon i:nth-child(4) { transform: translateY(-7px); -webkit-text-stroke-color: rgba(247, 243, 245, 0.82); }
+
+.rm-signature:hover .rm-signature-moon i {
+    -webkit-text-stroke-color: rgba(255, 255, 255, 0.96);
+}
+
+.rm-signature-orbit {
+    position: absolute;
+    pointer-events: none;
+    border: 1px solid rgba(255, 42, 79, 0.16);
+    border-radius: 50%;
+    z-index: 1;
+}
+
+.rm-signature-orbit.orbit-a {
+    width: 76%;
+    height: 48%;
+    left: 8%;
+    top: 31%;
+    transform: rotate(-7deg);
+    box-shadow: 0 0 16px rgba(255, 35, 72, 0.05);
+}
+
+.rm-signature-orbit.orbit-b {
+    width: 53%;
+    height: 28%;
+    left: 24%;
+    top: 42%;
+    transform: rotate(10deg);
+    border-color: rgba(255, 255, 255, 0.07);
+}
+
+.rm-signature-spark {
+    position: absolute;
+    width: 2px;
+    height: 2px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 0 5px #fff, 0 0 12px rgba(255, 43, 79, 0.45);
+    opacity: 0.35;
+    pointer-events: none;
+    z-index: 5;
+    animation: rmSparkPulse 3.7s ease-in-out infinite;
+}
+
+.rm-signature-spark.spark-a { left: 76%; top: 35%; }
+.rm-signature-spark.spark-b { left: 89%; top: 70%; animation-delay: -1.8s; }
+
+@keyframes rmSparkPulse {
+    0%, 100% { transform: scale(0.55); opacity: 0.15; }
+    45% { transform: scale(1.7); opacity: 0.72; }
+    65% { transform: scale(0.9); opacity: 0.3; }
+}
+
+.rm-signature-sub {
+    position: relative;
+    display: block;
+    margin: clamp(19px, 2.2vw, 28px) 0 0 clamp(7px, 1vw, 15px);
+    padding-top: 10px;
+    font-size: clamp(11px, 1.25vw, 18px);
+    line-height: 1;
+    letter-spacing: 0.55em;
+    font-weight: 700;
+    color: #f5eff1;
+    text-shadow: 0 0 8px rgba(255, 255, 255, 0.08), 0 0 18px rgba(255, 42, 79, 0.10);
+}
+
+/* Hover/focus neon strike. */
+.rm-signature.is-flashing .rm-signature-red,
+.rm-signature.is-flashing .rm-signature-moon i {
+    animation: rmSignatureFlash 0.72s cubic-bezier(0.18, 0.85, 0.25, 1) both;
+}
+
+.rm-signature.is-flashing .rm-signature-orbit {
+    animation: rmOrbitFlash 0.72s ease-out both;
+}
+
+@keyframes rmSignatureFlash {
+    0% { filter: brightness(1); }
+    18% {
+        filter: brightness(1.55);
+        text-shadow: 0 0 2px #fff, 0 0 9px rgba(255, 255, 255, 0.7), 0 0 25px rgba(255, 43, 79, 0.72), 0 0 46px rgba(255, 30, 68, 0.3);
+    }
+    42% {
+        filter: brightness(1.22);
+        text-shadow: 0 0 2px #fff, 0 0 7px rgba(255, 255, 255, 0.35), 0 0 20px rgba(255, 43, 79, 0.46);
+    }
+    100% { filter: brightness(1); }
+}
+
+@keyframes rmOrbitFlash {
+    0% { opacity: 0.16; box-shadow: none; }
+    25% { opacity: 0.9; box-shadow: 0 0 10px rgba(255, 35, 72, 0.24), 0 0 25px rgba(255, 35, 72, 0.13); }
+    100% { opacity: 0.16; box-shadow: none; }
+}
+
+@media (max-width: 700px) {
+    .rm-signature { width: 96vw; margin-top: 22px; }
+    .rm-signature-red { font-size: clamp(34px, 13vw, 66px); }
+    .rm-signature-moon { gap: 0; }
+    .rm-signature-moon i { font-size: clamp(58px, 19vw, 100px); -webkit-text-stroke-width: 0.9px; }
+    .rm-signature-sub { letter-spacing: 0.38em; font-size: 9px; }
+    .rm-signature-orbit.orbit-a { width: 92%; left: 2%; }
+    .rm-signature-orbit.orbit-b { width: 62%; left: 18%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .rm-hero-fog,
+    .rm-signature-spark,
+    .rm-signature.is-flashing .rm-signature-red,
+    .rm-signature.is-flashing .rm-signature-moon i,
+    .rm-signature.is-flashing .rm-signature-orbit {
+        animation: none !important;
+    }
+}

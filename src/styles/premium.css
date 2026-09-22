@@ -1,0 +1,960 @@
+/**
+ * Premium layer — the detail work that separates a nightclub page from a
+ * landing page: film grain, embers, gilding, tilt, shimmer.
+ *
+ * Everything here is decoration. Nothing in this file may carry information,
+ * so all of it can be switched off by `prefers-reduced-motion` without the site
+ * losing meaning — which is exactly what the block at the bottom does.
+ *
+ * Two rules kept from the legacy identity: Red Moon geometry is square
+ * (`--rm-radius: 1px`), and the accent is the brand red, never a second hue.
+ */
+
+/* ---------------------------------------------------------------- */
+/* Scroll filament — reading progress along the top edge             */
+/* ---------------------------------------------------------------- */
+
+.rm-filament {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    z-index: 1200;
+    pointer-events: none;
+    transform-origin: left center;
+    background: linear-gradient(90deg,
+        rgba(138, 12, 36, 0.9),
+        var(--rm-red) 45%,
+        #fff 65%,
+        var(--rm-red-neon) 82%,
+        rgba(138, 12, 36, 0.9));
+    box-shadow: 0 0 10px rgba(255, 43, 79, 0.55), 0 0 26px rgba(255, 43, 79, 0.22);
+    will-change: transform;
+}
+
+/* ---------------------------------------------------------------- */
+/* Film grain — the single cheapest way to make a flat dark page     */
+/* read as photographed rather than rendered.                        */
+/* ---------------------------------------------------------------- */
+
+.rm-grain {
+    position: fixed;
+    inset: -120px;            /* overscan, so the drift never exposes an edge */
+    z-index: 1100;
+    pointer-events: none;
+    opacity: 0.032;
+    mix-blend-mode: overlay;
+    background-image: var(--rm-grain-image);
+    background-size: 220px 220px;
+    animation: rmGrainDrift 720ms steps(6) infinite;
+}
+
+@keyframes rmGrainDrift {
+    0%   { transform: translate3d(0, 0, 0); }
+    16%  { transform: translate3d(-14px, 8px, 0); }
+    33%  { transform: translate3d(9px, -12px, 0); }
+    50%  { transform: translate3d(-7px, 15px, 0); }
+    66%  { transform: translate3d(13px, 5px, 0); }
+    83%  { transform: translate3d(-11px, -9px, 0); }
+    100% { transform: translate3d(0, 0, 0); }
+}
+
+/* ---------------------------------------------------------------- */
+/* Gilded rule — a hairline that catches light as it crosses         */
+/* ---------------------------------------------------------------- */
+
+.rm-gilt {
+    position: relative;
+    height: 1px;
+    background: linear-gradient(90deg,
+        transparent,
+        rgba(227, 40, 78, 0.45) 18%,
+        rgba(255, 255, 255, 0.35) 50%,
+        rgba(227, 40, 78, 0.45) 82%,
+        transparent);
+    overflow: visible;
+}
+
+.rm-gilt::after {
+    content: "";
+    position: absolute;
+    top: -1px;
+    left: 0;
+    width: 22%;
+    height: 3px;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.85), transparent);
+    filter: blur(1.5px);
+    animation: rmGiltSweep 5.5s ease-in-out infinite;
+}
+
+@keyframes rmGiltSweep {
+    0%, 100% { left: -22%; opacity: 0; }
+    12%      { opacity: 0.9; }
+    50%      { left: 100%; opacity: 0.9; }
+    62%      { opacity: 0; }
+}
+
+/* ---------------------------------------------------------------- */
+/* Tilt card — pointer-tracked 3D with a specular sheen              */
+/* The two custom properties are written by TiltCard.tsx.            */
+/* ---------------------------------------------------------------- */
+
+.rm-tilt {
+    --rm-tilt-x: 0deg;
+    --rm-tilt-y: 0deg;
+    --rm-tilt-mx: 50%;
+    --rm-tilt-my: 50%;
+    position: relative;
+    transform: perspective(900px) rotateX(var(--rm-tilt-x)) rotateY(var(--rm-tilt-y));
+    transform-style: preserve-3d;
+    transition: transform 420ms cubic-bezier(0.2, 0.8, 0.2, 1), border-color 420ms ease, box-shadow 420ms ease;
+}
+
+.rm-tilt.is-live {
+    /* While the pointer is on the card, follow it immediately; the slow
+       transition above is what makes the release settle instead of snap. */
+    transition: transform 90ms linear, border-color 420ms ease, box-shadow 420ms ease;
+    border-color: rgba(227, 40, 78, 0.55);
+    box-shadow: 0 28px 70px rgba(0, 0, 0, 0.55), 0 0 40px rgba(227, 40, 78, 0.12);
+}
+
+/* Specular highlight that tracks the pointer across the surface. */
+.rm-tilt-sheen {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 320ms ease;
+    background: radial-gradient(420px circle at var(--rm-tilt-mx) var(--rm-tilt-my),
+        rgba(255, 255, 255, 0.10),
+        rgba(227, 40, 78, 0.07) 38%,
+        transparent 62%);
+}
+
+.rm-tilt.is-live .rm-tilt-sheen { opacity: 1; }
+
+/* Content that should stand off the surface as the card turns. */
+.rm-tilt-layer { transform: translateZ(38px); }
+
+/* ---------------------------------------------------------------- */
+/* Shimmer — a slow light sweep across display type                  */
+/* ---------------------------------------------------------------- */
+
+.rm-shimmer {
+    background: linear-gradient(100deg,
+        #f5f1eb 0%,
+        #f5f1eb 38%,
+        #fff 47%,
+        var(--rm-red-bright) 52%,
+        #fff 57%,
+        #f5f1eb 66%,
+        #f5f1eb 100%);
+    background-size: 280% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: rmShimmer 7s ease-in-out infinite;
+}
+
+@keyframes rmShimmer {
+    0%, 100% { background-position: 140% 0; }
+    50%      { background-position: -40% 0; }
+}
+
+/* ---------------------------------------------------------------- */
+/* Split reveal — display type rising letter by letter               */
+/* ---------------------------------------------------------------- */
+
+.rm-split { display: inline-block; }
+
+.rm-split-char {
+    display: inline-block;
+    opacity: 0;
+    transform: translateY(0.42em) rotateX(-55deg);
+    transform-origin: 50% 100%;
+    transition: opacity 620ms cubic-bezier(0.2, 0.8, 0.2, 1), transform 620ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.rm-split.is-in .rm-split-char {
+    opacity: 1;
+    transform: translateY(0) rotateX(0deg);
+}
+
+/* ---------------------------------------------------------------- */
+/* Magnetic control — drifts toward the pointer, then springs back   */
+/* ---------------------------------------------------------------- */
+
+.rm-magnetic {
+    display: inline-flex;
+    transition: transform 520ms cubic-bezier(0.2, 0.8, 0.2, 1);
+    will-change: transform;
+}
+
+.rm-magnetic.is-pulled { transition: transform 110ms ease-out; }
+
+/* ---------------------------------------------------------------- */
+/* Tier card — the VIP ladder                                        */
+/* ---------------------------------------------------------------- */
+
+.rm-tier {
+    position: relative;
+    overflow: hidden;
+    border: 1px solid var(--rm-line);
+    background:
+        linear-gradient(160deg, rgba(255, 255, 255, 0.045), transparent 42%),
+        var(--rm-bg-card);
+}
+
+/* Hairline that travels down the leading edge, like light on a bottle. */
+.rm-tier::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: -60%;
+    width: 1px;
+    height: 60%;
+    background: linear-gradient(180deg, transparent, var(--rm-red-neon), transparent);
+    animation: rmTierEdge 4.5s linear infinite;
+}
+
+@keyframes rmTierEdge {
+    to { top: 130%; }
+}
+
+.rm-tier[data-tier="silver"] { --rm-tier-ink: #cfd3d6; }
+.rm-tier[data-tier="gold"]   { --rm-tier-ink: #e3c07a; }
+.rm-tier[data-tier="black"]  { --rm-tier-ink: #9aa0a6; }
+.rm-tier[data-tier="royal"]  { --rm-tier-ink: var(--rm-red-bright); }
+
+.rm-tier-crest {
+    font-family: Cinzel, serif;
+    font-size: 11px;
+    letter-spacing: 0.34em;
+    color: var(--rm-tier-ink, var(--rm-red));
+    text-shadow: 0 0 14px currentColor;
+}
+
+.rm-tier-glyph {
+    position: absolute;
+    right: -10px;
+    bottom: -28px;
+    font-family: Cinzel, serif;
+    font-size: 150px;
+    line-height: 1;
+    color: var(--rm-tier-ink, var(--rm-red));
+    opacity: 0.07;
+    pointer-events: none;
+    user-select: none;
+}
+
+/* ---------------------------------------------------------------- */
+/* Step rail — the reservation form's progress spine                 */
+/* ---------------------------------------------------------------- */
+
+.rm-step {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 0;
+}
+
+.rm-step-dot {
+    position: relative;
+    flex: 0 0 auto;
+    width: 10px;
+    height: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    background: #050304;
+    transition: 380ms ease;
+}
+
+.rm-step.is-done .rm-step-dot,
+.rm-step.is-current .rm-step-dot {
+    border-color: var(--rm-red);
+    background: var(--rm-red);
+    box-shadow: 0 0 12px rgba(227, 40, 78, 0.75);
+}
+
+.rm-step.is-current .rm-step-dot::after {
+    content: "";
+    position: absolute;
+    inset: -7px;
+    border: 1px solid rgba(227, 40, 78, 0.55);
+    animation: rmStepPulse 1.9s ease-out infinite;
+}
+
+@keyframes rmStepPulse {
+    0%   { transform: scale(0.75); opacity: 0.85; }
+    100% { transform: scale(1.5); opacity: 0; }
+}
+
+/* ---------------------------------------------------------------- */
+/* Seal — the stamp shown when a booking is accepted                 */
+/* ---------------------------------------------------------------- */
+
+.rm-seal {
+    display: grid;
+    place-items: center;
+    width: 118px;
+    height: 118px;
+    border: 1px solid var(--rm-line-red);
+    border-radius: 50%;
+    color: var(--rm-red);
+    font-family: Cinzel, serif;
+    animation: rmSealIn 900ms cubic-bezier(0.2, 0.9, 0.25, 1.15) both;
+}
+
+.rm-seal::before {
+    content: "";
+    position: absolute;
+    width: 138px;
+    height: 138px;
+    border: 1px solid rgba(227, 40, 78, 0.28);
+    border-radius: 50%;
+    animation: rmSealRing 2.6s ease-out infinite;
+}
+
+@keyframes rmSealIn {
+    from { opacity: 0; transform: scale(0.55) rotate(-24deg); }
+    to   { opacity: 1; transform: scale(1) rotate(0deg); }
+}
+
+@keyframes rmSealRing {
+    0%   { transform: scale(0.86); opacity: 0.8; }
+    100% { transform: scale(1.22); opacity: 0; }
+}
+
+/* ---------------------------------------------------------------- */
+/* Reduced motion                                                    */
+/* ---------------------------------------------------------------- */
+/* All of the above is decoration, so it is safe to stop it dead.
+   The elements stay; only the movement goes. */
+
+@media (prefers-reduced-motion: reduce) {
+    .rm-grain { animation: none; }
+    .rm-gilt::after,
+    .rm-tier::before,
+    .rm-shimmer,
+    .rm-seal,
+    .rm-seal::before,
+    .rm-step.is-current .rm-step-dot::after { animation: none; }
+
+    .rm-shimmer { color: var(--rm-ink); background: none; -webkit-background-clip: border-box; background-clip: border-box; }
+    .rm-tilt { transform: none !important; transition: none; }
+    .rm-magnetic { transform: none !important; transition: none; }
+    .rm-split-char { opacity: 1; transform: none; transition: none; }
+}
+
+/* ================================================================ */
+/* SECOND WAVE                                                      */
+/* ================================================================ */
+
+/* ---------------------------------------------------------------- */
+/* Pointer spotlight — a soft bloom that follows the cursor          */
+/* ---------------------------------------------------------------- */
+/* The site is almost entirely near-black. A light source tied to the
+   pointer gives the page depth and makes it feel lit rather than
+   printed. Coordinates are written by PointerSpotlight.tsx. */
+
+.rm-spotlight {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 600ms ease;
+    background: radial-gradient(520px circle at var(--rm-spot-x, 50%) var(--rm-spot-y, 50%),
+        rgba(227, 40, 78, 0.075),
+        rgba(138, 12, 36, 0.035) 38%,
+        transparent 68%);
+}
+
+.rm-spotlight.is-on { opacity: 1; }
+
+/* ---------------------------------------------------------------- */
+/* Shimmer skeleton — a loading block that belongs to this brand     */
+/* ---------------------------------------------------------------- */
+/* Tailwind's animate-pulse is a grey rectangle fading in and out. On a
+   ruby-and-black page it reads as a rendering fault. This sweeps a
+   red-tinted highlight across instead. */
+
+.rm-skeleton {
+    position: relative;
+    overflow: hidden;
+    border: 1px solid var(--rm-line);
+    background: var(--rm-bg-raise);
+}
+
+.rm-skeleton::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(90deg,
+        transparent,
+        rgba(255, 255, 255, 0.035) 40%,
+        rgba(227, 40, 78, 0.10) 50%,
+        rgba(255, 255, 255, 0.035) 60%,
+        transparent);
+    animation: rmSkeletonSweep 1.6s ease-in-out infinite;
+}
+
+@keyframes rmSkeletonSweep {
+    to { transform: translateX(100%); }
+}
+
+/* ---------------------------------------------------------------- */
+/* Toast — transient confirmation, bottom right                      */
+/* ---------------------------------------------------------------- */
+
+.rm-toasts {
+    position: fixed;
+    right: 18px;
+    bottom: 84px;          /* clears the status pill */
+    z-index: 1300;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    pointer-events: none;
+}
+
+.rm-toast {
+    position: relative;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    min-width: 268px;
+    max-width: min(92vw, 380px);
+    padding: 15px 17px;
+    border: 1px solid var(--rm-line);
+    border-left-width: 2px;
+    background: rgba(9, 9, 11, 0.96);
+    backdrop-filter: blur(10px);
+    box-shadow: 0 22px 60px rgba(0, 0, 0, 0.6);
+    pointer-events: auto;
+    animation: rmToastIn 420ms cubic-bezier(0.2, 0.9, 0.25, 1.1) both;
+}
+
+.rm-toast.is-leaving { animation: rmToastOut 260ms ease-in forwards; }
+
+.rm-toast[data-kind="success"] { border-left-color: #34d399; }
+.rm-toast[data-kind="error"]   { border-left-color: var(--rm-red); }
+.rm-toast[data-kind="info"]    { border-left-color: rgba(255, 255, 255, 0.35); }
+
+/* Drains left to right for the life of the toast, so the dismissal is
+   predictable instead of arbitrary. */
+.rm-toast-bar {
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    height: 1px;
+    background: currentColor;
+    opacity: 0.5;
+    animation: rmToastBar linear forwards;
+}
+
+@keyframes rmToastIn {
+    from { opacity: 0; transform: translateX(28px) scale(0.97); }
+    to   { opacity: 1; transform: translateX(0) scale(1); }
+}
+
+@keyframes rmToastOut {
+    to { opacity: 0; transform: translateX(28px); }
+}
+
+@keyframes rmToastBar {
+    from { width: 100%; }
+    to   { width: 0%; }
+}
+
+/* ---------------------------------------------------------------- */
+/* Countdown ring                                                    */
+/* ---------------------------------------------------------------- */
+
+.rm-ring-track { stroke: rgba(255, 255, 255, 0.07); }
+
+.rm-ring-value {
+    stroke: url(#rmRingGradient);
+    stroke-linecap: round;
+    filter: drop-shadow(0 0 6px rgba(227, 40, 78, 0.65));
+    transition: stroke-dashoffset 900ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* ---------------------------------------------------------------- */
+/* Timeline spine — the events archive                               */
+/* ---------------------------------------------------------------- */
+
+.rm-spine { position: relative; padding-left: 36px; }
+
+.rm-spine::before {
+    content: "";
+    position: absolute;
+    left: 7px;
+    top: 4px;
+    bottom: 4px;
+    width: 1px;
+    background: linear-gradient(180deg,
+        transparent,
+        rgba(227, 40, 78, 0.5) 8%,
+        rgba(227, 40, 78, 0.18) 62%,
+        transparent);
+}
+
+.rm-spine-node { position: relative; }
+
+.rm-spine-node::before {
+    content: "";
+    position: absolute;
+    left: -36px;
+    top: 26px;
+    width: 9px;
+    height: 9px;
+    border: 1px solid var(--rm-red);
+    background: #050304;
+    box-shadow: 0 0 10px rgba(227, 40, 78, 0.5);
+}
+
+.rm-spine-node[data-phase="live"]::before {
+    background: var(--rm-red);
+    animation: rmSpinePulse 1.8s ease-out infinite;
+}
+
+.rm-spine-node[data-phase="past"]::before {
+    border-color: rgba(255, 255, 255, 0.2);
+    box-shadow: none;
+}
+
+@keyframes rmSpinePulse {
+    0%   { box-shadow: 0 0 0 0 rgba(227, 40, 78, 0.55); }
+    100% { box-shadow: 0 0 0 13px rgba(227, 40, 78, 0); }
+}
+
+@media (max-width: 700px) {
+    .rm-spine { padding-left: 24px; }
+    .rm-spine-node::before { left: -24px; }
+}
+
+/* ---------------------------------------------------------------- */
+/* Price stamp — the drink card's hover reveal                       */
+/* ---------------------------------------------------------------- */
+
+.rm-price {
+    position: relative;
+    display: inline-flex;
+    align-items: baseline;
+    gap: 7px;
+}
+
+.rm-price::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -5px;
+    height: 1px;
+    background: var(--rm-red);
+    transform: scaleX(0);
+    transform-origin: left center;
+    transition: transform 420ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.group:hover .rm-price::after { transform: scaleX(1); }
+
+/* ---------------------------------------------------------------- */
+/* Sticky filter rail                                                */
+/* ---------------------------------------------------------------- */
+
+.rm-rail {
+    position: sticky;
+    top: 68px;              /* directly under the fixed header */
+    z-index: 30;
+    background: linear-gradient(180deg, rgba(5, 3, 4, 0.97), rgba(5, 3, 4, 0.82));
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--rm-line);
+}
+
+/* ---------------------------------------------------------------- */
+/* Reduced motion                                                    */
+/* ---------------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+    .rm-spotlight { display: none; }
+    .rm-skeleton::after,
+    .rm-toast,
+    .rm-toast-bar,
+    .rm-spine-node[data-phase="live"]::before { animation: none; }
+    .rm-ring-value { transition: none; }
+    .rm-price::after { transition: none; }
+}
+
+/* ================================================================ */
+/* NAVIGATION                                                       */
+/* ================================================================ */
+
+/* ---------------------------------------------------------------- */
+/* Header dropdown panel                                             */
+/* ---------------------------------------------------------------- */
+/* The top row cannot hold every public page without overflowing at
+   1280px. This panel holds the rest, one hover away — which is the
+   difference between "secondary" and "hidden in the footer". */
+
+.rm-menu-panel {
+    position: absolute;
+    top: calc(100% + 1px);
+    right: 0;
+    width: min(420px, calc(100vw - 32px));
+    padding: 10px;
+    border: 1px solid var(--rm-line);
+    background: rgba(9, 9, 11, 0.97);
+    backdrop-filter: blur(16px);
+    box-shadow: 0 30px 80px rgba(0, 0, 0, 0.7), 0 0 60px rgba(227, 40, 78, 0.07);
+    transform-origin: top right;
+    animation: rmMenuIn 230ms cubic-bezier(0.2, 0.9, 0.25, 1.05) both;
+}
+
+/* Neon filament along the top edge, matching the ticker. */
+.rm-menu-panel::before {
+    content: "";
+    position: absolute;
+    top: -1px;
+    left: 12%;
+    right: 12%;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--rm-red-neon), transparent);
+    box-shadow: 0 0 10px rgba(255, 43, 79, 0.5);
+}
+
+@keyframes rmMenuIn {
+    from { opacity: 0; transform: translateY(-9px) scale(0.985); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.rm-menu-item {
+    position: relative;
+    display: block;
+    overflow: hidden;
+    padding: 13px 15px;
+    border: 1px solid transparent;
+    text-align: left;
+    transition: border-color 260ms ease, background-color 260ms ease;
+}
+
+.rm-menu-item:hover,
+.rm-menu-item:focus-visible {
+    border-color: var(--rm-line-red);
+    background: rgba(227, 40, 78, 0.06);
+    outline: none;
+}
+
+.rm-menu-item[aria-current="page"] {
+    border-color: var(--rm-line-red);
+    background: rgba(227, 40, 78, 0.1);
+}
+
+/* Kanji watermark, revealed on hover. */
+.rm-menu-glyph {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    translate: 0 -50%;
+    font-family: Cinzel, serif;
+    font-size: 46px;
+    line-height: 1;
+    color: var(--rm-red);
+    opacity: 0.08;
+    pointer-events: none;
+    user-select: none;
+    transition: opacity 300ms ease, translate 400ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.rm-menu-item:hover .rm-menu-glyph,
+.rm-menu-item:focus-visible .rm-menu-glyph {
+    opacity: 0.2;
+    translate: -4px -50%;
+}
+
+/* ---------------------------------------------------------------- */
+/* Mobile sheet                                                      */
+/* ---------------------------------------------------------------- */
+
+.rm-sheet {
+    position: fixed;
+    inset: 68px 0 0 0;
+    z-index: 60;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    background: rgba(5, 3, 4, 0.985);
+    backdrop-filter: blur(18px);
+    animation: rmSheetIn 280ms cubic-bezier(0.2, 0.9, 0.25, 1) both;
+}
+
+@keyframes rmSheetIn {
+    from { opacity: 0; transform: translateY(-12px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Each row slides in behind the one before it. */
+.rm-sheet-row {
+    animation: rmSheetRow 420ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@keyframes rmSheetRow {
+    from { opacity: 0; transform: translateX(-16px); }
+    to   { opacity: 1; transform: translateX(0); }
+}
+
+/* ---------------------------------------------------------------- */
+/* Staff console sub-header                                          */
+/* ---------------------------------------------------------------- */
+
+.rm-console-nav {
+    position: sticky;
+    top: 68px;
+    z-index: 40;
+    border-bottom: 1px solid var(--rm-line);
+    background: linear-gradient(180deg, rgba(7, 7, 9, 0.98), rgba(7, 7, 9, 0.9));
+    backdrop-filter: blur(14px);
+}
+
+/* Horizontal scroll rather than wrapping: the console is used on a
+   phone behind the bar, and a nav that grows to four rows pushes the
+   actual tool off the screen. */
+.rm-console-scroll {
+    display: flex;
+    gap: 2px;
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+
+.rm-console-scroll::-webkit-scrollbar { display: none; }
+
+.rm-console-link {
+    position: relative;
+    flex: 0 0 auto;
+    padding: 15px 16px;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.17em;
+    color: #8f8887;
+    white-space: nowrap;
+    transition: color 220ms ease;
+}
+
+.rm-console-link:hover { color: #fff; }
+
+.rm-console-link[aria-current="page"] { color: #fff; }
+
+.rm-console-link[aria-current="page"]::after {
+    content: "";
+    position: absolute;
+    left: 10px;
+    right: 10px;
+    bottom: -1px;
+    height: 2px;
+    background: var(--rm-red);
+    box-shadow: 0 0 12px rgba(227, 40, 78, 0.8);
+}
+
+/* A hairline before the first link of each group, so the four areas of
+   the console read apart without needing four separate rows. */
+.rm-console-link[data-first="true"]:not(:first-child) {
+    margin-left: 14px;
+    border-left: 1px solid var(--rm-line);
+    padding-left: 22px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .rm-menu-panel,
+    .rm-sheet,
+    .rm-sheet-row { animation: none; }
+    .rm-menu-glyph { transition: none; }
+}
+
+/* ================================================================ */
+/* CONSOLE                                                          */
+/* ================================================================ */
+
+/* ---------------------------------------------------------------- */
+/* Activity calendar                                                 */
+/* ---------------------------------------------------------------- */
+
+.rm-cal-cell {
+    display: block;
+    width: 11px;
+    height: 11px;
+    flex: 0 0 auto;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    background: rgba(255, 255, 255, 0.025);
+    transition: transform 160ms ease, box-shadow 160ms ease;
+}
+
+.rm-cal-cell[data-level="1"] { background: rgba(138, 12, 36, 0.55); border-color: rgba(138, 12, 36, 0.7); }
+.rm-cal-cell[data-level="2"] { background: rgba(190, 22, 52, 0.7); border-color: rgba(190, 22, 52, 0.85); }
+.rm-cal-cell[data-level="3"] { background: var(--rm-red); border-color: var(--rm-red); }
+.rm-cal-cell[data-level="4"] {
+    background: var(--rm-red-bright);
+    border-color: var(--rm-red-bright);
+    box-shadow: 0 0 9px rgba(255, 70, 104, 0.55);
+}
+
+/* Days that have not happened yet are drawn as absence, not as zero. */
+.rm-cal-cell[data-level="future"] { background: transparent; border-color: transparent; }
+
+.rm-cal-cell:hover {
+    transform: scale(1.35);
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35);
+}
+
+/* ---------------------------------------------------------------- */
+/* Statistic card                                                    */
+/* ---------------------------------------------------------------- */
+
+.rm-stat {
+    position: relative;
+    overflow: hidden;
+    border: 1px solid var(--rm-line);
+    background: var(--rm-bg-raise);
+    transition: border-color 320ms ease, transform 320ms ease;
+}
+
+.rm-stat:hover {
+    border-color: rgba(227, 40, 78, 0.45);
+    transform: translateY(-3px);
+}
+
+/* Hairline that lights along the top edge on hover. */
+.rm-stat::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--rm-red), transparent);
+    opacity: 0;
+    transition: opacity 320ms ease;
+}
+
+.rm-stat:hover::after { opacity: 1; }
+
+.rm-stat-glyph {
+    position: absolute;
+    right: -6px;
+    bottom: -20px;
+    font-family: Cinzel, serif;
+    font-size: 88px;
+    line-height: 1;
+    color: var(--rm-red);
+    opacity: 0.05;
+    pointer-events: none;
+    user-select: none;
+}
+
+/* ---------------------------------------------------------------- */
+/* Order pipeline                                                    */
+/* ---------------------------------------------------------------- */
+
+.rm-pipe {
+    display: flex;
+    align-items: center;
+    gap: 0;
+}
+
+.rm-pipe-step {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 7.5px;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    color: #5f5959;
+    white-space: nowrap;
+}
+
+.rm-pipe-step[data-state="done"] { color: #8d8584; }
+.rm-pipe-step[data-state="current"] { color: #fff; }
+
+.rm-pipe-dot {
+    width: 7px;
+    height: 7px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: #050304;
+}
+
+.rm-pipe-step[data-state="done"] .rm-pipe-dot,
+.rm-pipe-step[data-state="current"] .rm-pipe-dot {
+    border-color: var(--rm-red);
+    background: var(--rm-red);
+}
+
+.rm-pipe-step[data-state="current"] .rm-pipe-dot {
+    box-shadow: 0 0 0 3px rgba(227, 40, 78, 0.2), 0 0 10px rgba(227, 40, 78, 0.7);
+}
+
+.rm-pipe-link {
+    flex: 1 1 auto;
+    min-width: 14px;
+    height: 1px;
+    margin: 0 9px;
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.rm-pipe-link[data-state="done"] { background: rgba(227, 40, 78, 0.55); }
+
+/* ---------------------------------------------------------------- */
+/* Variance badge — the number an audit looks for                    */
+/* ---------------------------------------------------------------- */
+
+.rm-variance {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 6px;
+    padding: 3px 9px;
+    border: 1px solid;
+    font-variant-numeric: tabular-nums;
+}
+
+.rm-variance[data-severity="none"]  { border-color: rgba(52, 211, 153, 0.35); color: #34d399; }
+.rm-variance[data-severity="minor"] { border-color: rgba(245, 158, 11, 0.4); color: #fbbf24; }
+.rm-variance[data-severity="major"] {
+    border-color: var(--rm-red);
+    color: #fff;
+    background: rgba(227, 40, 78, 0.14);
+    box-shadow: 0 0 18px rgba(227, 40, 78, 0.22);
+}
+
+/* ---------------------------------------------------------------- */
+/* Stock depletion bar                                               */
+/* ---------------------------------------------------------------- */
+
+.rm-gauge {
+    position: relative;
+    height: 3px;
+    background: rgba(255, 255, 255, 0.07);
+    overflow: hidden;
+}
+
+.rm-gauge span {
+    position: absolute;
+    inset: 0 auto 0 0;
+    background: linear-gradient(90deg, var(--rm-red-deep), var(--rm-red));
+    transition: width 700ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.rm-gauge[data-state="low"] span {
+    background: linear-gradient(90deg, var(--rm-red), var(--rm-red-bright));
+    box-shadow: 0 0 10px rgba(255, 70, 104, 0.6);
+}
+
+.rm-gauge[data-state="healthy"] span {
+    background: linear-gradient(90deg, rgba(52, 211, 153, 0.5), #34d399);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .rm-cal-cell,
+    .rm-stat,
+    .rm-gauge span { transition: none; }
+    .rm-cal-cell:hover { transform: none; }
+}

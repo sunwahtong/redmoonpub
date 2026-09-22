@@ -1,0 +1,149 @@
+/**
+ * V45/V68 neon starfield — the living sky behind the hero.
+ *
+ * Legacy went through four renderers (rm30 → rm31 → rm34 → rm45) and hid the
+ * dead ones with `display:none`. Only the last one survives here: ~300 stars,
+ * about a quarter of them ruby, plus two named constellations — Göncölszekér
+ * (white) and Halak (red).
+ */
+
+.rm-starfield {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    overflow: hidden;
+    pointer-events: none;
+    contain: layout paint;
+}
+
+.rm-star {
+    position: absolute;
+    display: block;
+    width: var(--size);
+    height: var(--size);
+    border-radius: 50%;
+    opacity: var(--base);
+    background: #fff;
+    box-shadow:
+        0 0 4px rgba(255, 255, 255, 0.95),
+        0 0 11px rgba(255, 255, 255, 0.58),
+        0 0 22px rgba(210, 225, 255, 0.2);
+    animation: rmStarWhite var(--dur) ease-in-out var(--delay) infinite;
+    will-change: opacity, transform;
+}
+
+.rm-star.is-red {
+    background: #ff365d;
+    box-shadow:
+        0 0 5px rgba(255, 92, 116, 1),
+        0 0 14px rgba(255, 28, 70, 0.9),
+        0 0 30px rgba(205, 0, 42, 0.48);
+    animation-name: rmStarRed;
+}
+
+.rm-star.is-faint {
+    box-shadow: 0 0 3px rgba(255, 255, 255, 0.55), 0 0 7px rgba(255, 255, 255, 0.18);
+}
+
+.rm-star.is-red.is-faint {
+    box-shadow: 0 0 4px rgba(255, 70, 100, 0.62), 0 0 9px rgba(255, 20, 62, 0.25);
+}
+
+.rm-star.is-strong {
+    z-index: 2;
+}
+
+@keyframes rmStarWhite {
+    0%, 100% { opacity: calc(var(--base) * 0.16); transform: scale(0.55); }
+    21% { opacity: calc(var(--base) * 0.48); transform: scale(0.82); }
+    46% { opacity: var(--base); transform: scale(1.08); }
+    51% { opacity: 1; transform: scale(1.9); }
+    58% { opacity: calc(var(--base) * 0.68); transform: scale(1.02); }
+    79% { opacity: calc(var(--base) * 0.24); transform: scale(0.67); }
+}
+
+@keyframes rmStarRed {
+    0%, 100% { opacity: 0.06; transform: scale(0.52); }
+    29% { opacity: calc(var(--base) * 0.42); transform: scale(0.82); }
+    49% { opacity: 1; transform: scale(2.05); }
+    57% { opacity: calc(var(--base) * 0.72); transform: scale(1.08); }
+    78% { opacity: 0.11; transform: scale(0.62); }
+}
+
+.rm-constellation {
+    position: absolute;
+    z-index: 4;
+    pointer-events: none;
+    filter: drop-shadow(0 0 8px rgba(255, 255, 255, 0.28));
+}
+
+.rm-constellation.dipper {
+    left: 3%;
+    top: 8%;
+    width: 310px;
+    height: 175px;
+    transform: rotate(-8deg);
+}
+
+.rm-constellation.pisces {
+    right: 3%;
+    top: 9%;
+    width: 320px;
+    height: 180px;
+    transform: rotate(7deg);
+}
+
+.rm-cstar {
+    position: absolute;
+    width: var(--cs, 5px);
+    height: var(--cs, 5px);
+    margin: calc(var(--cs, 5px) / -2);
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 0 7px #fff, 0 0 18px rgba(255, 255, 255, 0.95), 0 0 38px rgba(255, 255, 255, 0.48);
+    animation: rmConstellation var(--cd, 2.4s) ease-in-out var(--cdelay, 0s) infinite;
+    will-change: opacity, transform;
+}
+
+/* Göncölszekér stays clean white; Halak is unmistakably ruby. */
+.rm-constellation.dipper .rm-cstar {
+    box-shadow: 0 0 7px rgba(255, 255, 255, 1), 0 0 18px rgba(255, 255, 255, 0.92), 0 0 38px rgba(225, 235, 255, 0.5);
+}
+
+.rm-constellation.pisces .rm-cstar {
+    background: #ff3158;
+    box-shadow: 0 0 8px rgba(255, 105, 128, 1), 0 0 22px rgba(255, 32, 73, 0.98), 0 0 46px rgba(205, 0, 42, 0.66);
+}
+
+@keyframes rmConstellation {
+    0%, 100% { opacity: 0.28; transform: scale(0.7); }
+    34% { opacity: 0.62; transform: scale(0.95); }
+    49% { opacity: 1; transform: scale(1.85); }
+    57% { opacity: 0.76; transform: scale(1.12); }
+    77% { opacity: 0.36; transform: scale(0.82); }
+}
+
+@media (max-width: 900px), (pointer: coarse) {
+    .rm-starfield { opacity: 0.88; }
+
+    .rm-star {
+        animation-duration: calc(var(--dur) * 1.25);
+        box-shadow: 0 0 3px rgba(255, 255, 255, 0.72), 0 0 7px rgba(255, 255, 255, 0.24);
+    }
+
+    .rm-star.is-red {
+        box-shadow: 0 0 4px rgba(255, 75, 105, 0.75), 0 0 9px rgba(255, 25, 68, 0.34);
+    }
+
+    .rm-constellation.dipper { left: 3%; top: 8%; width: 165px; height: 96px; }
+    .rm-constellation.pisces { right: 3%; top: 10%; width: 170px; height: 98px; }
+
+    .rm-cstar { width: 4px; height: 4px; box-shadow: 0 0 5px #fff, 0 0 12px rgba(255, 255, 255, 0.7); }
+    .rm-constellation.pisces .rm-cstar {
+        box-shadow: 0 0 5px rgba(255, 105, 128, 1), 0 0 13px rgba(255, 32, 73, 0.82);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .rm-star, .rm-cstar { animation: none !important; opacity: 0.72 !important; }
+}

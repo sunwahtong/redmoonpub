@@ -1,0 +1,96 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+    margin: 0;
+    background-color: #050304;
+    color: #f5f1eb;
+    font-family: 'Noto Sans', sans-serif;
+    overflow-x: hidden;
+}
+
+html {
+    scroll-behavior: smooth;
+}
+
+.font-heading {
+    font-family: 'Cinzel', serif;
+}
+
+/* Everything that renders above the site-wide ambient bloom. */
+header, main, footer {
+    position: relative;
+    z-index: 1;
+}
+
+/* ------------------------------------------------------------------ */
+/* Interactive map                                                     */
+/* ------------------------------------------------------------------ */
+
+.map-viewport {
+    cursor: grab;
+    background:
+        radial-gradient(circle at 50% 50%, rgba(227, 40, 78, 0.05), transparent 65%),
+        repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.022) 0 1px, transparent 1px 64px),
+        repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.022) 0 1px, transparent 1px 64px),
+        #050304;
+}
+
+.map-viewport.is-dragging {
+    cursor: grabbing;
+}
+
+.map-viewport img {
+    -webkit-user-drag: none;
+    user-select: none;
+}
+
+/* The zoom rail runs vertically; `writing-mode` is the cross-browser way there. */
+.map-zoom-slider {
+    writing-mode: vertical-lr;
+    direction: rtl;
+    width: 4px;
+    cursor: pointer;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 999px;
+}
+
+/* ------------------------------------------------------------------ */
+/* Chrome                                                              */
+/* ------------------------------------------------------------------ */
+
+::selection {
+    background: #e3284e;
+    color: #fff;
+}
+
+::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+::-webkit-scrollbar-track {
+    background: #070406;
+}
+
+::-webkit-scrollbar-thumb {
+    background: rgba(227, 40, 78, 0.35);
+    border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(227, 40, 78, 0.6);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    html {
+        scroll-behavior: auto;
+    }
+
+    *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}

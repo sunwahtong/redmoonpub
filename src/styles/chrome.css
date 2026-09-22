@@ -1,0 +1,500 @@
+/**
+ * Site chrome effects — page transition, cursor, status pill, volume panel.
+ * Ported from page-transition.css, premium-v13.css (cursor), v52-heading-system.css
+ * (status pill) and v65/v66-luxury-audio.css (volume panel).
+ */
+
+/* ------------------------------------------------------------------ */
+/* Page transition overlay                                             */
+/* ------------------------------------------------------------------ */
+
+.rm-transition {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483000;
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+    background:
+        radial-gradient(circle at 50% 46%, rgba(194, 12, 43, 0.24), transparent 25%),
+        radial-gradient(circle at 50% 50%, #1b070c 0, #090405 48%, #020102 100%);
+    opacity: 1;
+    visibility: visible;
+    transition: opacity 0.65s ease, visibility 0.65s ease;
+}
+
+.rm-transition.is-ready {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+}
+
+/* Faint technical grid, faded out toward the edges. */
+.rm-transition::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+        repeating-linear-gradient(90deg, transparent 0 119px, rgba(255, 255, 255, 0.018) 120px),
+        repeating-linear-gradient(0deg, transparent 0 119px, rgba(255, 255, 255, 0.012) 120px);
+    -webkit-mask-image: radial-gradient(circle at center, #000, transparent 72%);
+    mask-image: radial-gradient(circle at center, #000, transparent 72%);
+}
+
+.rm-transition-inner {
+    position: relative;
+    min-width: 330px;
+    min-height: 360px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+    animation: rmTransitionIn 0.75s cubic-bezier(0.16, 0.84, 0.28, 1) both;
+}
+
+.rm-transition-logo {
+    position: relative;
+    z-index: 3;
+    width: 210px;
+    height: 210px;
+    object-fit: contain;
+    filter: drop-shadow(0 0 16px rgba(255, 45, 75, 0.55)) drop-shadow(0 0 55px rgba(205, 8, 42, 0.38));
+    animation: rmLogoCinematic 1.55s cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
+}
+
+/* Two counter-rotating arcs around the logo. */
+.rm-transition-ring {
+    position: absolute;
+    z-index: 2;
+    left: 50%;
+    top: 50%;
+    width: 292px;
+    height: 292px;
+    border-radius: 50%;
+    box-sizing: border-box;
+    pointer-events: none;
+    transform: translate(-50%, -58%);
+}
+
+.rm-transition-ring.top {
+    border: 2px solid transparent;
+    border-top-color: rgba(255, 65, 91, 0.9);
+    border-right-color: rgba(255, 65, 91, 0.32);
+    filter: drop-shadow(0 0 8px rgba(255, 35, 70, 0.65));
+    animation: rmSpinTop 1.55s linear infinite;
+}
+
+.rm-transition-ring.bottom {
+    width: 316px;
+    height: 316px;
+    border: 2px solid transparent;
+    border-bottom-color: rgba(255, 65, 91, 0.82);
+    border-left-color: rgba(255, 65, 91, 0.28);
+    filter: drop-shadow(0 0 10px rgba(255, 35, 70, 0.5));
+    animation: rmSpinBottom 1.55s linear infinite;
+}
+
+.rm-transition-title {
+    font-family: Cinzel, serif;
+    font-weight: 700;
+    font-size: 13px;
+    letter-spacing: 9px;
+    color: #ef3450;
+    text-shadow: 0 0 14px rgba(255, 40, 70, 0.65), 0 0 40px rgba(210, 10, 45, 0.32);
+    animation: rmTitle 1.45s ease-in-out infinite;
+}
+
+.rm-transition-line {
+    width: 170px;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, #ff3855 45%, #ff7187 50%, #ff3855 55%, transparent);
+    box-shadow: 0 0 12px rgba(255, 35, 70, 0.55);
+    transform-origin: center;
+    animation: rmLine 1.3s ease-in-out infinite;
+}
+
+.rm-transition-status {
+    margin-top: -7px;
+    font-size: 8px;
+    font-weight: 600;
+    letter-spacing: 5px;
+    color: rgba(255, 255, 255, 0.38);
+    animation: rmStatus 1.2s ease-in-out infinite;
+}
+
+/* Large corner arcs. */
+.rm-corner-orbit {
+    position: absolute;
+    width: 330px;
+    height: 330px;
+    border-radius: 50%;
+    pointer-events: none;
+}
+
+.rm-corner-orbit.tl {
+    left: -205px;
+    top: -205px;
+    border-top: 2px solid rgba(255, 48, 78, 0.16);
+    border-right: 2px solid rgba(255, 48, 78, 0.78);
+}
+
+.rm-corner-orbit.br {
+    right: -205px;
+    bottom: -205px;
+    border-bottom: 2px solid rgba(255, 48, 78, 0.16);
+    border-left: 2px solid rgba(255, 48, 78, 0.78);
+}
+
+/* The incoming page settles in rather than snapping. */
+body.rm-page-arriving main {
+    animation: rmPageArrive 0.9s cubic-bezier(0.16, 0.84, 0.28, 1) both;
+}
+
+@keyframes rmTransitionIn {
+    from { transform: translateY(18px) scale(0.88); opacity: 0; }
+    to { transform: translateY(0) scale(1); opacity: 1; }
+}
+
+@keyframes rmLogoCinematic {
+    0% { transform: scale(0.86); opacity: 0.55; }
+    42% {
+        transform: scale(1.08);
+        opacity: 1;
+        filter: drop-shadow(0 0 26px rgba(255, 45, 75, 0.75)) drop-shadow(0 0 75px rgba(205, 8, 42, 0.45));
+    }
+    72% { transform: scale(1); opacity: 1; }
+    100% { transform: scale(0.95); opacity: 0.78; }
+}
+
+@keyframes rmSpinTop {
+    from { transform: translate(-50%, -58%) rotate(0deg); }
+    to { transform: translate(-50%, -58%) rotate(360deg); }
+}
+
+@keyframes rmSpinBottom {
+    from { transform: translate(-50%, -58%) rotate(0deg); }
+    to { transform: translate(-50%, -58%) rotate(-360deg); }
+}
+
+@keyframes rmTitle {
+    0%, 100% { opacity: 0.42; letter-spacing: 8px; }
+    50% { opacity: 1; letter-spacing: 11px; }
+}
+
+@keyframes rmLine {
+    0%, 100% { transform: scaleX(0.18); opacity: 0.2; }
+    50% { transform: scaleX(1); opacity: 1; }
+}
+
+@keyframes rmStatus {
+    0%, 100% { opacity: 0.25; }
+    50% { opacity: 0.7; }
+}
+
+@keyframes rmPageArrive {
+    from { opacity: 0.05; transform: translateY(22px) scale(0.992); filter: blur(9px); }
+    to { opacity: 1; transform: none; filter: none; }
+}
+
+@media (max-width: 640px) {
+    .rm-transition-inner { min-width: 270px; min-height: 315px; }
+    .rm-transition-logo { width: 160px; height: 160px; }
+    .rm-transition-ring { width: 225px; height: 225px; }
+    .rm-transition-ring.bottom { width: 245px; height: 245px; }
+    .rm-transition-title { font-size: 10px; letter-spacing: 7px; }
+    .rm-transition-line { width: 130px; }
+    .rm-corner-orbit, .rm-transition-ring { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .rm-transition, .rm-transition * { animation: none !important; transition-duration: 0.12s !important; }
+    body.rm-page-arriving main { animation: none !important; }
+}
+
+/* ------------------------------------------------------------------ */
+/* Cinematic cursor                                                    */
+/* ------------------------------------------------------------------ */
+
+.rm-cursor,
+.rm-cursor-dot {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 2147483001;
+    pointer-events: none;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    will-change: transform;
+}
+
+.rm-cursor {
+    width: 34px;
+    height: 34px;
+    border: 1px solid rgba(255, 45, 78, 0.55);
+    box-shadow: 0 0 14px rgba(255, 45, 78, 0.22), inset 0 0 12px rgba(255, 45, 78, 0.1);
+    transition: width 0.25s ease, height 0.25s ease, border-color 0.25s ease, opacity 0.25s ease;
+}
+
+.rm-cursor.is-hot {
+    width: 54px;
+    height: 54px;
+    border-color: rgba(255, 90, 120, 0.9);
+    box-shadow: 0 0 26px rgba(255, 45, 78, 0.4), inset 0 0 18px rgba(255, 45, 78, 0.18);
+}
+
+.rm-cursor-dot {
+    width: 5px;
+    height: 5px;
+    background: var(--rm-red-neon);
+    box-shadow: 0 0 8px rgba(255, 43, 79, 0.9), 0 0 18px rgba(255, 43, 79, 0.4);
+}
+
+/* Hide the system cursor once ours is live — but never where the native one
+   carries meaning (map panning, text entry). */
+@media (pointer: fine) {
+    html.rm-cursor-active,
+    html.rm-cursor-active * {
+        cursor: none;
+    }
+
+    html.rm-cursor-active .map-viewport { cursor: grab; }
+    html.rm-cursor-active .map-viewport.is-dragging { cursor: grabbing; }
+    html.rm-cursor-active .map-viewport * { cursor: inherit; }
+    html.rm-cursor-active input,
+    html.rm-cursor-active textarea { cursor: text; }
+    html.rm-cursor-active input[type="range"] { cursor: pointer; }
+}
+
+/* ------------------------------------------------------------------ */
+/* Open / closed status pill                                           */
+/* ------------------------------------------------------------------ */
+
+.rm-status-pill {
+    position: fixed;
+    right: 24px;
+    bottom: 24px;
+    z-index: 90;
+    display: inline-flex;
+    align-items: center;
+    gap: 11px;
+    min-height: 46px;
+    padding: 0 17px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 15px;
+    background: linear-gradient(135deg, rgba(17, 10, 13, 0.93), rgba(6, 5, 7, 0.86));
+    box-shadow:
+        0 12px 44px rgba(0, 0, 0, 0.48),
+        0 0 0 1px rgba(255, 255, 255, 0.025),
+        0 0 28px rgba(255, 40, 75, 0.1);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 1.55px;
+    backdrop-filter: blur(18px) saturate(130%);
+}
+
+/* Gradient hairline border. */
+.rm-status-pill::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(105deg, rgba(255, 255, 255, 0.18), transparent 32%, rgba(255, 53, 88, 0.3), transparent 72%, rgba(255, 255, 255, 0.08));
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+}
+
+.rm-status-pill i {
+    width: 9px;
+    height: 9px;
+    flex: 0 0 9px;
+    border-radius: 50%;
+    background: currentColor;
+    box-shadow: 0 0 10px currentColor, 0 0 20px currentColor;
+}
+
+.rm-status-pill.is-open i { color: #63e7a9; }
+.rm-status-pill.is-closed i { color: #ef3d55; }
+
+.rm-status-pill span {
+    max-width: 260px;
+    color: #f8f4f5;
+    text-shadow: 0 0 7px rgba(255, 255, 255, 0.16), 0 0 16px rgba(255, 52, 94, 0.14);
+}
+
+@media (max-width: 700px) {
+    .rm-status-pill {
+        right: 12px;
+        bottom: 12px;
+        min-height: 44px;
+        padding: 0 14px;
+        font-size: 9px;
+        letter-spacing: 1.2px;
+    }
+    .rm-status-pill span { max-width: 205px; }
+}
+
+/* ------------------------------------------------------------------ */
+/* GTA V map web component                                             */
+/* ------------------------------------------------------------------ */
+
+/* The Lit element has no intrinsic size, so it must be told to fill its shell. */
+gta-v-map {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+/* ------------------------------------------------------------------ */
+/* Premium volume panel                                                */
+/* ------------------------------------------------------------------ */
+
+.rm-sound-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+}
+
+.rm-volume-panel {
+    position: absolute;
+    right: 0;
+    top: 47px;
+    width: 224px;
+    height: 50px;
+    display: grid;
+    grid-template-columns: 57px 1fr;
+    grid-template-rows: 18px 15px;
+    column-gap: 10px;
+    align-items: center;
+    padding: 8px 13px 8px 16px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+    background: linear-gradient(135deg, rgba(17, 10, 13, 0.96), rgba(6, 5, 7, 0.92));
+    box-shadow: 0 16px 44px rgba(0, 0, 0, 0.55), 0 0 24px rgba(255, 40, 75, 0.08);
+    backdrop-filter: blur(18px) saturate(130%);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transform: translateY(-3px);
+    transition: opacity 0.16s ease, transform 0.16s ease, visibility 0.16s;
+}
+
+/* Ruby filament down the left edge. */
+.rm-volume-panel::before {
+    content: "";
+    position: absolute;
+    left: 8px;
+    top: 9px;
+    bottom: 9px;
+    width: 1px;
+    background: linear-gradient(180deg, transparent, rgba(238, 42, 73, 0.48), transparent);
+    box-shadow: 0 0 6px rgba(238, 42, 73, 0.2);
+}
+
+.rm-sound-wrap:hover .rm-volume-panel,
+.rm-volume-panel:focus-within,
+.rm-volume-panel.is-open {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transform: none;
+}
+
+.rm-volume-label {
+    grid-column: 1;
+    grid-row: 1 / 3;
+    align-self: center;
+    font-size: 6px;
+    font-weight: 600;
+    letter-spacing: 2px;
+    color: #89777c;
+    white-space: nowrap;
+}
+
+.rm-volume-value {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: start;
+    align-self: end;
+    display: inline-flex;
+    align-items: baseline;
+    font-family: Cinzel, Georgia, serif;
+    font-weight: 500;
+    font-size: 13px;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    color: #f3e6e8;
+    text-shadow: 0 0 9px rgba(239, 43, 75, 0.15);
+}
+
+.rm-volume-value::after {
+    content: "%";
+    margin-left: 3px;
+    font-family: 'Noto Sans', sans-serif;
+    font-size: 6px;
+    font-weight: 600;
+    color: #ef3b59;
+    text-shadow: 0 0 6px rgba(239, 59, 89, 0.3);
+}
+
+.rm-volume-slider {
+    grid-column: 2;
+    grid-row: 2;
+    width: 100%;
+    height: 12px;
+    margin: 0;
+    appearance: none;
+    -webkit-appearance: none;
+    background: transparent;
+    outline: none;
+    cursor: pointer;
+}
+
+.rm-volume-slider::-webkit-slider-runnable-track {
+    height: 3px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #e91f47 0 var(--vol), rgba(255, 255, 255, 0.13) var(--vol) 100%);
+    box-shadow: 0 0 7px rgba(233, 31, 71, 0.12);
+}
+
+.rm-volume-slider::-webkit-slider-thumb {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 11px;
+    height: 11px;
+    margin-top: -4px;
+    border-radius: 50%;
+    border: 1.5px solid #ffe9ed;
+    background: #d91f41;
+    box-shadow: 0 0 0 2px rgba(229, 31, 67, 0.12), 0 0 9px rgba(239, 38, 75, 0.42);
+}
+
+.rm-volume-slider::-moz-range-track {
+    height: 3px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.13);
+}
+
+.rm-volume-slider::-moz-range-progress {
+    height: 3px;
+    border-radius: 999px;
+    background: #e91f47;
+}
+
+.rm-volume-slider::-moz-range-thumb {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    border: 1.5px solid #ffe9ed;
+    background: #d91f41;
+    box-shadow: 0 0 0 2px rgba(229, 31, 67, 0.12), 0 0 9px rgba(239, 38, 75, 0.42);
+}
+
+@media (max-width: 420px) {
+    .rm-volume-panel { right: -7px; width: min(224px, calc(100vw - 24px)); }
+}

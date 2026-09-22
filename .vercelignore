@@ -1,0 +1,21 @@
+# Files not uploaded to Vercel. This does not affect the VPS or Render
+# deployments, which still serve everything from the repository.
+
+node_modules
+dist
+.verify
+.idea
+LEGACY_PROJECT
+tsconfig.tsbuildinfo
+
+# The GTA V tile pack: 438 MB across 4102 files. Far too large for a Vercel
+# deployment, and it never changes. It is uploaded once to Supabase Storage with
+# `npm run tiles:upload`, and the frontend is pointed at it with
+# VITE_MAP_TILE_BASE. See DEPLOY-VERCEL.md.
+public/assets/map/styleAtlas
+public/assets/map/styleGrid
+public/assets/map/styleSatelite
+
+# Unused leftover from an earlier map iteration. red-moon-map-v8.png is kept:
+# the gallery still shows it.
+public/assets/gtav-map-hires.png

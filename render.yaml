@@ -1,0 +1,34 @@
+services:
+  - type: web
+    name: red-moon-pub
+    runtime: node
+    plan: free
+    # NODE_ENV=production makes npm skip devDependencies, and the build needs
+    # vite + typescript from there. NPM_CONFIG_PRODUCTION=false keeps them.
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    autoDeployTrigger: commit
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NPM_CONFIG_PRODUCTION
+        value: "false"
+      - key: NODE_VERSION
+        value: "22"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: red-moon-pub-db
+          property: connectionString
+      # Set these in the Render dashboard before the first deploy. They create
+      # the first OWNER account, once, when the database is still empty.
+      - key: OWNER_USERNAME
+        sync: false
+      - key: OWNER_PASSWORD
+        sync: false
+      - key: OWNER_NAME
+        value: Zhen Yu Xiao
+
+databases:
+  - name: red-moon-pub-db
+    plan: free

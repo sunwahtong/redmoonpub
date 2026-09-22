@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.verify/
+.env
+.env.*
+!.env.example
+*.log
+tsconfig.tsbuildinfo
+.idea/
+public/.idea/
+LEGACY_PROJECT/
+.vercel/
+
+data/*.bak

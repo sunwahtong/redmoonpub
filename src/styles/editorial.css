@@ -1,0 +1,320 @@
+/**
+ * Editorial system — headings, buttons, surfaces, page heroes, ticker.
+ *
+ * Recovered from v17-signature.css (type scale + button geometry), v52-heading-system.css
+ * (reactive neon headings) and v56-public.css (ticker). Two things the rewrite had
+ * lost and that define the brand: the Cinzel display scale is ~2× bigger than a
+ * default Tailwind scale, and Red Moon geometry is square — never pill-shaped.
+ */
+
+/* ---------------------------------------------------------------- */
+/* Type scale                                                        */
+/* ---------------------------------------------------------------- */
+
+.rm-label {
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.3em;
+    color: var(--rm-red);
+}
+
+.rm-display-1 {
+    font-family: Cinzel, serif;
+    font-weight: 700;
+    font-size: clamp(70px, 12vw, 150px);
+    line-height: 0.8;
+    letter-spacing: -0.05em;
+}
+
+.rm-display-2 {
+    font-family: Cinzel, serif;
+    font-weight: 600;
+    font-size: clamp(42px, 6vw, 86px);
+    line-height: 0.9;
+    letter-spacing: -0.04em;
+}
+
+.rm-display-3 {
+    font-family: Cinzel, serif;
+    font-weight: 600;
+    font-size: clamp(24px, 2.6vw, 34px);
+    line-height: 1.05;
+    letter-spacing: -0.02em;
+}
+
+.rm-lead {
+    color: #aaa2a1;
+    line-height: 1.9;
+    max-width: 650px;
+}
+
+/* ---------------------------------------------------------------- */
+/* V52 — reactive neon heading                                       */
+/* ---------------------------------------------------------------- */
+
+.rm-heading {
+    position: relative;
+    color: #f7f4f5;
+    text-shadow:
+        0 0 1px rgba(255, 255, 255, 0.72),
+        0 0 5px rgba(255, 255, 255, 0.10),
+        0 0 13px rgba(255, 55, 88, 0.16),
+        0 0 27px rgba(255, 35, 78, 0.08);
+    transition: color 0.25s ease, text-shadow 0.25s ease, filter 0.25s ease, transform 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
+    isolation: isolate;
+}
+
+.rm-heading::before {
+    content: "";
+    position: absolute;
+    left: -0.045em;
+    right: -0.045em;
+    bottom: -0.14em;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.16) 22%, rgba(255, 65, 96, 0.42) 50%, rgba(255, 255, 255, 0.1) 78%, transparent);
+    opacity: 0.32;
+    transform: scaleX(0.72);
+    transform-origin: center;
+    transition: opacity 0.25s ease, transform 0.35s ease, box-shadow 0.35s ease;
+    pointer-events: none;
+}
+
+.rm-heading::after {
+    content: "";
+    position: absolute;
+    inset: -16% -5%;
+    z-index: -1;
+    pointer-events: none;
+    background: radial-gradient(ellipse at 50% 55%, rgba(255, 42, 78, 0.1), transparent 67%);
+    filter: blur(14px);
+    opacity: 0.45;
+    transition: opacity 0.3s ease, filter 0.3s ease;
+}
+
+.rm-heading em {
+    font-style: normal;
+    color: #fff;
+    text-shadow: 0 0 1px #fff, 0 0 7px rgba(255, 255, 255, 0.18), 0 0 15px rgba(255, 58, 92, 0.24);
+}
+
+.rm-heading.is-active {
+    color: #fff;
+    transform: translateY(-1px);
+    text-shadow:
+        0 0 1px #fff,
+        0 0 7px rgba(255, 255, 255, 0.38),
+        0 0 16px rgba(255, 73, 108, 0.55),
+        0 0 34px rgba(255, 38, 82, 0.25);
+}
+
+.rm-heading.is-active::before {
+    opacity: 0.9;
+    transform: scaleX(1);
+    box-shadow: 0 0 8px rgba(255, 55, 90, 0.35), 0 0 18px rgba(255, 55, 90, 0.12);
+}
+
+.rm-heading.is-active::after { opacity: 0.82; filter: blur(18px); }
+
+.rm-heading.is-active em {
+    text-shadow: 0 0 2px #fff, 0 0 10px rgba(255, 255, 255, 0.52), 0 0 22px rgba(255, 53, 91, 0.58);
+}
+
+@media (max-width: 700px) {
+    .rm-heading {
+        text-shadow: 0 0 1px rgba(255, 255, 255, 0.72), 0 0 5px rgba(255, 255, 255, 0.1), 0 0 12px rgba(255, 55, 88, 0.15);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .rm-heading { transition: none; }
+    .rm-heading.is-active { transform: none; }
+}
+
+/* ---------------------------------------------------------------- */
+/* Buttons — square, not pills                                       */
+/* ---------------------------------------------------------------- */
+
+.rm-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 18px;
+    padding: 15px 19px;
+    border: 1px solid var(--rm-line);
+    border-radius: var(--rm-radius);
+    background: transparent;
+    color: #fff;
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.2em;
+    text-decoration: none;
+    cursor: pointer;
+    transition: 0.35s;
+}
+
+.rm-btn:hover {
+    transform: translateY(-3px);
+    border-color: rgba(213, 31, 60, 0.8);
+    box-shadow: 0 15px 45px rgba(213, 31, 60, 0.15);
+}
+
+.rm-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.rm-btn.is-red {
+    background: var(--rm-red);
+    border-color: var(--rm-red);
+}
+
+.rm-btn.is-red:hover {
+    background: var(--rm-red-neon);
+    border-color: var(--rm-red-neon);
+    box-shadow: 0 15px 45px rgba(213, 31, 60, 0.3);
+}
+
+/* ---------------------------------------------------------------- */
+/* Surfaces                                                          */
+/* ---------------------------------------------------------------- */
+
+.rm-card {
+    position: relative;
+    border: 1px solid var(--rm-line);
+    border-radius: var(--rm-radius);
+    background: var(--rm-bg-raise);
+    transition: 0.4s;
+}
+
+.rm-card:hover {
+    border-color: rgba(213, 31, 60, 0.55);
+    transform: translateY(-6px);
+}
+
+/* The 月 watermark the legacy cards carried in their top-right corner. */
+.rm-glyph {
+    position: absolute;
+    right: 24px;
+    top: 14px;
+    font-family: Cinzel, serif;
+    font-size: 90px;
+    line-height: 1;
+    color: rgba(213, 31, 60, 0.22);
+    pointer-events: none;
+    user-select: none;
+}
+
+.rm-rule {
+    height: 1px;
+    background: linear-gradient(90deg, var(--rm-red), transparent);
+}
+
+.rm-section {
+    position: relative;
+    z-index: 2;
+    padding: var(--rm-section-pad) var(--rm-gutter);
+}
+
+/* ---------------------------------------------------------------- */
+/* Interior page hero                                                */
+/* ---------------------------------------------------------------- */
+
+.rm-page-hero {
+    position: relative;
+    min-height: 570px;
+    padding: 180px var(--rm-gutter) 70px;
+    display: flex;
+    align-items: flex-end;
+    overflow: hidden;
+    background:
+        linear-gradient(90deg, rgba(5, 5, 6, 0.96), rgba(5, 5, 6, 0.5)),
+        url('/assets/loading-v10.jpg') center/cover;
+}
+
+.rm-page-hero::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(0deg, var(--rm-bg), transparent 45%);
+    pointer-events: none;
+}
+
+.rm-page-hero > * {
+    position: relative;
+    z-index: 2;
+}
+
+@media (max-width: 900px) {
+    .rm-page-hero { min-height: 470px; padding: 150px var(--rm-gutter) 60px; }
+}
+
+/* ---------------------------------------------------------------- */
+/* Neon ticker strip                                                 */
+/* ---------------------------------------------------------------- */
+
+.rm-ticker {
+    position: relative;
+    border-top: 1px solid var(--rm-line);
+    border-bottom: 1px solid var(--rm-line);
+    overflow: hidden;
+    white-space: nowrap;
+    background: #08080a;
+}
+
+/* Thin neon filament along the top edge. */
+.rm-ticker-line {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(255, 43, 79, 0.55), rgba(255, 255, 255, 0.25), rgba(255, 43, 79, 0.55), transparent);
+    box-shadow: 0 0 12px rgba(255, 43, 79, 0.35);
+}
+
+.rm-ticker-track {
+    display: flex;
+    width: max-content;
+    will-change: transform;
+    animation: rmMarquee 38s linear infinite;
+}
+
+.rm-ticker-track > span {
+    display: block;
+    flex: 0 0 auto;
+    padding: 17px 2.5vw 17px 0;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.32em;
+    color: #9c9695;
+}
+
+.rm-ticker-track b {
+    color: var(--rm-red);
+    font-weight: 600;
+    text-shadow: 0 0 10px rgba(227, 40, 78, 0.6);
+}
+
+/* Fade the strip out at both edges so letters dissolve instead of clipping. */
+.rm-ticker::before,
+.rm-ticker::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 12vw;
+    z-index: 2;
+    pointer-events: none;
+}
+
+.rm-ticker::before { left: 0; background: linear-gradient(90deg, #08080a, transparent); }
+.rm-ticker::after { right: 0; background: linear-gradient(270deg, #08080a, transparent); }
+
+@keyframes rmMarquee {
+    from { transform: translate3d(0, 0, 0); }
+    to { transform: translate3d(-50%, 0, 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .rm-ticker-track { animation: none; }
+}
