@@ -25,14 +25,14 @@ let child = null;
 let browser = null;
 
 try {
-  child = spawn(process.execPath, ['server.cjs'], {
+  child = spawn(process.execPath, ['server/index.ts'], {
     cwd: ROOT,
     env: {...process.env, NODE_ENV: 'production', PORT: String(PORT), DATABASE_URL: ''},
     stdio: ['ignore', 'pipe', 'pipe']
   });
   await new Promise((resolve, reject) => {
     let out = '';
-    child.stdout.on('data', c => { out += c; if (out.includes('online server running')) resolve(); });
+    child.stdout.on('data', c => { out += c; if (out.includes('Red Moon Pub server on')) resolve(); });
     child.on('exit', c => reject(new Error('exit ' + c)));
     setTimeout(() => reject(new Error('timeout\n' + out)), 25000);
   });

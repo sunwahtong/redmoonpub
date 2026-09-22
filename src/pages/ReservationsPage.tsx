@@ -8,6 +8,7 @@ import {Reveal} from '../components/ui/Reveal';
 import {Embers} from '../components/effects/Embers';
 import {apiGet, apiSend, formatDate, formatTime, getVisitorToken} from '../lib/api';
 import {playSfx} from '../lib/sfx';
+import {dialog} from '../stores/useDialogStore';
 import {
   isLive,
   OCCASION_GLYPH,
@@ -122,7 +123,13 @@ export const ReservationsPage: React.FC = () => {
   };
 
   const cancel = async (reservation: Reservation) => {
-    if (!window.confirm(`Lemondod a(z) ${reservation.code} foglalást?`)) return;
+    const sure = await dialog.confirm({
+      title: 'Lemondod a foglalást?',
+      message: `A(z) ${reservation.code} azonosítójú foglalás megszűnik. Újat bármikor kérhetsz.`,
+      confirmLabel: 'LEMONDÁS',
+      tone: 'danger'
+    });
+    if (!sure) return;
     try {
       await apiSend(`/api/reservations/${encodeURIComponent(reservation.id)}`, 'DELETE', {visitorToken: token});
       playSfx('delete');

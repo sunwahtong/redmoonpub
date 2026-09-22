@@ -4,32 +4,6 @@
  * pages drifted apart over time.
  */
 
-export interface LeadershipMember {
-  avatar: string;
-  role: string;
-  name: string;
-  note: string;
-}
-
-export const OWNER: LeadershipMember = {
-  avatar: 'XIXO',
-  role: 'TULAJDONOS / VEZETŐ',
-  name: 'Zhen Yu Xiao',
-  note: 'Cégtulajdonos · Főnök'
-};
-
-export const CO_OWNER: LeadershipMember = {
-  avatar: 'CELI',
-  role: 'TÁRSTULAJDONOS / ÜZLETVEZETŐ',
-  name: 'Ruan Yu Celeste',
-  note: 'Társtulajdonos · Üzletvezető'
-};
-
-export const MANAGERS: LeadershipMember[] = [
-  {avatar: 'REI', role: 'RED MOON ÜZLETVEZETŐ', name: 'Yuna Yue Rei', note: 'Red Moon Manager'},
-  {avatar: 'MGR', role: 'RED MOON ÜZLETVEZETŐ', name: 'Red Moon Manager', note: 'Red Moon Manager · MGR'}
-];
-
 /**
  * The membership ladder. One definition, used by the home page teaser, the
  * about page and the dedicated /vip page.

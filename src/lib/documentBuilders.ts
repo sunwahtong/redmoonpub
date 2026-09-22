@@ -3,11 +3,11 @@ import type {DocumentKind, DocumentPayload} from './documents';
 import type {SupplyOrder} from './orders';
 
 /**
- * Turns console data into the shape the document engine prints.
+ * Turns console data into the shape the document engine renders.
  *
  * Kept apart from `documents.ts` on purpose: that file knows how to lay a
- * document out and nothing about the business, this one knows the business and
- * nothing about layout. Adding a document type means adding a builder here.
+ * document out and nothing about the business, this one knows the business
+ * and nothing about layout. Adding a document type means adding a builder.
  */
 
 export interface SaleRow {
@@ -32,7 +32,7 @@ export interface ShiftRow {
   startedByName?: string;
   closedByName?: string;
   openingCash?: number;
-  closingCash?: number;
+  closingCash?: number | null;
   revenue?: number;
   cashRevenue?: number;
   transferRevenue?: number;
@@ -41,7 +41,7 @@ export interface ShiftRow {
   notes?: string;
   closure?: {
     employeeBreakdown?: {name: string; workedMs: number; sales: number; items: number; revenue: number}[];
-  };
+  } | null;
 }
 
 export interface StockRow {
@@ -52,6 +52,20 @@ export interface StockRow {
   perDay: number;
   daysLeft: number | null;
   price: number;
+}
+
+export interface StoredDocument {
+  id: string;
+  type: 'receipt' | 'invoice' | string;
+  createdAt: string;
+  createdByName: string;
+  shiftId: string;
+  saleId: string;
+  customer?: {name?: string; address?: string; taxNumber?: string};
+  seller?: {name?: string; owner?: string};
+  items: {product: string; qty: number; unitPrice: number; total: number}[];
+  total: number;
+  paymentMethod: 'cash' | 'transfer' | string;
 }
 
 export type Period = 'today' | 'week' | 'month' | 'all';
@@ -85,28 +99,21 @@ export function periodText(period: Period): string {
   return `${dateFormat.format(start)} — ${today}`;
 }
 
-const within = (value: string, start: Date | null): boolean =>
-  !start || new Date(value).getTime() >= start.getTime();
+const within = (value: string, start: Date | null): boolean => !start || new Date(value).getTime() >= start.getTime();
 
 const PAYMENT_LABEL: Record<string, string> = {cash: 'Készpénz', transfer: 'Átutalás'};
 
-/** Tétles eladási lista. */
+/** Tételes eladási lista. */
 export function buildTransactions(sales: SaleRow[], period: Period): DocumentPayload {
   const start = periodStart(period);
-  const rows = sales
-    .filter((sale) => within(sale.at, start))
-    .sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
-
+  const rows = sales.filter((sale) => within(sale.at, start)).sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
   const total = rows.reduce((sum, row) => sum + (Number(row.total) || 0), 0);
-  const cash = rows
-    .filter((row) => row.paymentMethod === 'cash')
-    .reduce((sum, row) => sum + (Number(row.total) || 0), 0);
+  const cash = rows.filter((row) => row.paymentMethod === 'cash').reduce((sum, row) => sum + (Number(row.total) || 0), 0);
 
   return {
     kind: 'transactions',
     period: periodText(period),
-    preamble:
-      'Az alábbi kimutatás a megjelölt időszakban rögzített eladási tételeket tartalmazza, a rögzítés sorrendjében.',
+    preamble: 'Az alábbi kimutatás a megjelölt időszakban rögzített eladási tételeket tartalmazza, a rögzítés sorrendjében.',
     columns: [
       {key: 'date', label: 'Dátum'},
       {key: 'time', label: 'Idő'},
@@ -141,7 +148,6 @@ export function buildShiftReport(shift: ShiftRow): DocumentPayload {
   const opening = Number(shift.openingCash) || 0;
   const closing = Number(shift.closingCash) || 0;
   const revenue = Number(shift.revenue) || 0;
-  // What the drawer should hold if nothing went missing.
   const expected = opening + (Number(shift.cashRevenue) || 0);
 
   return {
@@ -149,9 +155,7 @@ export function buildShiftReport(shift: ShiftRow): DocumentPayload {
     period: `${dateFormat.format(new Date(shift.startedAt))} · ${timeFormat.format(new Date(shift.startedAt))}${
       shift.endedAt ? ` — ${timeFormat.format(new Date(shift.endedAt))}` : ''
     }`,
-    preamble: `A(z) ${shift.id} azonosítójú műszak zárási adatai. Nyitotta: ${
-      shift.startedByName || '—'
-    }. Zárta: ${shift.closedByName || '—'}.`,
+    preamble: `A(z) ${shift.id} azonosítójú műszak zárási adatai. Nyitotta: ${shift.startedByName || '—'}. Zárta: ${shift.closedByName || '—'}.`,
     columns: [
       {key: 'name', label: 'Dolgozó'},
       {key: 'hours', label: 'Óra', numeric: true},
@@ -175,19 +179,14 @@ export function buildShiftReport(shift: ShiftRow): DocumentPayload {
       {label: 'Műszak bevétele', value: formatHuf(revenue), strong: true}
     ],
     notes: [
-      closing === expected
-        ? 'A záró kassza megegyezik az elvárt összeggel.'
-        : `Eltérés az elvárt záró kasszához képest: ${formatHuf(closing - expected)}.`,
+      closing === expected ? 'A záró kassza megegyezik az elvárt összeggel.' : `Eltérés az elvárt záró kasszához képest: ${formatHuf(closing - expected)}.`,
       ...(shift.notes ? [`Műszak megjegyzése: ${shift.notes}`] : [])
     ]
   };
 }
 
-/** Flat hourly rate used until real contracts exist. Mirrors HOURLY_WAGE in server.cjs. */
-export const HOURLY_WAGE = 1800;
-
 /** Bérelszámolás a zárt műszakok alapján. */
-export function buildPayroll(shifts: ShiftRow[], period: Period): DocumentPayload {
+export function buildPayroll(shifts: ShiftRow[], period: Period, hourlyWage: number): DocumentPayload {
   const start = periodStart(period);
   const closed = shifts.filter((shift) => shift.status === 'closed' && within(shift.startedAt, start));
 
@@ -204,14 +203,12 @@ export function buildPayroll(shifts: ShiftRow[], period: Period): DocumentPayloa
   }
 
   const rows = [...people.values()].sort((a, b) => b.hours - a.hours);
-  const wageTotal = rows.reduce((sum, row) => sum + row.hours * HOURLY_WAGE, 0);
+  const wageTotal = rows.reduce((sum, row) => sum + row.hours * hourlyWage, 0);
 
   return {
     kind: 'payroll',
     period: periodText(period),
-    preamble: `A kifizetendő összeg a ledolgozott órák és a ${formatHuf(
-      HOURLY_WAGE
-    )} órabér szorzata. Az elszámolás a lezárt műszakok adatain alapul.`,
+    preamble: `A kifizetendő összeg a ledolgozott órák és a ${formatHuf(hourlyWage)} órabér szorzata. Az elszámolás a lezárt műszakok adatain alapul.`,
     columns: [
       {key: 'name', label: 'Dolgozó'},
       {key: 'shifts', label: 'Műszak', numeric: true},
@@ -226,17 +223,14 @@ export function buildPayroll(shifts: ShiftRow[], period: Period): DocumentPayloa
       hours: row.hours.toFixed(1),
       sales: row.sales,
       revenue: formatHuf(row.revenue),
-      wage: formatHuf(Math.round(row.hours * HOURLY_WAGE))
+      wage: formatHuf(Math.round(row.hours * hourlyWage))
     })),
     summary: [
       {label: 'Dolgozók száma', value: String(rows.length)},
       {label: 'Ledolgozott óra', value: rows.reduce((sum, row) => sum + row.hours, 0).toFixed(1)},
       {label: 'Kifizetendő összesen', value: formatHuf(Math.round(wageTotal)), strong: true}
     ],
-    notes: [
-      'Az órabér egységesen került alkalmazásra; egyedi megállapodások nincsenek rögzítve a rendszerben.',
-      'A kifizetés a dokumentum aláírását követően esedékes.'
-    ]
+    notes: ['Az órabér egységesen került alkalmazásra; egyedi megállapodások nincsenek rögzítve a rendszerben.', 'A kifizetés a dokumentum aláírását követően esedékes.']
   };
 }
 
@@ -246,15 +240,13 @@ export function buildOrderAudit(orders: SupplyOrder[], period: Period): Document
   const rows = orders
     .filter((order) => order.status === 'completed' && order.completedAt && within(order.completedAt, start))
     .sort((a, b) => new Date(b.completedAt as string).getTime() - new Date(a.completedAt as string).getTime());
-
   const estimated = rows.reduce((sum, order) => sum + (Number(order.estimatedTotal) || 0), 0);
   const actual = rows.reduce((sum, order) => sum + (Number(order.actualTotal) || 0), 0);
 
   return {
     kind: 'order-audit',
     period: periodText(period),
-    preamble:
-      'Az alábbi kimutatás a lezárt beszerzéseket tartalmazza. A becsült érték a kiírás pillanatában rögzített összeg, a tényleges érték a beszerzést végző által bejelentett összeg.',
+    preamble: 'Az alábbi kimutatás a lezárt beszerzéseket tartalmazza. A becsült érték a kiírás pillanatában rögzített összeg, a tényleges érték a beszerzést végző által bejelentett összeg.',
     columns: [
       {key: 'code', label: 'Azonosító'},
       {key: 'date', label: 'Lezárva'},
@@ -279,10 +271,7 @@ export function buildOrderAudit(orders: SupplyOrder[], period: Period): Document
       {label: 'Tényleges összesen', value: formatHuf(actual)},
       {label: 'Összesített eltérés', value: `${actual - estimated > 0 ? '+' : ''}${formatHuf(actual - estimated)}`, strong: true}
     ],
-    notes: [
-      'A beszerzési árak ingadozása miatt kisebb eltérés szokványos.',
-      'A tartósan vagy jelentősen eltérő tételek külön vizsgálat tárgyát képezik.'
-    ]
+    notes: ['A beszerzési árak ingadozása miatt kisebb eltérés szokványos.', 'A tartósan vagy jelentősen eltérő tételek külön vizsgálat tárgyát képezik.']
   };
 }
 
@@ -298,8 +287,7 @@ export function buildInventory(products: StockRow[]): DocumentPayload {
   return {
     kind: 'inventory',
     period: dateFormat.format(new Date()),
-    preamble:
-      'A készletjegyzék a kiállítás pillanatában nyilvántartott mennyiségeket tartalmazza. A kifutási előrejelzés az elmúlt két hét fogyása alapján készült.',
+    preamble: 'A készletjegyzék a kiállítás pillanatában nyilvántartott mennyiségeket tartalmazza. A kifutási előrejelzés az elmúlt két hét fogyása alapján készült.',
     columns: [
       {key: 'name', label: 'Tétel'},
       {key: 'stock', label: 'Készlet', numeric: true},
@@ -319,13 +307,41 @@ export function buildInventory(products: StockRow[]): DocumentPayload {
     summary: [
       {label: 'Tételfajták', value: String(rows.length)},
       {label: 'Minimum alatt', value: String(rows.filter((row) => row.stock <= row.minStock).length)},
-      {
-        label: 'Készlet eladási értéke',
-        value: formatHuf(rows.reduce((sum, row) => sum + row.stock * row.price, 0)),
-        strong: true
-      }
+      {label: 'Készlet eladási értéke', value: formatHuf(rows.reduce((sum, row) => sum + row.stock * row.price, 0)), strong: true}
     ],
     notes: ['A „nincs adat” jelölésű tételeknél az elmúlt két hétben nem volt mérhető fogyás.']
+  };
+}
+
+/** Nyugta vagy számla egy tárolt bizonylatból. */
+export function buildStoredDocument(document: StoredDocument): DocumentPayload {
+  const invoice = document.type === 'invoice';
+  const customer = document.customer || {};
+  return {
+    kind: invoice ? 'invoice' : 'receipt',
+    reference: document.id,
+    period: `${dateFormat.format(new Date(document.createdAt))} · ${timeFormat.format(new Date(document.createdAt))} · műszak ${document.shiftId}`,
+    parties: [
+      {label: 'Eladó', lines: [document.seller?.name || 'Red Moon Pub', ...(document.seller?.owner ? [document.seller.owner] : [])]},
+      {
+        label: 'Vevő',
+        lines: [customer.name || 'Vásárló', ...(customer.address ? [customer.address] : []), ...(customer.taxNumber ? [`Adószám: ${customer.taxNumber}`] : [])]
+      }
+    ],
+    columns: [
+      {key: 'product', label: 'Tétel'},
+      {key: 'qty', label: 'Db', numeric: true},
+      {key: 'unitPrice', label: 'Egységár', numeric: true},
+      {key: 'total', label: 'Összesen', numeric: true}
+    ],
+    rows: document.items.map((item) => ({product: item.product, qty: item.qty, unitPrice: formatHuf(item.unitPrice), total: formatHuf(item.total)})),
+    summary: [
+      {label: 'Fizetés módja', value: PAYMENT_LABEL[document.paymentMethod] || document.paymentMethod},
+      {label: 'Kiállította', value: document.createdByName},
+      {label: 'Fizetendő', value: formatHuf(document.total), strong: true}
+    ],
+    notes: ['Áraink az általános forgalmi adót tartalmazzák.'],
+    countersign: invoice
   };
 }
 
@@ -335,5 +351,7 @@ export const DOCUMENT_REQUIREMENTS: Record<DocumentKind, string> = {
   'shift-report': 'lezárt műszak',
   payroll: 'lezárt műszak',
   'order-audit': 'lezárt beszerzés',
-  inventory: 'termék'
+  inventory: 'termék',
+  receipt: 'nyugta',
+  invoice: 'számla'
 };

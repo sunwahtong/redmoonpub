@@ -11,6 +11,7 @@ import {ScrollProgress} from './components/effects/ScrollProgress';
 import {FilmGrain} from './components/effects/FilmGrain';
 import {PointerSpotlight} from './components/effects/PointerSpotlight';
 import {Toaster} from './components/ui/Toaster';
+import {DialogHost} from './components/ui/DialogHost';
 import {useUiSounds} from './hooks/useUiSounds';
 import {useAuthStore} from './stores/useAuthStore';
 import {HomePage} from './pages/HomePage';
@@ -39,8 +40,31 @@ import {DocumentsPage} from './pages/staff/DocumentsPage';
 import {StaffReservationsPage} from './pages/staff/ReservationsPage';
 import {ApplicationsPage} from './pages/staff/ApplicationsPage';
 import {OrdersPage} from './pages/staff/OrdersPage';
+import {StaffEventsPage} from './pages/staff/EventsPage';
+import {ShowcasePage} from './pages/staff/ShowcasePage';
 import {RequireRole} from './components/auth/RequireRole';
 import {NotFoundPage} from './pages/NotFoundPage';
+import type {Role} from './stores/useAuthStore';
+
+/** Console routes and the lowest rank that may open them. */
+const CONSOLE_ROUTES: {path: string; need?: Role; element: React.ReactNode}[] = [
+  {path: '/staff', element: <DashboardPage/>},
+  {path: '/staff/profile', element: <ProfilePage/>},
+  {path: '/staff/shift', element: <ShiftPage/>},
+  {path: '/staff/register', element: <RegisterPage/>},
+  {path: '/staff/sales', element: <SalesPage/>},
+  {path: '/staff/reservations', element: <StaffReservationsPage/>},
+  {path: '/staff/orders', element: <OrdersPage/>},
+  {path: '/staff/inventory', need: 'manager', element: <InventoryPage/>},
+  {path: '/staff/products', need: 'manager', element: <ProductsPage/>},
+  {path: '/staff/applications', need: 'manager', element: <ApplicationsPage/>},
+  {path: '/staff/documents', need: 'manager', element: <DocumentsPage/>},
+  {path: '/staff/events', need: 'owner', element: <StaffEventsPage/>},
+  {path: '/staff/showcase', need: 'owner', element: <ShowcasePage/>},
+  {path: '/staff/reports', need: 'owner', element: <ReportsPage/>},
+  {path: '/staff/users', need: 'owner', element: <UsersPage/>},
+  {path: '/staff/audit', need: 'owner', element: <AuditPage/>}
+];
 
 export const App: React.FC = () => {
   useUiSounds();
@@ -64,6 +88,7 @@ export const App: React.FC = () => {
       <FilmGrain/>
       <PointerSpotlight/>
       <Toaster/>
+      <DialogHost/>
       <div className="flex min-h-screen flex-col">
         <Navbar/>
         <div className="flex-1">
@@ -81,118 +106,14 @@ export const App: React.FC = () => {
             <Route path="/club" element={<ClubPage/>}/>
             <Route path="/dj" element={<DjPage/>}/>
             <Route path="/staff-login" element={<StaffLoginPage/>}/>
-            <Route
-              path="/staff"
-              element={
-                <RequireRole>
-                  <DashboardPage/>
-                </RequireRole>
-              }
-            />
-            <Route
-              path="/staff/profile"
-              element={
-                <RequireRole>
-                  <ProfilePage/>
-                </RequireRole>
-              }
-            />
-            <Route
-              path="/staff/shift"
-              element={
-                <RequireRole>
-                  <ShiftPage/>
-                </RequireRole>
-              }
-            />
-            <Route
-              path="/staff/register"
-              element={
-                <RequireRole>
-                  <RegisterPage/>
-                </RequireRole>
-              }
-            />
-            <Route
-              path="/staff/inventory"
-              element={
-                <RequireRole need="manager">
-                  <InventoryPage/>
-                </RequireRole>
-              }
-            />
-            <Route
-              path="/staff/sales"
-              element={
-                <RequireRole>
-                  <SalesPage/>
-                </RequireRole>
-              }
-            />
-            <Route
-              path="/staff/users"
-              element={
-                <RequireRole need="owner">
-                  <UsersPage/>
-                </RequireRole>
-              }
-            />
-            <Route
-              path="/staff/audit"
-              element={
-                <RequireRole need="owner">
-                  <AuditPage/>
-                </RequireRole>
-              }
-            />
-            <Route
-              path="/staff/products"
-              element={
-                <RequireRole need="manager">
-                  <ProductsPage/>
-                </RequireRole>
-              }
-            />
-            <Route
-              path="/staff/reports"
-              element={
-                <RequireRole need="owner">
-                  <ReportsPage/>
-                </RequireRole>
-              }
-            />
-            <Route
-              path="/staff/reservations"
-              element={
-                <RequireRole>
-                  <StaffReservationsPage/>
-                </RequireRole>
-              }
-            />
-            <Route
-              path="/staff/orders"
-              element={
-                <RequireRole>
-                  <OrdersPage/>
-                </RequireRole>
-              }
-            />
-            <Route
-              path="/staff/applications"
-              element={
-                <RequireRole need="manager">
-                  <ApplicationsPage/>
-                </RequireRole>
-              }
-            />
-            <Route
-              path="/staff/documents"
-              element={
-                <RequireRole need="manager">
-                  <DocumentsPage/>
-                </RequireRole>
-              }
-            />
+
+            {CONSOLE_ROUTES.map((route) => (
+              <Route
+                key={route.path}
+                path={route.path}
+                element={<RequireRole need={route.need}>{route.element}</RequireRole>}
+              />
+            ))}
 
             <Route path="*" element={<NotFoundPage/>}/>
           </Routes>

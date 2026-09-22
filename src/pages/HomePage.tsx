@@ -12,12 +12,14 @@ import {Embers} from '../components/effects/Embers';
 import {Starfield} from '../components/effects/Starfield';
 import {SignatureTitle} from '../components/hero/SignatureTitle';
 import {TonightBar} from '../components/home/TonightBar';
-import {EventCard} from '../components/events/EventCard';
+import {CountdownUnits, EventCard} from '../components/events/EventCard';
 import {LeaderCard} from '../components/about/LeaderCard';
 import {useLiveData} from '../hooks/useLiveData';
+import {useHouseStatus} from '../hooks/useHouseStatus';
 import {apiSend, assetUrl, getVisitorToken} from '../lib/api';
-import {CO_OWNER, MEMBERSHIP, OWNER} from '../lib/content';
-import type {RedMoonEvent, Review, SignatureDrink} from '../types';
+import {MEMBERSHIP} from '../lib/content';
+import {Skeleton} from '../components/ui/Skeleton';
+import type {PublicHouse, RedMoonEvent, Review, SignatureDrink} from '../types';
 
 const PHONE_PREFIX = '+38-76-';
 const REVIEW_MAX_CHARS = 140;
@@ -31,6 +33,9 @@ export const HomePage: React.FC = () => {
     average: number;
     count: number;
   }>('/api/reviews');
+  const {data: houseData} = useLiveData<PublicHouse>('/api/public/house', {intervalMs: 0});
+  const {data: house} = useHouseStatus(20000);
+  const leaders = (houseData?.people || []).filter((person) => person.tier === 'owner' || person.tier === 'co-owner');
 
   const [rating, setRating] = useState(5);
   const [name, setName] = useState('');
@@ -49,7 +54,12 @@ export const HomePage: React.FC = () => {
    */
   const nextEvent = useMemo(() => {
     const now = Date.now();
-    return (eventData?.events || []).find((event) => new Date(event.startsAt).getTime() >= now) || null;
+    const events = eventData?.events || [];
+    return (
+      events.find((event) => event.featured && new Date(event.startsAt).getTime() >= now) ||
+      events.find((event) => new Date(event.startsAt).getTime() >= now) ||
+      null
+    );
   }, [eventData]);
 
   const handlePhoneChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -116,6 +126,28 @@ export const HomePage: React.FC = () => {
             </Magnetic>
             <BtnLink to="/menu">FELFEDEZEM ↗</BtnLink>
             <BtnAnchor href="#tonight">MA ESTE A RED MOONBAN ↓</BtnAnchor>
+          </div>
+
+          {/* The door and the next evening, right where the eye lands. */}
+          <div className="mt-10 flex flex-wrap items-center gap-x-8 gap-y-5">
+            {house && (
+              <span className={`rm-door-chip ${house.open ? 'is-open' : 'is-closed'}${house.live ? ' is-live' : ''}`}>
+                <span className="rm-door-dot" aria-hidden="true"/>
+                {house.open ? 'MOST NYITVA' : 'MOST ZÁRVA'}
+                {house.live && <span className="text-[color:var(--rm-red)]">· LIVE DJ</span>}
+              </span>
+            )}
+            {nextEvent && (
+              <Link to="/events" className="group flex flex-wrap items-center gap-4">
+                <span className="text-[8px] tracking-[0.25em] text-[#777]">
+                  KÖVETKEZŐ ESTE
+                  <b className="ml-2 font-heading text-[12px] tracking-wide text-white transition-colors group-hover:text-[color:var(--rm-red-bright)]">
+                    {nextEvent.title}
+                  </b>
+                </span>
+                <CountdownUnits startsAt={nextEvent.startsAt}/>
+              </Link>
+            )}
           </div>
         </div>
 
@@ -385,8 +417,13 @@ export const HomePage: React.FC = () => {
         />
 
         <div className="grid grid-cols-1 gap-3.5 md:grid-cols-2">
-          <LeaderCard member={OWNER} emphasis="primary"/>
-          <LeaderCard member={CO_OWNER} emphasis="secondary"/>
+          {!houseData && <Skeleton className="h-[360px]" count={2}/>}
+          {leaders.map((person) => (
+            <LeaderCard key={person.id} person={person}/>
+          ))}
+          {houseData && !leaders.length && (
+            <p className="text-[11px] text-[#8d8584]">A ház vezetői hamarosan.</p>
+          )}
         </div>
       </section>
 

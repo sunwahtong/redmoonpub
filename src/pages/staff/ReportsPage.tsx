@@ -5,6 +5,7 @@ import {Btn} from '../../components/ui/Btn';
 import {useLiveData} from '../../hooks/useLiveData';
 import {apiSend, formatHuf} from '../../lib/api';
 import {playSfx} from '../../lib/sfx';
+import {dialog} from '../../stores/useDialogStore';
 
 interface StaffPerformance {
   name: string;
@@ -58,16 +59,28 @@ export const ReportsPage: React.FC = () => {
     }
   };
 
-  const resetActivity = () => {
-    if (!window.confirm('Biztosan nullázod a ledolgozott órák számlálóját? A műszakok megmaradnak.')) return;
+  const resetActivity = async () => {
+    const sure = await dialog.confirm({
+      title: 'Nullázod az aktivitást?',
+      message: 'A ledolgozott órák számlálója mától indul újra. A műszakok és az eladások megmaradnak.',
+      confirmLabel: 'NULLÁZÁS',
+      tone: 'danger'
+    });
+    if (!sure) return;
     run(async () => {
       await apiSend('/api/owner/activity/reset', 'POST', {});
       refreshActivity();
     }, 'Aktivitás nullázva.');
   };
 
-  const resetFinance = () => {
-    if (!window.confirm('Biztosan nullázod az összesített bevételt? Az eladások megmaradnak.')) return;
+  const resetFinance = async () => {
+    const sure = await dialog.confirm({
+      title: 'Nullázod az összesített bevételt?',
+      message: 'Csak a kijelzett összeg indul újra nulláról. Az eladások, a műszakok és a jelentések érintetlenek maradnak.',
+      confirmLabel: 'NULLÁZÁS',
+      tone: 'danger'
+    });
+    if (!sure) return;
     run(async () => {
       await apiSend('/api/finance/reset', 'POST', {});
       refreshFinance();

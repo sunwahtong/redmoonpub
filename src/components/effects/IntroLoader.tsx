@@ -72,7 +72,7 @@ export const IntroLoader: React.FC = () => {
           <img src="/assets/red-moon-logo.png" alt="Red Moon Pub"/>
         </div>
 
-        <div className="rm-loader-kicker">SUN WAH TONG · SEE CITY</div>
+        <div className="rm-loader-kicker">SEE CITY · AFTER DARK</div>
         <div className="rm-loader-title">
           RED MOON <i>PUB</i>
         </div>

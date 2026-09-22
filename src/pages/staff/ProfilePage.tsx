@@ -1,14 +1,15 @@
-import React, {useMemo, useState} from 'react';
+import React, {useMemo, useRef, useState} from 'react';
 import {useNavigate} from 'react-router-dom';
-import {Coins, KeyRound, LogOut, Receipt, Timer, Truck} from 'lucide-react';
-import {NeonHeading} from '../../components/ui/NeonHeading';
+import {Camera, Coins, KeyRound, LogOut, PenLine, Receipt, Timer, Trash2, Truck} from 'lucide-react';
 import {Btn} from '../../components/ui/Btn';
 import {ActivityCalendar} from '../../components/ui/ActivityCalendar';
+import {Avatar, Badge, Chips, Field, inputClass, PageHeader, Panel, Stat} from '../../components/ui/console';
 import {useLiveData} from '../../hooks/useLiveData';
 import {apiSend, formatHuf, formatTime} from '../../lib/api';
 import {playSfx} from '../../lib/sfx';
+import {toast} from '../../stores/useToastStore';
 import {JOB_GLYPH, JOB_LABEL, type StaffJob} from '../../lib/orders';
-import {useAuthStore} from '../../stores/useAuthStore';
+import {useAuthStore, type AuthUser} from '../../stores/useAuthStore';
 
 interface PersonalAnalytics {
   totals: {
@@ -18,6 +19,7 @@ interface PersonalAnalytics {
     items: number;
     revenue: number;
     wage: number;
+    hourlyWage: number;
     orders: number;
     orderEstimated: number;
     orderActual: number;
@@ -27,128 +29,219 @@ interface PersonalAnalytics {
   days: {date: string; shifts: number; hours: number; sales: number; revenue: number; orders: number; spend: number}[];
 }
 
-/** Which metric the activity calendar colours by. */
 type Metric = 'revenue' | 'hours' | 'orders';
 
-const METRIC_LABEL: Record<Metric, string> = {
-  revenue: 'BEVÉTEL',
-  hours: 'LEDOLGOZOTT ÓRA',
-  orders: 'BESZERZÉS'
-};
+const METRIC_LABEL: Record<Metric, string> = {revenue: 'BEVÉTEL', hours: 'LEDOLGOZOTT ÓRA', orders: 'BESZERZÉS'};
 
-const ROLE_LABEL: Record<string, string> = {
-  staff: 'KASSZÁS / STAFF',
-  manager: 'ÜZLETVEZETŐ',
-  owner: 'TULAJDONOS',
-  dj: 'DJ'
-};
+const ROLE_LABEL: Record<string, string> = {staff: 'STAFF', manager: 'ÜZLETVEZETŐ', owner: 'TULAJDONOS'};
 
-type Status = {kind: 'ok' | 'error'; message: string} | null;
+const PHONE_PREFIX = '+38-76-';
+
+/** Shrinks a picked image to a small square JPEG data URL. */
+async function resizeAvatar(file: File, size = 320): Promise<string> {
+  const url = URL.createObjectURL(file);
+  try {
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const element = new Image();
+      element.onload = () => resolve(element);
+      element.onerror = () => reject(new Error('A kép nem olvasható.'));
+      element.src = url;
+    });
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('A kép nem dolgozható fel.');
+    const side = Math.min(image.width, image.height);
+    const sx = (image.width - side) / 2;
+    const sy = (image.height - side) / 2;
+    context.drawImage(image, sx, sy, side, side, 0, 0, size, size);
+    return canvas.toDataURL('image/jpeg', 0.86);
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
 
 export const ProfilePage: React.FC = () => {
   const navigate = useNavigate();
   const {user, setUser, savePhone, logout} = useAuthStore();
   const {data: analytics} = useLiveData<PersonalAnalytics>('/api/analytics/me', {intervalMs: 60000});
   const [metric, setMetric] = useState<Metric>('revenue');
+  const fileRef = useRef<HTMLInputElement>(null);
 
   const totals = analytics?.totals;
   const days = useMemo(() => analytics?.days || [], [analytics]);
-  const jobKey = (user?.job || '') as StaffJob;
 
   const [name, setName] = useState(user?.name || '');
-  const [phone, setPhone] = useState(user?.phone || '+38-76-');
-  const [profileStatus, setProfileStatus] = useState<Status>(null);
+  const [nickname, setNickname] = useState(user?.nickname || '');
+  const [idNumber, setIdNumber] = useState(user?.idNumber || '');
+  const [phone, setPhone] = useState(user?.phone || PHONE_PREFIX);
+  const [busy, setBusy] = useState(false);
 
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [repeatPassword, setRepeatPassword] = useState('');
-  const [passwordStatus, setPasswordStatus] = useState<Status>(null);
 
   const handlePhoneChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const prefix = '+38-76-';
     const value = event.target.value;
-    const digits = value.startsWith(prefix) ? value.slice(prefix.length).replace(/\D/g, '').slice(0, 7) : '';
-    setPhone(prefix + digits);
+    const digits = value.startsWith(PHONE_PREFIX) ? value.slice(PHONE_PREFIX.length).replace(/\D/g, '').slice(0, 7) : '';
+    setPhone(PHONE_PREFIX + digits);
   };
 
   const saveProfile = async (event: React.FormEvent) => {
     event.preventDefault();
-    setProfileStatus(null);
+    if (busy) return;
+    setBusy(true);
     try {
-      const data = await apiSend<{user: typeof user}>('/api/profile', 'PATCH', {name});
-      if (data.user) setUser(data.user);
-      if (phone !== user?.phone) await savePhone(phone);
-      setProfileStatus({kind: 'ok', message: 'Profil mentve.'});
+      const data = await apiSend<{user: AuthUser}>('/api/profile', 'PATCH', {name, nickname, idNumber});
+      setUser(data.user);
+      if (!user?.phone && phone !== PHONE_PREFIX) await savePhone(phone);
+      toast.success('Profil mentve.');
       playSfx('success');
     } catch (err) {
-      setProfileStatus({kind: 'error', message: (err as Error).message});
+      toast.error('Nem sikerült', (err as Error).message);
       playSfx('error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const pickAvatar = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!/^image\/(png|jpe?g|webp)$/.test(file.type)) {
+      toast.error('PNG, JPG vagy WebP képet válassz.');
+      return;
+    }
+    try {
+      const avatar = await resizeAvatar(file);
+      const data = await apiSend<{user: AuthUser}>('/api/profile', 'PATCH', {avatar});
+      setUser(data.user);
+      toast.success('Profilkép frissítve.');
+      playSfx('success');
+    } catch (err) {
+      toast.error('Nem sikerült', (err as Error).message);
+      playSfx('error');
+    } finally {
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  };
+
+  const clearAvatar = async () => {
+    try {
+      const data = await apiSend<{user: AuthUser}>('/api/profile', 'PATCH', {avatar: ''});
+      setUser(data.user);
+      playSfx('delete');
+    } catch (err) {
+      toast.error('Nem sikerült', (err as Error).message);
     }
   };
 
   const changePassword = async (event: React.FormEvent) => {
     event.preventDefault();
-    setPasswordStatus(null);
-
     if (newPassword !== repeatPassword) {
-      setPasswordStatus({kind: 'error', message: 'A két új jelszó nem egyezik.'});
+      toast.error('A két új jelszó nem egyezik.');
       playSfx('error');
       return;
     }
-
     try {
       await apiSend('/api/profile/password', 'POST', {currentPassword, newPassword});
       setCurrentPassword('');
       setNewPassword('');
       setRepeatPassword('');
-      setPasswordStatus({kind: 'ok', message: 'Jelszó megváltoztatva. A többi eszközön kiléptettünk.'});
+      toast.success('Jelszó megváltoztatva.', 'A többi eszközön kiléptettünk.');
       playSfx('success');
     } catch (err) {
-      setPasswordStatus({kind: 'error', message: (err as Error).message});
+      toast.error('Nem sikerült', (err as Error).message);
       playSfx('error');
     }
   };
 
-  const field =
-    'border border-white/10 bg-black/50 p-3 text-xs tracking-wider text-white outline-none transition-colors focus:border-[color:var(--rm-red)]';
-
   return (
     <main>
       <section className="rm-section">
-        <div className="rm-label">RED MOON / PROFIL</div>
-        <NeonHeading as="h1" size={2} className="mb-3 mt-3.5">
-          A te <em>fiókod.</em>
-        </NeonHeading>
-        <p className="rm-lead mb-12 text-[12px]">
-          Amit a ház nyilvántart rólad: ledolgozott órák, eladások, beszerzések.
-        </p>
+        <PageHeader
+          kicker="RED MOON / PROFIL"
+          title={
+            <>
+              A te <em>fiókod.</em>
+            </>
+          }
+          lead="Amit a ház nyilvántart rólad: ledolgozott órák, eladások, beszerzések — és az aláírásod, ha üzletvezetőként vagy tulajdonosként dokumentumot állítasz ki."
+          actions={
+            <Btn
+              onClick={async () => {
+                await logout();
+                playSfx('logout');
+                navigate('/');
+              }}
+            >
+              <LogOut size={13}/> KIJELENTKEZÉS
+            </Btn>
+          }
+        />
+
+        {/* ------------------------------------------------ IDENTITY */}
+        <Panel className="mb-3.5">
+          <div className="flex flex-col gap-6 md:flex-row md:items-center">
+            <div className="relative">
+              <Avatar name={user?.name || ''} nickname={user?.nickname} src={user?.avatar} size={96}/>
+              <button
+                type="button"
+                onClick={() => fileRef.current?.click()}
+                aria-label="Profilkép cseréje"
+                className="absolute -bottom-1 -right-1 grid h-8 w-8 place-items-center border border-[color:var(--rm-red)] bg-[#09090b] text-white transition-colors hover:bg-[color:var(--rm-red)]"
+              >
+                <Camera size={13}/>
+              </button>
+              <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" onChange={pickAvatar} className="hidden"/>
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <strong className="font-heading text-[24px] leading-none text-white">{user?.name}</strong>
+                <Badge tone="red">{ROLE_LABEL[user?.role || ''] || user?.role}</Badge>
+              </div>
+              <p className="mt-2 text-[10px] text-[#8d8584]">
+                {user?.username}
+                {user?.title ? ` · ${user.title}` : ''}
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {(user?.jobs || []).map((job) => (
+                  <Badge key={job} tone="muted">
+                    <span className="font-heading text-[11px] text-[color:var(--rm-red)]">{JOB_GLYPH[job as StaffJob] || '·'}</span>
+                    {JOB_LABEL[job as StaffJob] || job}
+                  </Badge>
+                ))}
+                {!user?.jobs?.length && <span className="text-[10px] text-[#6f6968]">Nincs beosztás megadva.</span>}
+              </div>
+              {user?.avatar && (
+                <button type="button" onClick={clearAvatar} className="mt-3 inline-flex items-center gap-1.5 text-[9px] tracking-[0.18em] text-[#777] hover:text-[color:var(--rm-red)]">
+                  <Trash2 size={10}/> PROFILKÉP TÖRLÉSE
+                </button>
+              )}
+            </div>
+            {user?.hasSignature && user.signatureSvg && (
+              <div className="w-full md:w-64">
+                <span className="mb-2 flex items-center gap-2 text-[8px] tracking-[0.25em] text-[#777]">
+                  <PenLine size={10}/> AZ ALÁÍRÁSOD
+                </span>
+                <div className="rm-signature-card" dangerouslySetInnerHTML={{__html: user.signatureSvg}}/>
+                <p className="mt-2 text-[9px] leading-[1.6] text-[#6f6968]">A nevedből készült, minden dokumentumon ez szerepel. Újat a tulajdonos kérhet.</p>
+              </div>
+            )}
+          </div>
+        </Panel>
 
         {/* ------------------------------------------------ RECORD */}
         <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 xl:grid-cols-4">
-          {[
-            {icon: Timer, glyph: '時', label: 'LEDOLGOZOTT ÓRA', value: totals ? String(totals.hours) : '—', hint: totals ? `${totals.shifts} műszak` : undefined},
-            {icon: Receipt, glyph: '売', label: 'ELADÁS', value: totals ? String(totals.sales) : '—', hint: totals ? `${totals.items} tétel` : undefined},
-            {icon: Coins, glyph: '金', label: 'HOZOTT BEVÉTEL', value: totals ? formatHuf(totals.revenue) : '—', hint: totals ? `Becsült bér: ${formatHuf(totals.wage)}` : undefined},
-            {icon: Truck, glyph: '運', label: 'BESZERZÉS', value: totals ? String(totals.orders) : '—', hint: totals ? `${formatHuf(totals.orderActual)} elköltve` : undefined}
-          ].map((stat) => (
-            <div key={stat.label} className="rm-stat p-6">
-              <span className="rm-stat-glyph" aria-hidden="true">{stat.glyph}</span>
-              <stat.icon size={15} className="relative mb-4 text-[color:var(--rm-red)]"/>
-              <span className="relative block text-[8px] tracking-[0.25em] text-[#777]">{stat.label}</span>
-              <strong className="relative mt-2 block font-heading text-[26px] leading-none text-white">{stat.value}</strong>
-              {stat.hint && <span className="relative mt-2 block text-[10px] text-[#8d8584]">{stat.hint}</span>}
-            </div>
-          ))}
+          <Stat icon={Timer} glyph="時" label="LEDOLGOZOTT ÓRA" value={totals ? String(totals.hours) : '—'} hint={totals ? `${totals.shifts} műszak` : undefined}/>
+          <Stat icon={Receipt} glyph="売" label="ELADÁS" value={totals ? String(totals.sales) : '—'} hint={totals ? `${totals.items} tétel` : undefined}/>
+          <Stat icon={Coins} glyph="金" label="HOZOTT BEVÉTEL" value={totals ? formatHuf(totals.revenue) : '—'} hint={totals ? `Becsült bér: ${formatHuf(totals.wage)} (${formatHuf(totals.hourlyWage)}/óra)` : undefined}/>
+          <Stat icon={Truck} glyph="運" label="BESZERZÉS" value={totals ? String(totals.orders) : '—'} hint={totals ? `${formatHuf(totals.orderActual)} elköltve` : undefined}/>
         </div>
 
-        {/* The number an audit reads: what the runs were estimated at against
-            what they actually cost. */}
         {totals && totals.orders > 0 && (
-          <div className="rm-card mt-3.5 flex flex-wrap items-center justify-between gap-6 p-7">
-            <div>
-              <span className="rm-label">BESZERZÉSI MÉRLEG</span>
-              <h3 className="mt-2 font-heading text-[20px] text-white">Becsült és tényleges.</h3>
-            </div>
+          <Panel className="mt-3.5" label="BESZERZÉSI MÉRLEG" title="Becsült és tényleges.">
             <div className="flex flex-wrap gap-9">
               <div>
                 <span className="block text-[8px] tracking-[0.22em] text-[#777]">BECSÜLT</span>
@@ -160,16 +253,7 @@ export const ProfilePage: React.FC = () => {
               </div>
               <div>
                 <span className="block text-[8px] tracking-[0.22em] text-[#777]">ELTÉRÉS</span>
-                <span
-                  className="rm-variance mt-1"
-                  data-severity={
-                    Math.abs(totals.orderVariance) === 0
-                      ? 'none'
-                      : Math.abs(totals.orderVariance) > totals.orderEstimated * 0.1
-                        ? 'major'
-                        : 'minor'
-                  }
-                >
+                <span className="rm-variance mt-1" data-severity={Math.abs(totals.orderVariance) === 0 ? 'none' : Math.abs(totals.orderVariance) > totals.orderEstimated * 0.1 ? 'major' : 'minor'}>
                   <b className="font-heading text-[15px]">
                     {totals.orderVariance > 0 ? '+' : ''}
                     {formatHuf(totals.orderVariance)}
@@ -177,36 +261,11 @@ export const ProfilePage: React.FC = () => {
                 </span>
               </div>
             </div>
-          </div>
+          </Panel>
         )}
 
-        {/* ------------------------------------------------ ACTIVITY */}
         {days.length > 0 && (
-          <div className="rm-card mt-3.5 p-7">
-            <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
-              <div>
-                <span className="rm-label">AKTIVITÁS</span>
-                <h3 className="mt-2 font-heading text-[20px] text-white">Az elmúlt fél év.</h3>
-              </div>
-              <div className="flex gap-2">
-                {(Object.keys(METRIC_LABEL) as Metric[]).map((option) => (
-                  <button
-                    key={option}
-                    type="button"
-                    onClick={() => setMetric(option)}
-                    aria-pressed={metric === option}
-                    className={`border px-3.5 py-2 text-[9px] font-bold tracking-[0.16em] transition-all ${
-                      metric === option
-                        ? 'border-[color:var(--rm-red)] bg-[rgba(227,40,78,0.12)] text-white'
-                        : 'border-white/10 text-[#8f8887] hover:border-white/30'
-                    }`}
-                  >
-                    {METRIC_LABEL[option]}
-                  </button>
-                ))}
-              </div>
-            </div>
-
+          <Panel className="mt-3.5" label="AKTIVITÁS" title="Az elmúlt fél év." action={<Chips value={metric} onChange={setMetric} options={(Object.keys(METRIC_LABEL) as Metric[]).map((option) => ({id: option, label: METRIC_LABEL[option]}))}/>}>
             <ActivityCalendar
               days={days}
               metric={metric}
@@ -216,23 +275,15 @@ export const ProfilePage: React.FC = () => {
                   : `${date} · nincs aktivitás`
               }
             />
-          </div>
+          </Panel>
         )}
 
-        {/* ------------------------------------------------ RECENT SHIFTS */}
         {analytics && analytics.recentShifts.length > 0 && (
-          <div className="rm-card mt-3.5 p-0">
-            <div className="border-b border-[color:var(--rm-line)] px-7 py-5">
-              <span className="rm-label">MŰSZAKOK</span>
-              <h3 className="mt-2 font-heading text-[20px] text-white">Legutóbbi napjaid.</h3>
-            </div>
+          <Panel className="mt-3.5" padded={false} label="MŰSZAKOK">
             {analytics.recentShifts.map((shift) => (
-              <div
-                key={shift.id}
-                className="flex flex-wrap items-center justify-between gap-3 border-b border-white/[0.04] px-7 py-4 last:border-b-0"
-              >
+              <div key={shift.id} className="flex flex-wrap items-center justify-between gap-3 border-b border-white/[0.04] px-7 py-4 last:border-b-0">
                 <span className="text-[11px] text-white">
-                  {new Date(shift.startedAt).toLocaleDateString('hu-HU')} · {formatTime(shift.startedAt)}
+                  {shift.id} · {new Date(shift.startedAt).toLocaleDateString('hu-HU')} · {formatTime(shift.startedAt)}
                   {shift.endedAt ? ` – ${formatTime(shift.endedAt)}` : ' – folyamatban'}
                 </span>
                 <span className="flex gap-7 text-[10px] text-[#8d8584]">
@@ -241,7 +292,7 @@ export const ProfilePage: React.FC = () => {
                 </span>
               </div>
             ))}
-          </div>
+          </Panel>
         )}
 
         <div className="rm-gilt my-14"/>
@@ -250,112 +301,42 @@ export const ProfilePage: React.FC = () => {
           <form onSubmit={saveProfile} className="rm-card flex flex-col gap-3.5 p-7">
             <span className="rm-label">ADATOK</span>
             <h2 className="mb-2 font-heading text-[22px] text-white">Alapadatok</h2>
-
-            <div className="mb-2 flex items-center gap-3 border border-white/[0.06] bg-black/30 p-3">
-              <span className="grid h-10 w-10 place-items-center rounded-full border border-[rgba(213,31,60,0.4)] bg-[radial-gradient(circle,#250811,#09090b_70%)] font-heading text-[13px] text-white">
-                {(user?.nickname || user?.name || '?').slice(0, 2).toUpperCase()}
-              </span>
-              <div>
-                <strong className="block text-[12px] text-white">{user?.username}</strong>
-                <span className="text-[9px] tracking-[0.2em] text-[color:var(--rm-red)]">
-                  {ROLE_LABEL[user?.role || ''] || user?.role}
-                  {user?.job ? (
-                    <span className="ml-2 text-[#8d8584]">
-                      {JOB_GLYPH[jobKey]} {JOB_LABEL[jobKey]}
-                    </span>
-                  ) : null}
-                </span>
-              </div>
+            <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
+              <Field label="NÉV">
+                <input value={name} onChange={(event) => setName(event.target.value)} maxLength={100} className={inputClass}/>
+              </Field>
+              <Field label="BECENÉV">
+                <input value={nickname} onChange={(event) => setNickname(event.target.value)} maxLength={40} className={inputClass}/>
+              </Field>
             </div>
-
-            <label className="flex flex-col gap-2">
-              <span className="text-[8px] tracking-[0.25em] text-[#777]">NÉV</span>
-              <input value={name} onChange={(event) => setName(event.target.value)} maxLength={100} className={field}/>
-            </label>
-
-            <label className="flex flex-col gap-2">
-              <span className="text-[8px] tracking-[0.25em] text-[#777]">TELEFONSZÁM</span>
-              <input value={phone} onChange={handlePhoneChange} inputMode="numeric" className={field}/>
-            </label>
-
-            <Btn type="submit" variant="red" className="mt-2 justify-center">
+            <Field label="IGAZOLVÁNYSZÁM" hint="A dokumentumok aláírásblokkjában jelenik meg.">
+              <input value={idNumber} onChange={(event) => setIdNumber(event.target.value)} maxLength={40} className={inputClass}/>
+            </Field>
+            <Field label="TELEFONSZÁM" hint={user?.phone ? 'A számot csak a tulajdonos törölheti.' : 'Egyszer adható meg.'}>
+              <input value={phone} onChange={handlePhoneChange} inputMode="numeric" disabled={!!user?.phone} className={inputClass}/>
+            </Field>
+            <Btn type="submit" variant="red" disabled={busy} className="mt-2 justify-center">
               MENTÉS
             </Btn>
-
-            {profileStatus && (
-              <p className={`text-[11px] ${profileStatus.kind === 'ok' ? 'text-emerald-400' : 'text-[color:var(--rm-red)]'}`}>
-                {profileStatus.message}
-              </p>
-            )}
           </form>
 
           <form onSubmit={changePassword} className="rm-card flex flex-col gap-3.5 p-7">
             <span className="rm-label">BIZTONSÁG</span>
             <h2 className="mb-2 font-heading text-[22px] text-white">Jelszó csere</h2>
-            <p className="mb-2 text-[10px] leading-[1.7] text-[#8d8584]">
-              Jelszócsere után minden más eszközön megszűnik a munkamenet.
-            </p>
-
-            <label className="flex flex-col gap-2">
-              <span className="text-[8px] tracking-[0.25em] text-[#777]">JELENLEGI JELSZÓ</span>
-              <input
-                type="password"
-                value={currentPassword}
-                onChange={(event) => setCurrentPassword(event.target.value)}
-                required
-                autoComplete="current-password"
-                className={field}
-              />
-            </label>
-
-            <label className="flex flex-col gap-2">
-              <span className="text-[8px] tracking-[0.25em] text-[#777]">ÚJ JELSZÓ</span>
-              <input
-                type="password"
-                value={newPassword}
-                onChange={(event) => setNewPassword(event.target.value)}
-                required
-                minLength={8}
-                autoComplete="new-password"
-                className={field}
-              />
-            </label>
-
-            <label className="flex flex-col gap-2">
-              <span className="text-[8px] tracking-[0.25em] text-[#777]">ÚJ JELSZÓ ÚJRA</span>
-              <input
-                type="password"
-                value={repeatPassword}
-                onChange={(event) => setRepeatPassword(event.target.value)}
-                required
-                minLength={8}
-                autoComplete="new-password"
-                className={field}
-              />
-            </label>
-
+            <p className="mb-2 text-[10px] leading-[1.7] text-[#8d8584]">Jelszócsere után minden más eszközön megszűnik a munkamenet. Legalább nyolc karakter, betűvel és számmal.</p>
+            <Field label="JELENLEGI JELSZÓ">
+              <input type="password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} required autoComplete="current-password" className={inputClass}/>
+            </Field>
+            <Field label="ÚJ JELSZÓ">
+              <input type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} required minLength={8} autoComplete="new-password" className={inputClass}/>
+            </Field>
+            <Field label="ÚJ JELSZÓ ÚJRA">
+              <input type="password" value={repeatPassword} onChange={(event) => setRepeatPassword(event.target.value)} required minLength={8} autoComplete="new-password" className={inputClass}/>
+            </Field>
             <Btn type="submit" variant="red" className="mt-2 justify-center">
               <KeyRound size={13}/> JELSZÓ MENTÉSE
             </Btn>
-
-            {passwordStatus && (
-              <p className={`text-[11px] ${passwordStatus.kind === 'ok' ? 'text-emerald-400' : 'text-[color:var(--rm-red)]'}`}>
-                {passwordStatus.message}
-              </p>
-            )}
           </form>
-        </div>
-
-        <div className="mt-12">
-          <Btn
-            onClick={async () => {
-              await logout();
-              playSfx('logout');
-              navigate('/');
-            }}
-          >
-            <LogOut size={13}/> KIJELENTKEZÉS
-          </Btn>
         </div>
       </section>
     </main>
