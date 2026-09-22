@@ -12,3 +12,4 @@ LEGACY_PROJECT/
 .vercel/
 
 data/*.bak
+.mcp.json
