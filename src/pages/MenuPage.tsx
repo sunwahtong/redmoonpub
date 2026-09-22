@@ -72,7 +72,7 @@ export const MenuPage: React.FC = () => {
       <section className="relative flex min-h-[560px] items-end overflow-hidden border-b border-[color:var(--rm-line)] px-[8vw] pb-16 pt-[170px]">
         <div
           ref={backdropRef}
-          className="pointer-events-none absolute inset-x-0 -top-24 bottom-[-90px] bg-[url('/assets/red-moon-cinematic')] bg-cover bg-center opacity-40"
+          className="pointer-events-none absolute inset-x-0 -top-24 bottom-[-90px] bg-[url('/assets/red-moon-cinematic.webp')] bg-cover bg-center opacity-40"
           aria-hidden="true"
         />
         <div
