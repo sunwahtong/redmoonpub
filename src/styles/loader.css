@@ -15,7 +15,7 @@
     align-content: center;
     text-align: center;
     overflow: hidden;
-    background: #030203 url('/assets/red-moon-cinematic.webp') center/cover no-repeat;
+    background: #030203 url('/assets/red-moon-cinematic-v27.webp') center/cover no-repeat;
     isolation: isolate;
     transition: opacity 0.9s ease, visibility 0.9s ease;
 }
