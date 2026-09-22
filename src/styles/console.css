@@ -1,0 +1,637 @@
+/**
+ * Console kit — inputs, chips, dialogs, the listbox, the door status and the
+ * volume flyout. Everything an operator touches behind the login, in one
+ * place, in the house geometry (square corners, ruby accent, Cinzel display).
+ */
+
+/* ---------------------------------------------------------------- */
+/* Inputs                                                            */
+/* ---------------------------------------------------------------- */
+
+.rm-input {
+    width: 100%;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: var(--rm-radius);
+    background: rgba(0, 0, 0, 0.5);
+    padding: 11px 13px;
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    color: #fff;
+    outline: none;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    color-scheme: dark;
+}
+
+.rm-input::placeholder { color: rgba(255, 255, 255, 0.28); }
+
+.rm-input:focus {
+    border-color: var(--rm-red);
+    box-shadow: 0 0 0 3px rgba(227, 40, 78, 0.12);
+}
+
+.rm-input:disabled { opacity: 0.45; cursor: not-allowed; }
+
+textarea.rm-input { resize: vertical; min-height: 64px; line-height: 1.6; }
+
+.rm-btn.is-danger {
+    background: #7a0f24;
+    border-color: #a5163a;
+}
+
+.rm-btn.is-danger:hover {
+    background: #a5163a;
+    border-color: #ff2a55;
+    box-shadow: 0 15px 45px rgba(213, 31, 60, 0.3);
+}
+
+/* ---------------------------------------------------------------- */
+/* Filter chips                                                      */
+/* ---------------------------------------------------------------- */
+
+.rm-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 15px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.2em;
+    color: #8f8887;
+    transition: border-color 0.2s ease, color 0.2s ease, background-color 0.2s ease;
+}
+
+.rm-chip:hover { border-color: rgba(255, 255, 255, 0.3); color: #fff; }
+
+.rm-chip.is-active {
+    border-color: var(--rm-red);
+    background: rgba(213, 31, 60, 0.12);
+    color: #fff;
+}
+
+.rm-chip-count {
+    font-size: 8px;
+    color: #6d5d64;
+}
+
+.rm-chip.is-active .rm-chip-count { color: var(--rm-red); }
+
+/* ---------------------------------------------------------------- */
+/* Toggle switch                                                     */
+/* ---------------------------------------------------------------- */
+
+.rm-switch {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    width: 38px;
+    height: 20px;
+    flex: 0 0 auto;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: rgba(255, 255, 255, 0.05);
+    transition: border-color 0.2s ease, background-color 0.2s ease;
+    cursor: pointer;
+}
+
+.rm-switch::after {
+    content: "";
+    position: absolute;
+    left: 3px;
+    top: 3px;
+    width: 12px;
+    height: 12px;
+    background: #8f8887;
+    transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1), background-color 0.2s ease;
+}
+
+.rm-switch[aria-checked="true"] {
+    border-color: var(--rm-red);
+    background: rgba(227, 40, 78, 0.2);
+}
+
+.rm-switch[aria-checked="true"]::after {
+    transform: translateX(18px);
+    background: var(--rm-red-bright);
+    box-shadow: 0 0 8px rgba(255, 70, 104, 0.7);
+}
+
+.rm-switch:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ---------------------------------------------------------------- */
+/* Dialog                                                            */
+/* ---------------------------------------------------------------- */
+
+.rm-dialog-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    display: grid;
+    place-items: center;
+    padding: 20px;
+    background: rgba(3, 1, 2, 0.78);
+    backdrop-filter: blur(8px);
+    animation: rmFadeIn 180ms ease both;
+}
+
+.rm-dialog {
+    position: relative;
+    width: min(440px, 100%);
+    overflow: hidden;
+    border: 1px solid var(--rm-line-red);
+    background: linear-gradient(160deg, #130709, #09090b 55%);
+    padding: 28px;
+    box-shadow: 0 40px 100px rgba(0, 0, 0, 0.8), 0 0 60px rgba(227, 40, 78, 0.12);
+    animation: rmDialogIn 260ms cubic-bezier(0.2, 0.9, 0.25, 1.05) both;
+}
+
+.rm-dialog::before {
+    content: "";
+    position: absolute;
+    top: -1px;
+    left: 14%;
+    right: 14%;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--rm-red-neon), transparent);
+    box-shadow: 0 0 10px rgba(255, 43, 79, 0.5);
+}
+
+.rm-dialog.is-danger { border-color: rgba(255, 60, 90, 0.6); }
+
+.rm-dialog-glyph {
+    position: absolute;
+    right: 14px;
+    top: -6px;
+    font-family: Cinzel, serif;
+    font-size: 96px;
+    line-height: 1;
+    color: rgba(213, 31, 60, 0.12);
+    pointer-events: none;
+    user-select: none;
+}
+
+.rm-dialog-close {
+    color: #6f6968;
+    transition: color 0.2s ease;
+}
+
+.rm-dialog-close:hover { color: #fff; }
+
+@keyframes rmFadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+@keyframes rmDialogIn {
+    from { opacity: 0; transform: translateY(14px) scale(0.97); }
+    to { opacity: 1; transform: none; }
+}
+
+/* ---------------------------------------------------------------- */
+/* Listbox                                                           */
+/* ---------------------------------------------------------------- */
+
+.rm-select {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(0, 0, 0, 0.5);
+    padding: 11px 12px 11px 13px;
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    color: #fff;
+    text-align: left;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.rm-select.is-sm { padding: 7px 9px 7px 10px; font-size: 11px; }
+
+.rm-select:hover { border-color: rgba(255, 255, 255, 0.3); }
+
+.rm-select:focus-visible,
+.rm-select.is-open {
+    outline: none;
+    border-color: var(--rm-red);
+    box-shadow: 0 0 0 3px rgba(227, 40, 78, 0.12);
+}
+
+.rm-select:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.rm-select-value {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 9px;
+}
+
+.rm-select-value.is-placeholder { color: rgba(255, 255, 255, 0.35); }
+
+.rm-select-glyph {
+    font-family: Cinzel, serif;
+    font-size: 13px;
+    color: rgba(227, 40, 78, 0.8);
+}
+
+.rm-select-chevron {
+    flex: 0 0 auto;
+    color: #6d5d64;
+    transition: transform 0.2s ease;
+}
+
+.rm-select.is-open .rm-select-chevron { transform: rotate(180deg); color: var(--rm-red); }
+
+.rm-select-pop {
+    position: fixed;
+    z-index: 2100;
+    margin-top: 6px;
+    border: 1px solid var(--rm-line-red);
+    background: rgba(9, 9, 11, 0.98);
+    backdrop-filter: blur(16px);
+    box-shadow: 0 30px 80px rgba(0, 0, 0, 0.75), 0 0 40px rgba(227, 40, 78, 0.08);
+    animation: rmMenuIn 180ms cubic-bezier(0.2, 0.9, 0.25, 1.05) both;
+}
+
+.rm-select-pop.is-up {
+    margin-top: 0;
+    transform: translateY(calc(-100% - 6px));
+    animation: none;
+}
+
+.rm-select-search {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border-bottom: 1px solid var(--rm-line);
+    padding: 9px 12px;
+    color: #6d5d64;
+}
+
+.rm-select-search input {
+    width: 100%;
+    background: transparent;
+    border: 0;
+    outline: none;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    color: #fff;
+}
+
+.rm-select-list {
+    max-height: 260px;
+    overflow-y: auto;
+    padding: 4px;
+    outline: none;
+}
+
+.rm-select-option {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 11px;
+    font-size: 11px;
+    color: #c9c2c1;
+    cursor: pointer;
+    border: 1px solid transparent;
+}
+
+.rm-select-option.is-active {
+    border-color: var(--rm-line-red);
+    background: rgba(227, 40, 78, 0.08);
+    color: #fff;
+}
+
+.rm-select-option.is-selected { color: #fff; }
+
+.rm-select-option.is-disabled { opacity: 0.35; cursor: not-allowed; }
+
+.rm-select-desc {
+    display: block;
+    margin-top: 2px;
+    font-size: 9px;
+    color: #8d8584;
+}
+
+.rm-select-empty {
+    padding: 14px 12px;
+    font-size: 10px;
+    color: #8d8584;
+}
+
+/* ---------------------------------------------------------------- */
+/* Door status — navbar chip and the corner pill                     */
+/* ---------------------------------------------------------------- */
+
+.rm-door-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 11px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: 0.22em;
+    color: #8f8887;
+    white-space: nowrap;
+    transition: border-color 0.25s ease, color 0.25s ease;
+}
+
+.rm-door-chip.is-open { border-color: rgba(99, 231, 169, 0.35); color: #d9fbe9; }
+.rm-door-chip.is-closed { border-color: rgba(239, 61, 85, 0.3); }
+.rm-door-chip.is-live { border-color: var(--rm-line-red); color: #fff; }
+
+.rm-door-dot {
+    width: 7px;
+    height: 7px;
+    flex: 0 0 7px;
+    border-radius: 50%;
+    background: #ef3d55;
+    box-shadow: 0 0 8px #ef3d55;
+}
+
+.rm-door-chip.is-open .rm-door-dot,
+.rm-door-pill.is-open .rm-door-dot {
+    background: #63e7a9;
+    box-shadow: 0 0 10px #63e7a9, 0 0 22px rgba(99, 231, 169, 0.5);
+    animation: rmDoorPulse 2.2s ease-out infinite;
+}
+
+@keyframes rmDoorPulse {
+    0% { box-shadow: 0 0 0 0 rgba(99, 231, 169, 0.55), 0 0 10px #63e7a9; }
+    100% { box-shadow: 0 0 0 9px rgba(99, 231, 169, 0), 0 0 10px #63e7a9; }
+}
+
+.rm-door-pill {
+    position: fixed;
+    right: 24px;
+    bottom: 24px;
+    z-index: 90;
+    width: 250px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: linear-gradient(135deg, rgba(17, 10, 13, 0.94), rgba(6, 5, 7, 0.9));
+    box-shadow: 0 12px 44px rgba(0, 0, 0, 0.5), 0 0 28px rgba(255, 40, 75, 0.08);
+    backdrop-filter: blur(18px) saturate(130%);
+    overflow: hidden;
+    transition: width 0.3s cubic-bezier(0.2, 0.8, 0.2, 1), border-color 0.3s ease;
+}
+
+.rm-door-pill.is-open { border-color: rgba(99, 231, 169, 0.3); }
+.rm-door-pill.is-closed { border-color: rgba(239, 61, 85, 0.25); }
+
+.rm-door-pill::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: #ef3d55;
+    box-shadow: 0 0 12px #ef3d55;
+}
+
+.rm-door-pill.is-open::before { background: #63e7a9; box-shadow: 0 0 12px #63e7a9; }
+
+.rm-door-head {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px 12px 18px;
+    text-align: left;
+}
+
+.rm-door-moon {
+    position: relative;
+    width: 30px;
+    height: 30px;
+    flex: 0 0 30px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, #ff5a78, #8a0c24 70%);
+    box-shadow: 0 0 14px rgba(227, 40, 78, 0.55);
+    transition: filter 0.4s ease;
+}
+
+.rm-door-moon::after {
+    content: "";
+    position: absolute;
+    left: 9px;
+    top: -3px;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: #0a0507;
+    transform: scale(var(--moon-shadow, 0));
+    transition: transform 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.rm-door-pill.is-closed .rm-door-moon { --moon-shadow: 0.92; filter: saturate(0.6); }
+.rm-door-pill.is-open .rm-door-moon { --moon-shadow: 0; }
+
+.rm-door-title {
+    display: block;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.22em;
+    color: #f8f4f5;
+    text-shadow: 0 0 7px rgba(255, 255, 255, 0.14);
+}
+
+.rm-door-sub {
+    display: block;
+    margin-top: 3px;
+    font-size: 9px;
+    letter-spacing: 0.08em;
+    color: #8d8584;
+}
+
+.rm-door-body {
+    border-top: 1px solid var(--rm-line);
+    padding: 12px 16px 14px 18px;
+    animation: rmFadeIn 200ms ease both;
+}
+
+.rm-door-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 5px 0;
+    font-size: 10px;
+    color: #a09998;
+}
+
+.rm-door-row b { color: #fff; font-weight: 600; }
+
+@media (max-width: 700px) {
+    .rm-door-pill { right: 12px; bottom: 12px; width: 222px; }
+}
+
+/* ---------------------------------------------------------------- */
+/* Volume flyout                                                     */
+/* ---------------------------------------------------------------- */
+
+/* The flyout hangs from the bottom edge of the button with an invisible
+   bridge over the gap, so the pointer can travel from the button to the
+   slider without ever leaving the hover area. Previously the panel floated
+   13px below the button and vanished the moment the pointer crossed the gap. */
+.rm-volume-flyout {
+    position: absolute;
+    right: 0;
+    top: 100%;
+    z-index: 70;
+    padding-top: 12px;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transform: translateY(-3px);
+    transition: opacity 0.16s ease, transform 0.16s ease, visibility 0.16s;
+    transition-delay: 0.18s;
+}
+
+.rm-sound-wrap:hover .rm-volume-flyout,
+.rm-sound-wrap:focus-within .rm-volume-flyout,
+.rm-volume-flyout.is-open {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transform: none;
+    transition-delay: 0s;
+}
+
+.rm-volume-panel {
+    position: relative;
+    width: 224px;
+    height: 50px;
+    display: grid;
+    grid-template-columns: 57px 1fr;
+    grid-template-rows: 18px 15px;
+    column-gap: 10px;
+    align-items: center;
+    padding: 8px 13px 8px 16px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 10px;
+    background: linear-gradient(135deg, rgba(17, 10, 13, 0.96), rgba(6, 5, 7, 0.92));
+    box-shadow: 0 16px 44px rgba(0, 0, 0, 0.55), 0 0 24px rgba(255, 40, 75, 0.08);
+    backdrop-filter: blur(18px) saturate(130%);
+}
+
+/* Ruby filament down the left edge. */
+.rm-volume-panel::before {
+    content: "";
+    position: absolute;
+    left: 8px;
+    top: 9px;
+    bottom: 9px;
+    width: 1px;
+    background: linear-gradient(180deg, transparent, rgba(238, 42, 73, 0.48), transparent);
+    box-shadow: 0 0 6px rgba(238, 42, 73, 0.2);
+}
+
+/* ---------------------------------------------------------------- */
+/* Signature preview                                                 */
+/* ---------------------------------------------------------------- */
+
+.rm-signature-card {
+    position: relative;
+    border: 1px solid var(--rm-line);
+    background: #f6f2ec;
+    padding: 10px 14px;
+    overflow: hidden;
+}
+
+.rm-signature-card svg {
+    display: block;
+    width: 100%;
+    height: auto;
+}
+
+.rm-signature-card::after {
+    content: "";
+    position: absolute;
+    left: 14px;
+    right: 14px;
+    bottom: 12px;
+    height: 1px;
+    background: rgba(18, 18, 26, 0.35);
+}
+
+/* ---------------------------------------------------------------- */
+/* Member picker                                                     */
+/* ---------------------------------------------------------------- */
+
+.rm-member {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    text-align: left;
+    transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.rm-member:hover { border-color: rgba(255, 255, 255, 0.3); }
+
+.rm-member.is-picked {
+    border-color: var(--rm-red);
+    background: rgba(213, 31, 60, 0.1);
+}
+
+.rm-member-check {
+    display: grid;
+    place-items: center;
+    width: 16px;
+    height: 16px;
+    flex: 0 0 16px;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    color: transparent;
+    transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+.rm-member.is-picked .rm-member-check {
+    border-color: var(--rm-red);
+    background: var(--rm-red);
+    color: #fff;
+}
+
+/* ---------------------------------------------------------------- */
+/* Countdown lockup                                                  */
+/* ---------------------------------------------------------------- */
+
+.rm-countdown {
+    display: inline-flex;
+    align-items: stretch;
+    border: 1px solid var(--rm-line);
+    background: rgba(9, 9, 11, 0.8);
+    backdrop-filter: blur(10px);
+}
+
+.rm-countdown-unit {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-width: 62px;
+    padding: 10px 8px;
+    border-right: 1px solid var(--rm-line);
+}
+
+.rm-countdown-unit:last-child { border-right: 0; }
+
+.rm-countdown-unit b {
+    font-family: Cinzel, serif;
+    font-size: 24px;
+    line-height: 1;
+    color: #fff;
+    font-variant-numeric: tabular-nums;
+    text-shadow: 0 0 14px rgba(255, 43, 79, 0.35);
+}
+
+.rm-countdown-unit span {
+    margin-top: 6px;
+    font-size: 7px;
+    letter-spacing: 0.22em;
+    color: #777;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .rm-dialog, .rm-dialog-backdrop, .rm-select-pop, .rm-door-body { animation: none; }
+    .rm-door-dot { animation: none !important; }
+}
