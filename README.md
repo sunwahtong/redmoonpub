@@ -117,6 +117,18 @@ per IP, same-origin checks on every mutation. All tables have RLS on with no
 policies and no grants for the Supabase API roles: only the backend reaches
 the data.
 
+### The console
+
+`/staff` opens on a dashboard built for the evening, not for the org chart:
+what is happening now (the door, the shift with its clock, the booth, who is
+online), the handful of things you would do next as big buttons with badges
+(pending bookings, open supply runs, low stock, new applications), tonight in
+numbers, and the staff notice board — short lines from managers and the
+owner, pinnable, taken down by the author or the owner. The navigation is
+two rows: the overview and the four areas (MŰSZAK, VENDÉG, KÉSZLET, HÁZ),
+then the tools of the area you are in or just tapped. Personal history (the
+activity calendar, past shifts) lives on the profile page.
+
 ### The day
 
 A manager opens a shift with at least one member (the opener need not be in
@@ -141,10 +153,15 @@ one small JSON read at most every 20 seconds, riding on the status feed every
 page polls. When the station comes on air the club goes live by itself, the
 house music steps aside in every open browser (and if it was on, the stream
 takes its place), and a popup offers play, volume and mute. When the station
-goes quiet, a show that started that way ends by itself. The site plays the
-station's Icecast MP3 mount (`icecast.gocast.fm/stream/<slug>`) in an ordinary
-audio element; the DJ can point it elsewhere from the booth, and GoCast's own
-player is one tap away as an iframe fallback.
+goes quiet, a show that started that way ends by itself; one started by hand
+in the booth ends after ten minutes of silence (unless it plays a stream of
+its own), and no show outlives twelve hours. Whatever the booth's flag says,
+the house music only steps aside while there is something to hear
+(`onAir`: the station on air, or the DJ's own stream) — a booth "live" over a
+silent station never mutes anyone. The site plays the station's Icecast MP3
+mount (`icecast.gocast.fm/stream/<slug>`) in an ordinary audio element; the
+DJ can point it elsewhere from the booth, and GoCast's own player is one tap
+away as an iframe fallback.
 
 The public `/club` page: the stage (who is in the booth, what the stream's
 metadata says is playing, the player, listener counts, the show clock), emoji
@@ -189,3 +206,13 @@ them by drag, hide or remove). The public wall lays itself out from the
 count and proportions of the pictures. Once `npm run media:upload` mirrored
 `public/assets` and `VITE_CLOUDINARY_CLOUD_NAME` is set, the site's own
 pictures and the background music are served from Cloudinary as well.
+
+### News, "ott leszek" and favourites
+
+The owner writes the house's news at `/staff/posts` (title, plain text with
+blank-line paragraphs, an optional picture, pinned or hidden, published now
+or later); the public reads them at `/hirek` and as a strip on the home
+page. On an upcoming or running event a guest taps "OTT LESZEK" once — one
+count per network and browser, taken back with a second tap — and the count
+shows to everyone. On the menu a heart marks a drink as a favourite and a
+"KEDVENCEIM" chip filters to them; that list lives in the browser only.

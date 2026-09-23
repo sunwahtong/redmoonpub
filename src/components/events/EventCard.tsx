@@ -5,6 +5,8 @@ import {BtnLink} from '../ui/Btn';
 import {Magnetic} from '../ui/Magnetic';
 import {CountdownRing} from '../ui/CountdownRing';
 import {useCountdown} from '../../hooks/useCountdown';
+import {useRsvp} from '../../hooks/useRsvp';
+import {playSfx} from '../../lib/sfx';
 import {assetUrl, formatDate, formatHuf, formatTime, formatWeekday} from '../../lib/api';
 import type {RedMoonEvent} from '../../types';
 
@@ -41,6 +43,25 @@ export const CountdownUnits: React.FC<{startsAt: string; className?: string}> = 
         </div>
       ))}
     </div>
+  );
+};
+
+/** "Ott leszek": one tap, counted once per guest, shown to everyone. */
+const RsvpButton: React.FC<{event: RedMoonEvent}> = ({event}) => {
+  const {going, count, busy, toggle} = useRsvp(event.id, event.going || 0);
+  const tap = async () => {
+    try {
+      await toggle();
+      playSfx(going ? 'ui_click' : 'accept');
+    } catch {
+      playSfx('error');
+    }
+  };
+  return (
+    <button type="button" onClick={tap} disabled={busy} className={`rm-rsvp${going ? ' is-on' : ''}`} aria-pressed={going} title={going ? 'Mégsem' : 'Jelzem, hogy ott leszek'}>
+      {going ? '✓ OTT LESZEK' : 'OTT LESZEK'}
+      <b>{count}</b>
+    </button>
   );
 };
 
@@ -156,6 +177,7 @@ export const EventCard: React.FC<Props> = ({event, phase, featured = false}) => 
                 ASZTALT FOGLALOK ↗
               </BtnLink>
             </Magnetic>
+            <RsvpButton event={event}/>
           </>
         ) : (
           <>
@@ -163,6 +185,7 @@ export const EventCard: React.FC<Props> = ({event, phase, featured = false}) => 
               {phase === 'live' ? 'MOST A RED MOONBAN' : 'AZ ESEMÉNY LEZAJLOTT'}
             </span>
             <BtnLink to={phase === 'live' ? '/reservations' : '/events'}>{phase === 'live' ? 'ASZTALT FOGLALOK' : 'ARCHÍV'} ↗</BtnLink>
+            {phase === 'live' && <RsvpButton event={event}/>}
           </>
         )}
       </div>

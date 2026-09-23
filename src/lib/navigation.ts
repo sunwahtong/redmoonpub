@@ -63,6 +63,12 @@ export const NAV_GROUP: NavGroup = {
       description: 'A pontos helyünk SeeCity térképén.'
     },
     {
+      to: '/hirek',
+      label: 'HÍREK',
+      glyph: '報',
+      description: 'Ami történt a házban, és ami készül.'
+    },
+    {
       to: '/careers',
       label: 'CSATLAKOZZ',
       glyph: '募',
@@ -122,6 +128,7 @@ export const STAFF_NAV: StaffNavLink[] = [
   {to: '/staff/events', label: 'RENDEZVÉNYEK', need: 'owner', group: 'HÁZ'},
   {to: '/staff/showcase', label: 'KIRAKAT', need: 'owner', group: 'HÁZ'},
   {to: '/staff/gallery', label: 'GALÉRIA', need: 'owner', group: 'HÁZ'},
+  {to: '/staff/posts', label: 'HÍREK', need: 'owner', group: 'HÁZ'},
   {to: '/staff/reports', label: 'JELENTÉSEK', need: 'owner', group: 'HÁZ'},
   {to: '/staff/users', label: 'FIÓKOK', need: 'owner', group: 'HÁZ'},
   {to: '/staff/audit', label: 'NAPLÓ', need: 'owner', group: 'HÁZ'},

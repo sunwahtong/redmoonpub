@@ -32,7 +32,7 @@ import {mediaProvider} from '../media.ts';
 import {broadcast, realtimeEnabled} from '../realtime.ts';
 import {config} from '../config.ts';
 import type {Queryable, Request, Row} from '../types.ts';
-import {effectiveStreamUrl, stationEmbedUrl, stationSlug, syncStation} from '../station.ts';
+import {effectiveStreamUrl, onAir, stationEmbedUrl, stationSlug, syncStation} from '../station.ts';
 
 export const RESERVATION_OCCASIONS = ['este', 'szuletesnap', 'uzleti', 'randi', 'csapat', 'vip', 'egyeb'] as const;
 export const RESERVATION_TIERS = ['none', 'silver', 'gold', 'black', 'royal'] as const;
@@ -68,6 +68,8 @@ export const eventFromRow = (row: Row) => ({
   tag: row.tag || '',
   coverImage: row.cover_image || '',
   coverPublicId: row.cover_public_id || '',
+  /** How many guests said they will be there. */
+  going: Number(row.going) || 0,
   entryFee: row.entry_fee ?? null,
   dressCode: row.dress_code || '',
   featured: !!row.featured,
@@ -199,8 +201,9 @@ export async function houseStatus(db: Queryable) {
     db.query(`select id, started_at, started_by_name from public.shifts where status = 'open' limit 1`),
     db.query('select live, auto_live, dj_name, title, stream_url, provider_url, started_at, station_live, station_listeners, station_title, station_artist, notice from public.club_state where id = 1'),
     db.query(
-      `select * from public.events where active and (ends_at is null and starts_at > now() - interval '4 hours' or ends_at > now())
-       order by featured desc, starts_at asc limit 1`
+      `select e.*, (select count(*)::int from public.event_rsvps r where r.event_id = e.id) as going
+         from public.events e where e.active and (e.ends_at is null and e.starts_at > now() - interval '4 hours' or e.ends_at > now())
+        order by e.featured desc, e.starts_at asc limit 1`
     )
   ]);
   const listeners = await db.query<{n: number}>(`select count(*)::int as n from public.club_presence where last_seen > now() - interval '30 seconds'`);
@@ -213,6 +216,8 @@ export async function houseStatus(db: Queryable) {
     closedAt: iso(h.pub_closed_at),
     shiftOpen: shift.rows.length > 0,
     live: !!club.rows[0]?.live,
+    /** Something to hear: the station streams, or the DJ plays their own stream. Only then does the music step aside. */
+    onAir: club.rows[0] ? onAir(club.rows[0]) : false,
     autoLive: !!club.rows[0]?.auto_live,
     dj: club.rows[0]?.dj_name || null,
     title: club.rows[0]?.title || '',
@@ -288,7 +293,9 @@ export function registerPublicRoutes(router: Router): void {
   });
 
   router.get('/api/public-events', async ({db}) => {
-    const {rows} = await db.query('select * from public.events where active order by starts_at asc limit 60');
+    const {rows} = await db.query(
+      `select e.*, (select count(*)::int from public.event_rsvps r where r.event_id = e.id) as going from public.events e where e.active order by e.starts_at asc limit 60`
+    );
     return {events: rows.map(eventFromRow)};
   });
 

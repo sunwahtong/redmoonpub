@@ -1,5 +1,5 @@
 import React, {useMemo, useState} from 'react';
-import {Search, X} from 'lucide-react';
+import {Heart, Search, X} from 'lucide-react';
 import {SectionHead} from '../components/ui/SectionHead';
 import {Reveal} from '../components/ui/Reveal';
 import {EmptyState} from '../components/ui/EmptyState';
@@ -16,9 +16,10 @@ import {useParallax} from '../hooks/useParallax';
 import {backgroundImage} from '../lib/media';
 import {assetUrl, formatHuf} from '../lib/api';
 import {SECTION_ORDER, SECTION_LABELS} from '../lib/sections';
+import {useFavorites} from '../lib/favorites';
 import type {DrinkSection, PublicProduct, SignatureDrink} from '../types';
 
-type Filter = DrinkSection | 'all';
+type Filter = DrinkSection | 'all' | 'favorites';
 
 /** Strips accents so "sornyito" also matches "Sörnyitó". */
 const normalize = (value: string): string =>
@@ -30,6 +31,7 @@ export const MenuPage: React.FC = () => {
 
   const [filter, setFilter] = useState<Filter>('all');
   const [query, setQuery] = useState('');
+  const favorites = useFavorites((state) => state.ids);
 
   const products = useMemo(() => data?.products || [], [data]);
   const signature = signatureData?.drinks || [];
@@ -50,11 +52,11 @@ export const MenuPage: React.FC = () => {
   const visible = useMemo(() => {
     const needle = normalize(query.trim());
     return products.filter((product) => {
-      if (filter !== 'all' && product.section !== filter) return false;
+      if (filter === 'favorites' ? !favorites.includes(product.id) : filter !== 'all' && product.section !== filter) return false;
       if (!needle) return true;
       return normalize(`${product.name} ${product.subtitle || ''}`).includes(needle);
     });
-  }, [products, filter, query]);
+  }, [products, filter, query, favorites]);
 
   const backdropRef = useParallax<HTMLDivElement>(80);
 
@@ -145,11 +147,27 @@ export const MenuPage: React.FC = () => {
                       : 'border-[color:var(--rm-line)] text-[#8f8887] hover:border-white/25 hover:text-white'
                   }`}
                 >
-                  {section === 'all' ? 'ÖSSZES' : SECTION_LABELS[section]}
+                  {section === 'all' ? 'ÖSSZES' : SECTION_LABELS[section as DrinkSection]}
                   <span className="ml-2 text-[8px] text-[#6d5d64]">{counts[section] ?? 0}</span>
                 </button>
               );
             })}
+            {favorites.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setFilter('favorites')}
+                aria-pressed={filter === 'favorites'}
+                className={`border px-4 py-2.5 text-[9px] font-bold tracking-[0.2em] transition-all ${
+                  filter === 'favorites'
+                    ? 'border-[color:var(--rm-red)] bg-[rgba(213,31,60,0.14)] text-white shadow-[0_0_22px_rgba(213,31,60,0.22)]'
+                    : 'border-[color:var(--rm-line)] text-[#8f8887] hover:border-white/25 hover:text-white'
+                }`}
+              >
+                <Heart size={10} className="mr-2 inline-block align-[-1px]"/>
+                KEDVENCEIM
+                <span className="ml-2 text-[8px] text-[#6d5d64]">{favorites.length}</span>
+              </button>
+            )}
           </div>
 
           <label className="relative flex w-full items-center lg:w-72">

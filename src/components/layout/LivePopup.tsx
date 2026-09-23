@@ -24,7 +24,8 @@ export const LivePopup: React.FC = () => {
   // The store follows the status feed; every page shares the same audio element.
   useEffect(() => {
     if (!data) return;
-    setLive(!!data.live, data.live ? data.streamUrl || null : null);
+    // Only something audible interrupts the music: a booth that is "live" over a silent station is not a show yet.
+    setLive(!!data.onAir, data.onAir ? data.streamUrl || null : null);
   }, [data, setLive]);
 
   if (!data || !live) return null;

@@ -1,9 +1,11 @@
-import React from 'react';
+import React, {useState} from 'react';
 import {Check, Disc3, Music2, ThumbsUp, Trash2, X} from 'lucide-react';
 import type {MusicRequest} from '../../hooks/useClub';
 import {formatTime} from '../../lib/api';
 
 export type RequestAction = 'accept' | 'decline' | 'played' | 'delete';
+
+type View = 'all' | 'pending' | 'accepted' | 'played' | 'declined';
 
 interface Props {
   requests: MusicRequest[];
@@ -18,13 +20,24 @@ interface Props {
 }
 
 const STATUS_LABEL: Record<string, string> = {pending: 'VÁR', accepted: 'SORBAN', played: 'MENT', declined: 'NEM'};
+const VIEWS: {id: View; label: string}[] = [
+  {id: 'pending', label: 'VÁR'},
+  {id: 'accepted', label: 'SORBAN'},
+  {id: 'played', label: 'MENT'},
+  {id: 'declined', label: 'NEM'},
+  {id: 'all', label: 'MIND'}
+];
 
 /**
- * Tonight's song requests, backed by the room. The most wanted rise to the
- * top; the DJ works the same list from the booth.
+ * Tonight's song requests in one place, backed by the room. The most wanted
+ * rise to the top; the DJ works the same list from the booth, filtered by
+ * what still needs a decision.
  */
 export const RequestBoard: React.FC<Props> = ({requests, requestsOpen, votedIds, onVote, canModerate, onAction, showDeclined, emptyText}) => {
-  const visible = requests.filter((request) => showDeclined || request.status !== 'declined');
+  const [view, setView] = useState<View>(canModerate ? 'pending' : 'all');
+  const counts = requests.reduce<Record<string, number>>((acc, request) => ({...acc, [request.status]: (acc[request.status] || 0) + 1}), {});
+  const base = requests.filter((request) => showDeclined || request.status !== 'declined');
+  const visible = canModerate && view !== 'all' ? base.filter((request) => request.status === view) : base;
   const order = (status: string) => (status === 'pending' ? 0 : status === 'accepted' ? 1 : status === 'played' ? 2 : 3);
   const sorted = [...visible].sort((a, b) => order(a.status) - order(b.status) || b.votes - a.votes || a.at.localeCompare(b.at));
 
@@ -32,12 +45,26 @@ export const RequestBoard: React.FC<Props> = ({requests, requestsOpen, votedIds,
     <div className="rm-card p-0">
       <div className="flex items-center justify-between border-b border-[color:var(--rm-line)] px-6 py-4">
         <span className="rm-label flex items-center gap-2">
-          <Music2 size={11}/> KÉRÉSEK ({visible.filter((request) => request.status === 'pending').length})
+          <Music2 size={11}/> KÉRÉSEK ({counts.pending || 0})
         </span>
         <span className={`text-[8px] tracking-[0.2em] ${requestsOpen ? 'text-emerald-300' : 'text-amber-300'}`}>{requestsOpen ? 'NYITVA' : 'ZÁRVA'}</span>
       </div>
+      {canModerate && (
+        <div className="flex flex-wrap gap-1.5 border-b border-white/[0.04] px-4 py-2.5">
+          {VIEWS.map((entry) => (
+            <button key={entry.id} type="button" onClick={() => setView(entry.id)} className={`rm-board-view${view === entry.id ? ' is-on' : ''}`} aria-pressed={view === entry.id}>
+              {entry.label}
+              <span>{entry.id === 'all' ? base.length : counts[entry.id] || 0}</span>
+            </button>
+          ))}
+        </div>
+      )}
       <div className="max-h-[360px] overflow-y-auto">
-        {!sorted.length && <p className="px-6 py-5 text-[11px] text-[#8d8584]">{emptyText || 'Még nincs kérés ma este. A chatben a „ZENÉT KÉREK” gombbal kérhetsz.'}</p>}
+        {!sorted.length && (
+          <p className="px-6 py-5 text-[11px] text-[#8d8584]">
+            {canModerate && view !== 'all' && base.length ? 'Ebben a listában most nincs kérés.' : emptyText || 'Még nincs kérés ma este. A chatben a „ZENÉT KÉREK” gombbal kérhetsz.'}
+          </p>
+        )}
         {sorted.map((request) => {
           const voted = votedIds.includes(request.id);
           const closed = request.status === 'played' || request.status === 'declined';

@@ -10,15 +10,22 @@
  *
  *   station starts → the club goes live by itself, the house music steps
  *                    aside in every open browser and the popup offers play;
- *   station stops  → a show that started this way ends by itself.
+ *   station stops  → a show that started this way ends by itself; one the DJ
+ *                    started by hand ends once the station has been silent
+ *                    for ten minutes (unless it plays another stream).
  *
- * A show the DJ started by hand in the booth is theirs to end.
+ * Whatever the flags say, the site only mutes the house music while there is
+ * something to hear (`onAir`): the station on air, or a stream of the DJ's own.
  */
 import {broadcast} from './realtime.ts';
 import type {Queryable, Row} from './types.ts';
 
 export const DEFAULT_STATION_URL = 'https://gocast.fm/station/red-moon-pub';
 const FETCH_TIMEOUT_MS = 4000;
+/** A show started by hand survives this much station silence before it ends by itself. */
+const SILENCE_GRACE_MS = 10 * 60 * 1000;
+/** No show runs longer than this without anyone pressing stop. */
+const SHOW_MAX_MS = 12 * 60 * 60 * 1000;
 
 export interface StationStatus {
   live: boolean;
@@ -42,6 +49,9 @@ export const stationEmbedUrl = (slug: string): string => (slug ? `https://gocast
 /** What the site plays: the DJ's own stream address if set, else the station's mount. */
 export const effectiveStreamUrl = (state: Row): string =>
   String(state.stream_url || '').trim() || stationStreamUrl(stationSlug(state.provider_url));
+
+/** Whether there is anything to hear right now: the booth is live and the station streams, or the DJ plays their own stream. */
+export const onAir = (state: Row): boolean => !!state.live && (!!state.station_live || !!String(state.stream_url || '').trim());
 
 const clean = (value: unknown): string => String(value || '').trim().slice(0, 200);
 
@@ -81,12 +91,12 @@ async function startAutoShow(db: Queryable): Promise<void> {
   await broadcast('house', 'live', {live: true});
 }
 
-async function endAutoShow(db: Queryable): Promise<void> {
+async function endShow(db: Queryable, text: string): Promise<void> {
   await db.query(
     `update public.club_state set live = false, auto_live = false, dj_user_id = null, dj_name = '', title = '',
        started_at = null, current = null, updated_at = now() where id = 1`
   );
-  await houseLine(db, 'Az adás véget ért. Köszönjük, hogy itt voltál.');
+  await houseLine(db, text);
   await broadcast('club', 'state');
   await broadcast('house', 'live', {live: false});
 }
@@ -124,19 +134,28 @@ export async function syncStation(db: Queryable): Promise<void> {
   if (!status) return;
 
   const wasLive = !!state.station_live;
-  await db.query('update public.club_state set station_live = $1, station_listeners = $2, station_title = $3, station_artist = $4 where id = 1', [
-    status.live,
-    status.listeners,
-    status.title,
-    status.artist
-  ]);
+  await db.query(
+    `update public.club_state set station_live = $1, station_listeners = $2, station_title = $3, station_artist = $4,
+       station_offline_since = case when $1 then null else coalesce(station_offline_since, now()) end where id = 1`,
+    [status.live, status.listeners, status.title, status.artist]
+  );
 
   let live = !!state.live;
+  const startedAt = state.started_at ? new Date(state.started_at).getTime() : 0;
+  const silentSince = state.station_offline_since ? new Date(state.station_offline_since).getTime() : 0;
+  const ownStream = !!String(state.stream_url || '').trim();
   if (status.live && !wasLive && !live) {
     await startAutoShow(db);
     live = true;
   } else if (!status.live && wasLive && live && state.auto_live) {
-    await endAutoShow(db);
+    await endShow(db, 'Az adás véget ért. Köszönjük, hogy itt voltál.');
+    live = false;
+  } else if (!status.live && live && !state.auto_live && !ownStream && silentSince && Date.now() - silentSince > SILENCE_GRACE_MS) {
+    // Pressed "go live" but the station never (or no longer) streams: nothing to hear, so the show ends.
+    await endShow(db, 'Az adás véget ért — a rádió elhallgatott.');
+    live = false;
+  } else if (live && startedAt && Date.now() - startedAt > SHOW_MAX_MS) {
+    await endShow(db, 'Az adás lezárult.');
     live = false;
   }
   if (live && status.live) await noteStationTrack(db, status);

@@ -19,7 +19,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = 4074;
 const BASE = `http://127.0.0.1:${PORT}`;
 
-const PUBLIC_ROUTES = ['/', '/menu', '/events', '/club', '/vip', '/about', '/gallery', '/location', '/careers', '/reservations', '/staff-login'];
+const PUBLIC_ROUTES = ['/', '/menu', '/events', '/club', '/vip', '/about', '/gallery', '/location', '/careers', '/hirek', '/reservations', '/staff-login'];
 
 let child = null;
 let browser = null;

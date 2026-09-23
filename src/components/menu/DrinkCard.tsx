@@ -1,7 +1,9 @@
 import React, {useState} from 'react';
+import {Heart} from 'lucide-react';
 import {TiltCard} from '../ui/TiltCard';
 import {assetUrl, formatHuf} from '../../lib/api';
 import {sectionLabel} from '../../lib/sections';
+import {useFavorites} from '../../lib/favorites';
 import type {PublicProduct} from '../../types';
 
 interface Props {
@@ -21,6 +23,8 @@ interface Props {
 export const DrinkCard: React.FC<Props> = ({product, index}) => {
   const [failed, setFailed] = useState(false);
   const src = assetUrl(product.image);
+  const favorite = useFavorites((state) => state.ids.includes(product.id));
+  const toggleFavorite = useFavorites((state) => state.toggle);
 
   return (
     <TiltCard className="h-full" max={6}>
@@ -31,6 +35,16 @@ export const DrinkCard: React.FC<Props> = ({product, index}) => {
           <span className="absolute left-6 top-6 z-20 text-[8px] font-bold tracking-[0.2em] text-[#777]">
             {String(index + 1).padStart(2, '0')} / {sectionLabel(product.section)}
           </span>
+          <button
+            type="button"
+            onClick={() => toggleFavorite(product.id)}
+            className={`rm-fav${favorite ? ' is-on' : ''}`}
+            aria-pressed={favorite}
+            aria-label={favorite ? 'Kedvencek közül eltávolítás' : 'Kedvencekhez'}
+            title={favorite ? 'Kedvenc' : 'Kedvencekhez'}
+          >
+            <Heart size={13}/>
+          </button>
 
           <div
             className="pointer-events-none absolute h-32 w-32 rounded-full bg-[rgba(213,31,60,0.24)] blur-3xl transition-transform duration-500 group-hover:scale-125"

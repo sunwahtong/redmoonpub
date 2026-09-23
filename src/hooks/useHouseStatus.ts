@@ -11,6 +11,8 @@ export interface HouseStatus {
   /** A shift is running — the precondition for opening the door. */
   shiftOpen: boolean;
   live: boolean;
+  /** Something to hear: the station streams, or the DJ plays their own stream. Only then does the music step aside. */
+  onAir: boolean;
   /** The show started by itself because the station came on air; nobody has claimed the booth yet. */
   autoLive: boolean;
   /** The DJ's nickname while the booth is live. */

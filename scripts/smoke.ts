@@ -339,6 +339,59 @@ if (derived.data?.state?.streamUrl !== 'https://icecast.gocast.fm/stream/red-moo
   console.log('FAIL empty stream address should fall back to the station mount', derived.data?.state?.streamUrl, derived.data?.state?.customStreamUrl);
   failures += 1;
 }
+const silent = await call('guest', 'GET', '/api/public/status');
+if (silent.data?.onAir !== false) {
+  console.log('FAIL a booth over a silent station must not be on air', silent.data);
+  failures += 1;
+}
+
+// ---------- news, "ott leszek", the staff board ----------
+const post = await call(owner, 'POST', '/api/posts', {title: 'Smoke hír', body: 'Első bekezdés.\n\nMásodik bekezdés.', pinned: true}, {expect: 201});
+await call(owner, 'POST', '/api/posts', {title: 'x'}, {expect: 400});
+await call('guest', 'POST', '/api/posts', {title: 'Nem'}, {expect: 401});
+await call(owner, 'PATCH', `/api/posts/${post.data.post.id}`, {imageUrl: 'https://evil.example/x.png', imagePublicId: 'nope'}, {expect: 400});
+await call(owner, 'PATCH', `/api/posts/${post.data.post.id}`, {pinned: false});
+const publicPosts = await call('guest', 'GET', '/api/public/posts');
+if (!(publicPosts.data?.posts || []).some((entry: {id: string; pinned: boolean}) => entry.id === post.data.post.id && entry.pinned === false)) {
+  console.log('FAIL the post should be public and unpinned', publicPosts.data);
+  failures += 1;
+}
+await call(owner, 'DELETE', `/api/posts/${post.data.post.id}`);
+
+const rsvpEvent = await call(owner, 'POST', '/api/events', {title: 'Smoke Night', startsAt: new Date(Date.now() + 86400000).toISOString()}, {expect: 201});
+const going = await call('guest', 'POST', `/api/public-events/${rsvpEvent.data.event.id}/rsvp`, {visitorToken: token});
+if (going.data?.going !== true || going.data?.count !== 1) {
+  console.log('FAIL rsvp should count once', going.data);
+  failures += 1;
+}
+const events = await call('guest', 'GET', '/api/public-events');
+if (!(events.data?.events || []).some((entry: {id: string; going: number}) => entry.id === rsvpEvent.data.event.id && entry.going === 1)) {
+  console.log('FAIL public events should carry the count', events.data);
+  failures += 1;
+}
+const back = await call('guest', 'POST', `/api/public-events/${rsvpEvent.data.event.id}/rsvp`, {visitorToken: token});
+if (back.data?.going !== false || back.data?.count !== 0) {
+  console.log('FAIL a second tap should take the rsvp back', back.data);
+  failures += 1;
+}
+await call('guest', 'POST', `/api/public-events/${rsvpEvent.data.event.id}/rsvp`, {}, {expect: 400});
+await call(owner, 'DELETE', `/api/events/${rsvpEvent.data.event.id}`);
+
+const note = await call('mgr', 'POST', '/api/staff/notes', {text: 'Ma este dupla műszak, figyeljetek a bejáratra.'}, {expect: 201});
+await call('guest', 'POST', '/api/staff/notes', {text: 'nem'}, {expect: 401});
+await call('mgr', 'PATCH', `/api/staff/notes/${note.data.note.id}`, {pinned: true}, {expect: 403});
+await call(owner, 'PATCH', `/api/staff/notes/${note.data.note.id}`, {pinned: true});
+const board = await call('mgr', 'GET', '/api/staff/notes');
+if (!(board.data?.notes || []).some((entry: {id: string; pinned: boolean}) => entry.id === note.data.note.id && entry.pinned)) {
+  console.log('FAIL the note should be on the board, pinned', board.data);
+  failures += 1;
+}
+await call('mgr', 'DELETE', `/api/staff/notes/${note.data.note.id}`);
+const dash = await call(owner, 'GET', '/api/dashboard');
+if (!dash.data?.counts || typeof dash.data.counts.ordersOpen !== 'number' || typeof dash.data.counts.reservationsToday !== 'number') {
+  console.log('FAIL the dashboard should carry counts', dash.data?.counts);
+  failures += 1;
+}
 
 // ---------- bartender session (single session rule) ----------
 await call('bar', 'POST', '/api/login', {username: bartender.data.user.username, password: 'Bar12345x'});

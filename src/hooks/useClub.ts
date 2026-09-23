@@ -104,6 +104,8 @@ export interface StationInfo {
 export interface ClubState {
   serverNow: number;
   live: boolean;
+  /** Something to hear right now: the station streams, or the DJ's own stream is set. */
+  onAir: boolean;
   /** The show started by itself when the station came on air; the booth is unclaimed. */
   autoLive: boolean;
   dj: string | null;

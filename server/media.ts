@@ -21,7 +21,7 @@ import {signatureImageData} from '../shared/signature.ts';
 export type MediaKind = 'image' | 'audio';
 
 /** Where an asset belongs; also its folder in the store. */
-export type MediaPurpose = 'gallery' | 'event' | 'product' | 'house' | 'dj-music' | 'avatar' | 'signature';
+export type MediaPurpose = 'gallery' | 'event' | 'product' | 'house' | 'post' | 'dj-music' | 'avatar' | 'signature';
 
 export const AUDIO_TYPES: Record<string, string> = {
   '.mp3': 'audio/mpeg',

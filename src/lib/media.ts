@@ -10,7 +10,7 @@ import {apiSend, assetUrl} from './api';
  */
 export type MediaKind = 'image' | 'audio';
 /** What the browser may upload directly; signatures are stored by the server. */
-export type MediaPurpose = 'gallery' | 'event' | 'product' | 'house' | 'dj-music' | 'avatar';
+export type MediaPurpose = 'gallery' | 'event' | 'product' | 'house' | 'post' | 'dj-music' | 'avatar';
 
 export interface UploadedMedia {
   url: string;

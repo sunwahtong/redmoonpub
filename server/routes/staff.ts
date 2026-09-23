@@ -300,7 +300,29 @@ export function registerStaffRoutes(router: Router): void {
        where h.id = 1 and (h.revenue_reset_at is null or s.at > h.revenue_reset_at)`
     );
     const shift = await db.query(`select id, started_at, started_by_name from public.shifts where status = 'open' limit 1`);
+    const me = user!;
+    const counts = (
+      await db.query<{reservations_today: number; reservations_pending: number; applications_pending: number; orders_open: number; unread: number}>(
+        `select
+           (select count(*)::int from public.reservations where starts_at >= date_trunc('day', now()) and starts_at < date_trunc('day', now()) + interval '1 day'
+              and status in ('pending','reviewing','waitlist','confirmed','seated')) as reservations_today,
+           (select count(*)::int from public.reservations where status in ('pending','reviewing') and starts_at > now() - interval '1 day') as reservations_pending,
+           (select count(*)::int from public.applications where status in ('pending','interview')) as applications_pending,
+           (select count(*)::int from public.supply_orders where status = 'open') as orders_open,
+           (select count(*)::int from public.notifications n where $1 = any(n.audience)
+              and not exists (select 1 from public.notification_reads r where r.notification_id = n.id and r.user_id = $2)) as unread`,
+        [me.role, me.id]
+      )
+    ).rows[0];
     return {
+      counts: {
+        reservationsToday: counts.reservations_today,
+        reservationsPending: counts.reservations_pending,
+        applicationsPending: counts.applications_pending,
+        ordersOpen: counts.orders_open,
+        unread: counts.unread,
+        lowStock: low.rows.length
+      },
       today: {revenue: today.rows[0].revenue, items: today.rows[0].items, salesCount: today.rows[0].sales_count},
       overallRevenue: overall.rows[0].revenue,
       lowStock: low.rows.map((row) => ({id: row.id, name: row.name, stock: row.stock, minStock: row.min_stock})),

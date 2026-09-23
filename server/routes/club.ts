@@ -21,7 +21,7 @@ import {bad, clientIp, conflict, created, forbidden, iso, notFound, parse, readJ
 import {AUDIO_TYPES, cloudinaryEnabled, extensionOf, firstFilePart, isOurCloudinaryUrl, destroyMedia, localStoreAllowed, sanitizeFilename, signUpload, storeLocal} from '../media.ts';
 import {broadcast} from '../realtime.ts';
 import {config} from '../config.ts';
-import {effectiveStreamUrl, stationEmbedUrl, stationSlug, syncStation} from '../station.ts';
+import {effectiveStreamUrl, onAir, stationEmbedUrl, stationSlug, syncStation} from '../station.ts';
 import type {Queryable, Row, SessionUser, UserCtx} from '../types.ts';
 
 const NAME_TTL_MS = 3 * 24 * 60 * 60 * 1000;
@@ -180,6 +180,7 @@ export async function clubState(db: Queryable, {moderator = false}: {moderator?:
   const out = {
     serverNow: Date.now(),
     live: !!state.live,
+    onAir: onAir(state),
     autoLive: !!state.auto_live,
     dj: (state.dj_name || null) as string | null,
     djAvatar: (dj.rows[0]?.avatar || '') as string,

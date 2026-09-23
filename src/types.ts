@@ -40,6 +40,22 @@ export interface RedMoonEvent {
   featured?: boolean;
   active?: boolean;
   createdByName?: string;
+  /** Guests who said they will be there. */
+  going?: number;
+}
+
+/** A news post the owner wrote for the public site. */
+export interface Post {
+  id: string;
+  title: string;
+  body: string;
+  imageUrl: string;
+  imagePublicId: string;
+  pinned: boolean;
+  active: boolean;
+  publishedAt: string | null;
+  createdByName: string;
+  updatedAt: string | null;
 }
 
 export interface Review {

@@ -13,7 +13,7 @@ import {config} from '../config.ts';
 import type {SessionUser} from '../types.ts';
 
 /** What the browser may upload directly. Signatures are stored by the server itself. */
-const PURPOSES = ['gallery', 'event', 'product', 'house', 'dj-music', 'avatar'] as const satisfies readonly MediaPurpose[];
+const PURPOSES = ['gallery', 'event', 'product', 'house', 'post', 'dj-music', 'avatar'] as const satisfies readonly MediaPurpose[];
 type Purpose = (typeof PURPOSES)[number];
 
 const signBody = z.object({
@@ -26,7 +26,7 @@ const signBody = z.object({
 /** Who may upload what. */
 function allow(user: SessionUser, purpose: Purpose): void {
   const caps = capabilitiesOf(user);
-  if (purpose === 'gallery' || purpose === 'house' || purpose === 'event') {
+  if (purpose === 'gallery' || purpose === 'house' || purpose === 'event' || purpose === 'post') {
     if (!caps.owner) throw forbidden('Ehhez tulajdonosi jog kell.');
   } else if (purpose === 'product') {
     if (!caps.manager) throw forbidden('Ehhez manager jog kell.');

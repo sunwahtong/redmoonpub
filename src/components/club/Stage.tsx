@@ -133,7 +133,9 @@ export const Stage: React.FC<Props> = ({state, identity}) => {
             </div>
           )}
 
-          {live && (
+          {live && !state.onAir && <p className="rm-stage-silent">A rádió most csendes. Amint a DJ elindítja a streamet, itt szól — a háttérzene addig marad.</p>}
+
+          {live && state.onAir && (
             <div className="mt-5 flex flex-wrap items-center gap-3">
               {streamUrl ? (
                 <>

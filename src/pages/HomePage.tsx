@@ -21,7 +21,7 @@ import {useHouseStatus} from '../hooks/useHouseStatus';
 import {apiSend, assetUrl, getVisitorToken} from '../lib/api';
 import {MEMBERSHIP} from '../lib/content';
 import {Skeleton} from '../components/ui/Skeleton';
-import type {GalleryItem, PublicHouse, RedMoonEvent, Review, SignatureDrink} from '../types';
+import type {GalleryItem, Post, PublicHouse, RedMoonEvent, Review, SignatureDrink} from '../types';
 
 const PHONE_PREFIX = '+38-76-';
 const REVIEW_MAX_CHARS = 140;
@@ -38,6 +38,8 @@ export const HomePage: React.FC = () => {
   const {data: houseData} = useLiveData<PublicHouse>('/api/public/house', {intervalMs: 0, topics: ['content']});
   const {data: galleryData} = useLiveData<{items: GalleryItem[]}>('/api/public/gallery', {intervalMs: 0, topics: ['content']});
   const shots = (galleryData?.items || []).slice(0, 8);
+  const {data: postData} = useLiveData<{posts: Post[]}>('/api/public/posts', {intervalMs: 0, topics: ['content']});
+  const posts = (postData?.posts || []).slice(0, 3);
   const {data: house} = useHouseStatus(20000);
   const leaders = (houseData?.people || []).filter((person) => person.tier === 'owner' || person.tier === 'co-owner');
 
@@ -258,6 +260,39 @@ export const HomePage: React.FC = () => {
           </div>
         )}
       </section>
+
+      {/* 3b. HÍREK */}
+      {posts.length > 0 && (
+        <section className="border-t border-[color:var(--rm-line)] bg-[#070709]">
+          <div className="rm-section">
+            <SectionHead
+              label="HÍREK / A HÁZBÓL"
+              title={
+                <>
+                  Ami történt,
+                  <br/>
+                  <em>és ami készül.</em>
+                </>
+              }
+              aside={<BtnLink to="/hirek">MINDEN HÍR ↗</BtnLink>}
+            />
+            <div className="grid grid-cols-1 gap-3.5 md:grid-cols-3">
+              {posts.map((post, index) => (
+                <Reveal key={post.id} delay={index * 80}>
+                  <Link to="/hirek" className="rm-news-tile">
+                    {post.imageUrl && <img src={assetUrl(post.imageUrl)} alt="" loading="lazy"/>}
+                    <div className="rm-news-tile-body">
+                      <span className="text-[8px] tracking-[0.22em] text-[#777]">{post.publishedAt ? new Date(post.publishedAt).toLocaleDateString('hu-HU') : ''}{post.pinned ? ' · KITŰZVE' : ''}</span>
+                      <strong className="mt-2 block font-heading text-[18px] leading-tight text-white">{post.title}</strong>
+                      <p>{post.body}</p>
+                    </div>
+                  </Link>
+                </Reveal>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* 4. SIGNATURE ITALOK */}
       {drinks.length > 0 && (

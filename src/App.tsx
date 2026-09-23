@@ -26,6 +26,7 @@ import {VipPage} from './pages/VipPage';
 import {CareersPage} from './pages/CareersPage';
 import {StaffLoginPage} from './pages/StaffLoginPage';
 import {ClubPage} from './pages/ClubPage';
+import {NewsPage} from './pages/NewsPage';
 import {RequireRole} from './components/auth/RequireRole';
 import {NotFoundPage} from './pages/NotFoundPage';
 import type {Role} from './stores/useAuthStore';
@@ -57,6 +58,7 @@ const OrdersPage = load(() => import('./pages/staff/OrdersPage'), 'OrdersPage');
 const StaffEventsPage = load(() => import('./pages/staff/EventsPage'), 'StaffEventsPage');
 const ShowcasePage = load(() => import('./pages/staff/ShowcasePage'), 'ShowcasePage');
 const StaffGalleryPage = load(() => import('./pages/staff/GalleryPage'), 'StaffGalleryPage');
+const PostsPage = load(() => import('./pages/staff/PostsPage'), 'PostsPage');
 
 /** Console routes and the lowest rank that may open them. */
 const CONSOLE_ROUTES: {path: string; need?: Role; element: React.ReactNode}[] = [
@@ -74,6 +76,7 @@ const CONSOLE_ROUTES: {path: string; need?: Role; element: React.ReactNode}[] = 
   {path: '/staff/events', need: 'owner', element: <StaffEventsPage/>},
   {path: '/staff/showcase', need: 'owner', element: <ShowcasePage/>},
   {path: '/staff/gallery', need: 'owner', element: <StaffGalleryPage/>},
+  {path: '/staff/posts', need: 'owner', element: <PostsPage/>},
   {path: '/staff/reports', need: 'owner', element: <ReportsPage/>},
   {path: '/staff/users', need: 'owner', element: <UsersPage/>},
   {path: '/staff/audit', need: 'owner', element: <AuditPage/>}
@@ -125,6 +128,7 @@ export const App: React.FC = () => {
                 <Route path="/reservations" element={<ReservationsPage/>}/>
                 <Route path="/vip" element={<VipPage/>}/>
                 <Route path="/careers" element={<CareersPage/>}/>
+                <Route path="/hirek" element={<NewsPage/>}/>
 
                 <Route path="/club" element={<ClubPage/>}/>
                 <Route path="/dj" element={<DjPage/>}/>
