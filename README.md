@@ -135,14 +135,36 @@ updates.
 
 ### The club and the booth
 
-The public `/club` page is a chat room with a colour per approved name and
-the DJ's lines set apart, a request line ("ZENÉT KÉREK") the DJ sees in the
-booth, and the show itself. The DJ (speaking under their nickname) goes live
-with a title, the station page on gocast.fm and, if known, the direct stream
-URL. While the booth is live the house music stops everywhere and a popup
-offers the stream with its own volume and mute; the header mixer carries the
-same controls. Audio uploads go straight to Cloudinary through a signed
-upload.
+The show is the GoCast station (`club_state.provider_url`, a
+`gocast.fm/station/<slug>` page). The server watches it (`server/station.ts`):
+one small JSON read at most every 20 seconds, riding on the status feed every
+page polls. When the station comes on air the club goes live by itself, the
+house music steps aside in every open browser (and if it was on, the stream
+takes its place), and a popup offers play, volume and mute. When the station
+goes quiet, a show that started that way ends by itself. The site plays the
+station's Icecast MP3 mount (`icecast.gocast.fm/stream/<slug>`) in an ordinary
+audio element; the DJ can point it elsewhere from the booth, and GoCast's own
+player is one tap away as an iframe fallback.
+
+The public `/club` page: the stage (who is in the booth, what the stream's
+metadata says is playing, the player, listener counts, the show clock), emoji
+reactions floating over it with a "vibe" meter, the chat (colour per approved
+name, the DJ's lines set apart, @mentions, a pinned notice, slow mode), the
+request board where anyone backs a request with a vote, the DJ's poll,
+tonight's setlist, and the evening in the house (next event with countdown,
+signature drinks, a table). Reactions, request votes and poll votes need no
+name — a hash of the network and the browser counts once. Reaction pushes
+are budgeted at 40 a minute for the whole room so a busy night cannot flood
+the realtime channel; beyond that they still count toward the vibe.
+
+The booth (`/dj`, for the DJ job, managers and owners): the station's state
+and listener count, the title, "go live" by hand or "take over" a show the
+station started (so the DJ's name is on it), the stream address (empty = the
+station's mount), a monitor player, announcements that head the setlist,
+requests with their votes (accept, decline, mark played), polls, the pinned
+notice, slow mode, the request gate, a clean slate for the chat, quick lines,
+the library and queue with the local player, and the room's names. Audio
+uploads go straight to Cloudinary through a signed upload.
 
 ### Documents and signatures
 

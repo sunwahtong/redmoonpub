@@ -66,20 +66,22 @@
 
 .rm-gilt {
     position: relative;
-    height: 1px;
+    /* A 5px box with the 1px line through its middle, so the sweep below stays
+       inside it: it used to run past both ends and widen the page on phones. */
+    height: 5px;
     background: linear-gradient(90deg,
         transparent,
         rgba(227, 40, 78, 0.45) 18%,
         rgba(255, 255, 255, 0.35) 50%,
         rgba(227, 40, 78, 0.45) 82%,
-        transparent);
-    overflow: visible;
+        transparent) center / 100% 1px no-repeat;
+    overflow: hidden;
 }
 
 .rm-gilt::after {
     content: "";
     position: absolute;
-    top: -1px;
+    top: 1px;
     left: 0;
     width: 22%;
     height: 3px;

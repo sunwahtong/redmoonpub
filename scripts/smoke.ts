@@ -245,7 +245,28 @@ if (named.data?.status === 'accepted') {
   await call('guest', 'POST', '/api/club/request', {title: 'Smoke song', token: named.data.token}, {expect: [201, 429]});
   const requests = await call(owner, 'GET', '/api/dj/state');
   const pendingRequest = (requests.data?.state?.requests || []).find((entry: {status: string}) => entry.status === 'pending');
-  if (pendingRequest) await call(owner, 'POST', '/api/dj/request', {id: pendingRequest.id, action: 'accept'});
+  if (pendingRequest) {
+    // Anyone in the room backs a request; a second tap takes the vote back.
+    const up = await call('guest', 'POST', `/api/club/request/${pendingRequest.id}/vote`, {clientId: `c_${stamp}`});
+    if (up.data?.voted !== true || up.data?.votes !== 1) {
+      console.log('FAIL request vote not counted', up.data);
+      failures += 1;
+    }
+    await call('guest', 'POST', `/api/club/request/${pendingRequest.id}/vote`, {clientId: `c_${stamp}`}, {expect: 429});
+    await call(owner, 'POST', '/api/dj/request', {id: pendingRequest.id, action: 'played'});
+    const played = await call('guest', 'GET', '/api/club/state');
+    if (!(played.data?.state?.setlist || []).some((entry: {source: string}) => entry.source === 'request')) {
+      console.log('FAIL a played request should join the setlist', played.data?.state?.setlist);
+      failures += 1;
+    }
+  }
+  // Reactions need no name; the vibe counts them.
+  const reaction = await call('guest', 'POST', '/api/club/react', {emoji: '🔥', clientId: `c_${stamp}`, token: named.data.token});
+  if (!reaction.data?.vibe) {
+    console.log('FAIL reaction not counted', reaction.data);
+    failures += 1;
+  }
+  await call('guest', 'POST', '/api/club/react', {emoji: '💣', clientId: `c_${stamp}`}, {expect: 400});
   const colored = await call('guest', 'GET', '/api/club/state');
   if (!(colored.data?.state?.people || []).some((person: {name: string; color: string}) => person.name === 'SmokeListener' && person.color === '#4cc9f0')) {
     console.log('FAIL listener colour not applied', colored.data?.state?.people);
@@ -264,7 +285,60 @@ if (!liveStatus.data?.live || liveStatus.data?.streamUrl !== 'https://stream.exa
 }
 await call('guest', 'GET', '/api/club/state');
 await call(owner, 'POST', '/api/dj/chat', {text: 'DJ here'}, {expect: 201});
+
+// ---------- the booth's new tools ----------
+await call(owner, 'POST', '/api/dj/announce', {title: 'Smack That', artist: 'Akon'}, {expect: 201});
+await call(owner, 'POST', '/api/dj/announce', {title: ''}, {expect: 400});
+await call(owner, 'PATCH', '/api/dj/notice', {text: 'Kérések nyitva!'});
+await call(owner, 'PATCH', '/api/dj/chat-mode', {slowSeconds: 15, requestsOpen: false});
+await call(owner, 'PATCH', '/api/dj/chat-mode', {slowSeconds: 7}, {expect: 400});
+if (named.data?.status === 'accepted') {
+  await call('guest', 'POST', '/api/club/request', {title: 'Closed door', token: named.data.token}, {expect: [409, 429]});
+}
+const poll = await call(owner, 'POST', '/api/dj/poll', {question: 'Merre menjen az este?', options: ['House', 'Hip-hop', 'Retro'], minutes: 5}, {expect: 201});
+await call(owner, 'POST', '/api/dj/poll', {question: 'x', options: ['csak egy']}, {expect: 400});
+if (poll.data?.poll?.id) {
+  const vote = await call('guest', 'POST', `/api/club/poll/${poll.data.poll.id}/vote`, {optionId: 'o2', clientId: `c_${stamp}`});
+  if (vote.data?.poll?.total !== 1) {
+    console.log('FAIL poll vote not counted', vote.data);
+    failures += 1;
+  }
+  await call('guest', 'POST', `/api/club/poll/${poll.data.poll.id}/vote`, {optionId: 'nope', clientId: `c_${stamp}`}, {expect: [400, 429]});
+  const closed = await call(owner, 'POST', `/api/dj/poll/${poll.data.poll.id}/close`, {});
+  if (closed.data?.poll?.open !== false) {
+    console.log('FAIL poll should be closed', closed.data?.poll);
+    failures += 1;
+  }
+  await call('guest', 'POST', `/api/club/poll/${poll.data.poll.id}/vote`, {optionId: 'o1', clientId: `c_${stamp}_b`}, {expect: [409, 429]});
+  await call(owner, 'DELETE', `/api/dj/poll/${poll.data.poll.id}`);
+}
+const withNotice = await call('guest', 'GET', '/api/club/state');
+if (withNotice.data?.state?.notice !== 'Kérések nyitva!' || withNotice.data?.state?.slowMode !== 15 || withNotice.data?.state?.requestsOpen !== false || !withNotice.data?.state?.station) {
+  console.log('FAIL club state should carry notice, slow mode, request gate and station', withNotice.data?.state);
+  failures += 1;
+}
+const announced = (withNotice.data?.state?.setlist || []).find((entry: {source: string; artist: string}) => entry.source === 'announce' && entry.artist === 'Akon');
+if (!announced) {
+  console.log('FAIL announced track missing from the setlist', withNotice.data?.state?.setlist);
+  failures += 1;
+} else {
+  await call(owner, 'DELETE', `/api/dj/setlist/${announced.id}`);
+}
+await call(owner, 'PATCH', '/api/dj/notice', {text: ''});
+await call(owner, 'PATCH', '/api/dj/chat-mode', {slowSeconds: 0, requestsOpen: true});
+await call(owner, 'DELETE', '/api/dj/chat');
+const cleared = await call('guest', 'GET', '/api/club/state');
+if ((cleared.data?.state?.chat || []).filter((entry: {kind: string}) => entry.kind !== 'system').length) {
+  console.log('FAIL chat should be empty after a clear', cleared.data?.state?.chat);
+  failures += 1;
+}
 await call(owner, 'POST', '/api/dj/live', {live: false});
+// Back to the station's own mount: an empty address means the derived one.
+const derived = await call(owner, 'PATCH', '/api/dj/stream', {streamUrl: ''});
+if (derived.data?.state?.streamUrl !== 'https://icecast.gocast.fm/stream/red-moon-pub' || derived.data?.state?.customStreamUrl !== '') {
+  console.log('FAIL empty stream address should fall back to the station mount', derived.data?.state?.streamUrl, derived.data?.state?.customStreamUrl);
+  failures += 1;
+}
 
 // ---------- bartender session (single session rule) ----------
 await call('bar', 'POST', '/api/login', {username: bartender.data.user.username, password: 'Bar12345x'});

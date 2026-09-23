@@ -12,6 +12,8 @@ interface Options {
   topics?: Topic[];
   /** Refetch after any successful write made from this browser. On by default. */
   refetchOnMutation?: boolean;
+  /** Push events on those topics that carry their own payload and must not trigger a refetch. */
+  skipEvents?: string[];
 }
 
 export interface LiveData<T> {
@@ -34,13 +36,14 @@ const RELAXED_FACTOR = 4;
  * successful mutation this browser made. State is only replaced when the
  * payload actually changed, so React never re-renders for nothing.
  */
-export function useLiveData<T>(url: string, {intervalMs = 60000, enabled = true, topics, refetchOnMutation = true}: Options = {}): LiveData<T> {
+export function useLiveData<T>(url: string, {intervalMs = 60000, enabled = true, topics, refetchOnMutation = true, skipEvents}: Options = {}): LiveData<T> {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const signatureRef = useRef<string>('');
   const abortRef = useRef<AbortController | null>(null);
   const topicKey = (topics || []).join(',');
+  const skipKey = (skipEvents || []).join(',');
 
   const load = useCallback(async () => {
     if (!enabled) return;
@@ -110,6 +113,7 @@ export function useLiveData<T>(url: string, {intervalMs = 60000, enabled = true,
     window.addEventListener('focus', load);
 
     const wanted = new Set(topicKey ? (topicKey.split(',') as Topic[]) : []);
+    const skipped = new Set(skipKey ? skipKey.split(',') : []);
     const unsubscribeTopics = [...wanted].map((topic) => subscribe(topic));
     const offStatus = wanted.size ? onRealtimeStatus(() => start()) : () => {};
     const offBus = liveBus.on((event) => {
@@ -117,7 +121,7 @@ export function useLiveData<T>(url: string, {intervalMs = 60000, enabled = true,
         if (refetchOnMutation && (intervalMs > 0 || wanted.size)) soon();
         return;
       }
-      if (wanted.has(event.topic)) soon();
+      if (wanted.has(event.topic) && !skipped.has(event.event)) soon();
     });
 
     return () => {
@@ -130,7 +134,7 @@ export function useLiveData<T>(url: string, {intervalMs = 60000, enabled = true,
       offBus();
       abortRef.current?.abort();
     };
-  }, [load, intervalMs, enabled, topicKey, refetchOnMutation]);
+  }, [load, intervalMs, enabled, topicKey, skipKey, refetchOnMutation]);
 
   return {data, error, loading, refresh: load, mutate};
 }

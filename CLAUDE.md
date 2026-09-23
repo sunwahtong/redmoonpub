@@ -1,0 +1,79 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## What this is
+
+Red Moon Pub: a Hungarian-language faction site (public pages, reservations, careers, the live club + DJ booth) and a staff console (register, shifts, stock, documents, reports, gallery, house settings). React 19 + Vite frontend in `src/`, a TypeScript Node backend in `server/`, PostgreSQL (Supabase in production, embedded PGlite locally). Deployed on Vercel free tier; Supabase and Cloudinary free tiers. Keep egress and request volume low — see "Free tiers" below.
+
+## Commands
+
+```bash
+npm install                 # Node >=22.18 <25 (.nvmrc); the backend needs Node's type stripping
+npm run dev                 # Vite on :5173, proxies /api and /assets to :3000
+npm run server              # API + built site on :3000 (embedded DB when DATABASE_URL is empty)
+npm run build               # tsc -b && tsc -p tsconfig.server.json && vite build → dist/
+npm run typecheck           # both tsconfigs, no emit
+```
+
+There is no lint config and no unit-test framework. Verification is end to end:
+
+```bash
+# API smoke run (the regression test — extend it when adding endpoints).
+# Needs a running server; use a scratch embedded DB on its own port so
+# production data is never touched:
+DATABASE_URL= PORT=3100 node server/index.ts
+SMOKE_PASS=<local OWNER_PASSWORD> npm run smoke      # SMOKE_BASE/SMOKE_USER default to :3100 / rm.owner
+
+npm run verify                                       # Playwright over public routes → .verify/ (VERIFY_BASE, default :5173)
+node scripts/verify.mjs /location                    # one route; VERIFY_VIEWPORT=mobile for phones
+npm run verify:nav                                   # every public route reachable by clicking
+node scripts/verify-console.mjs                      # signs in, screenshots console pages (VERIFY_USER/PASS)
+
+npm run user:create -- --username x --password y --role owner   # or --reset; --jobs dj,bartender
+npm run data:reset -- --apply                        # wipe transactional data (dry run without --apply)
+npm run media:upload -- --dry                        # mirror public/assets to Cloudinary (map/uploads/dj-music skipped)
+```
+
+`npm run server` serves `dist/`, so run `npm run build` first if you need the site, not just the API. `vite preview` does not work here (the dev proxy sends `/assets/*` to :3000, which is also where the hashed bundle lives); use `npm run server`.
+
+The smoke run must stay repeatable against the same database: it cleans up what it creates, logs in with `force: true`, and accepts `[201, 429]` where rate limits can hit on a re-run.
+
+## Backend rules (server/, shared/, api/, scripts/*.ts)
+
+- Plain TypeScript executed by Node directly: **explicit `.ts` import specifiers, erasable syntax only** (`erasableSyntaxOnly`, `verbatimModuleSyntax` — no enums, namespaces or parameter properties; `import type` for types). No build step, no JS files in the backend.
+- `server/config.ts` is the only place that reads `process.env`. Everything else imports `config`.
+- One router (`createRouter` in `server/http.ts`), all routes registered in `server/index.ts`. A handler is `(ctx: Ctx) => Promise<unknown>` with `ctx.{req,res,db,user,params,query}`. Return a plain object → 200 JSON; `created(body)` / `reply(status, body)` otherwise; throw `bad / unauthorized / forbidden / notFound / conflict / tooMany` for errors. Validate bodies with `parse(zodSchema, await readJson(req))`. Guards: `requireUser / requireRole(ctx, 'manager') / requireCapability`.
+- First matching route wins, and a path registered twice silently shadows the second. Merge handlers that share a path (guest + staff logic in one handler) rather than registering it twice.
+- Mutating methods get the same-origin check automatically; `ctx.user` is `null` for guests. Guest identity for reservations/reviews is a visitor token; club listeners use a per-browser id + IP hash + secret token.
+- The same `handleApiRequest` runs as a Vercel function (`api/index.ts`, one function for all of `/api/*`) and as a long-lived process that also serves `dist/` + `public/`. `config.serverless` gates disk writes, pool sizes and anything that needs a persistent process. There are no background timers: periodic work (the station check) piggybacks on requests with a DB-claimed timestamp.
+- Database: `server/db.ts` gives `query / exec / tx` over `pg` (when `DATABASE_URL` is set) or PGlite under `data/pglite/`. Integers and numerics arrive as numbers. Migrations in `supabase/migrations/000N_*.sql` are applied in name order on first use and recorded in `public.app_migrations` — never edit an applied file, add the next number, write idempotent SQL (`if not exists`, `drop constraint if exists`), and `enable row level security` on every new table (RLS on, no policies: only the backend's role reads). Seed and one-off data moves run once per process through `ready()`.
+- After any write another browser might be looking at, call `broadcast(topic, event, {ids})` (`server/realtime.ts`; topics `house | club | reservations | events | content | staff`). Payloads carry ids or small deltas, never content lists.
+- Auth: Argon2id (hash-wasm), hashed session tokens, one active session per account (login with `force: true` takes over), idle + absolute expiry. `role` is the ladder `staff < manager < owner`; `jobs` (bartender, dj, biztonsag, …) add capabilities via `capabilitiesOf`. The `dj` capability opens the booth regardless of role.
+- Media: browsers upload straight to Cloudinary with a server signature (`/api/media/sign` → `uploadMedia()` in `src/lib/media.ts`); the feature endpoint then stores `url` + `public_id` after `acceptImage` / `ownsMedia`. Replacing or deleting anything with a `public_id` must call `destroyMedia`. Signatures are stored by the server with `storeSignature`. Disk fallback (`public/assets/uploads/`) exists only for the embedded DB (`localStoreAllowed`); a hosted DB without Cloudinary gets a clear error instead.
+- The live club follows the GoCast station: `server/station.ts` `syncStation` (called from `houseStatus()` and `clubState()`) reads GoCast's public JSON at most every 20 s (claimed via `club_state.station_checked_at`) and flips `live`/`auto_live`. The site plays the station's Icecast MP3 mount in a plain `<audio>`; `effectiveStreamUrl` derives it from `provider_url` when `stream_url` is empty.
+
+## Frontend structure (src/)
+
+- Routes in `src/App.tsx`; console pages are lazy and wrapped in `RequireRole`. `STAFF_NAV` in `src/lib/navigation.ts` repeats each route's `need` on purpose (guard enforces, nav only hides). Public routes must be reachable by clicking — `verify:nav` fails otherwise.
+- Data: `useLiveData(url, {intervalMs, topics, skipEvents, refetchOnMutation})` = fetch + poll + refetch on realtime push + `mutate` for optimistic updates. Polling relaxes ×4 while the socket is up; without Supabase env it just polls. `useLiveEvent(topic, handler)` for pushes that carry their own payload (chat lines, reactions, poll counts) — list those in `skipEvents` so they do not trigger a full refetch. `apiSend` emits a `mutation` event on `liveBus` so every live list refreshes; add observe-only endpoints (heartbeats, votes) to its `QUIET` list.
+- Feature hooks: `useHouseStatus` (door + booth + next event, one feed shared by navbar, pill, popup, footer), `useClub` (club state + identity + vote memory). Stores: `useAuthStore`, `useAudioStore` (one music element, one stream element; `setLive` ducks the music and auto-starts the stream if music was on), `useChromeStore`, `useDialogStore` (`dialog.confirm/prompt/alert`), `useToastStore`.
+- Documents (`src/lib/documents.ts`, `documentPdf.ts`, `documentBuilders.ts`): a layout-free payload rendered to an HTML preview and a pdfmake PDF (pdfmake loads on demand). Signatures are fetched from the media store with `resolveSignatures` before rendering; the first issued PDF locks a signature server-side.
+- `shared/signature.ts` is imported by both sides; keep it dependency-free.
+- Gallery wall: `src/lib/galleryLayout.ts` packs tiles (shape rhythm + skyline + hole filling); the page sets grid placement inline.
+- CSS: Tailwind first, then `src/styles/*.css` in the order listed in `main.tsx`, so `.rm-*` classes win over utilities. `.rm-input` sets the padding shorthand, so Tailwind padding utilities on inputs lose — add a modifier class (e.g. `.rm-search`) instead. Club/live/booth styles live in `club.css`; console in `console.css`.
+- UI copy is Hungarian; code, comments and commit messages are English.
+
+## Free tiers — design constraints
+
+Vercel Hobby, Supabase Free, Cloudinary Free. Consequences that shape changes here:
+- No new polling loops; prefer a realtime push + refetch, and keep state endpoints small (chat capped at 80 lines, setlist 12 public).
+- Realtime message volume is budgeted (reactions: 40 pushes/min room-wide, `REACTION_PUSHES_PER_MINUTE`). Anything pushed per user action needs a similar cap.
+- Pictures are served from Cloudinary with `f_auto,q_auto` via `assetUrl()`; map tiles (`public/assets/map`, 436 MB) stay on Vercel, never Cloudinary (10 MB file limit, and Vercel's transfer pool is bigger). `public/assets/gtav-map-hires.png` is unused and excluded from both.
+- Locally, leave `VITE_CLOUDINARY_CLOUD_NAME` empty so development does not spend Cloudinary bandwidth.
+
+## Local pitfalls
+
+- Never point a local run at the production `DATABASE_URL` for testing; the smoke run creates and deletes accounts, and uploads would be validated against a store the local process may not have. Use `DATABASE_URL= PORT=3100 node server/index.ts`.
+- PGlite corrupts if the process is force-killed while writing (`RuntimeError: Aborted()`, stale `postmaster.pid`). Stop it gracefully; recovery is deleting `data/pglite/` (local test data only).
+- Supabase keys are the new formats: `SUPABASE_PUBLISHABLE_KEY` / `VITE_SUPABASE_PUBLISHABLE_KEY` (`sb_publishable_…`, safe in the browser) and optional server-only `SUPABASE_SECRET_KEY`. Never put a secret in a `VITE_` variable; never print `.env` values.

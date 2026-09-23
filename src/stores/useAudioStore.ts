@@ -6,9 +6,11 @@ import {isSfxMuted, setSfxMuted} from '../lib/sfx';
  * Everything that makes a sound on the site, in one place.
  *
  * Two players: the house music (a loop, off until the visitor turns it on)
- * and the live stream (the DJ's show, played while the booth is live). They
- * never play together — when the show starts the music ducks out and comes
- * back when the show ends, if it was on before.
+ * and the live show (the station's stream, an ordinary MP3 mount). They
+ * never play together. When the show starts the music steps aside — and if
+ * it was on, the show takes its place at once, since the visitor had
+ * already asked for sound. When the show ends the music comes back if it
+ * was on before.
  */
 interface AudioState {
   isPlaying: boolean;
@@ -18,6 +20,8 @@ interface AudioState {
   /** The live show. */
   streamUrl: string | null;
   streamPlaying: boolean;
+  /** Between play() and the first audio: the stream connects. */
+  streamLoading: boolean;
   streamVolume: number;
   streamMuted: boolean;
   streamError: string | null;
@@ -43,7 +47,6 @@ music.preload = 'none';
 
 const stream = new Audio();
 stream.preload = 'none';
-stream.crossOrigin = 'anonymous';
 
 const clamp = (value: number) => Math.max(0, Math.min(100, Number(value) || 0));
 
@@ -55,11 +58,24 @@ stream.volume = initialStreamVolume / 100;
 /** Whether the visitor had the music on when the show interrupted it. */
 let resumeMusicAfterShow = false;
 
+/** A live stream resumes at the live edge, never from a stale buffer: drop the source on pause. */
+function unload(): void {
+  stream.pause();
+  stream.removeAttribute('src');
+  stream.load();
+}
+
 export const useAudioStore = create<AudioState>((set, get) => {
-  stream.addEventListener('playing', () => set({streamPlaying: true, streamError: null}));
-  stream.addEventListener('pause', () => set({streamPlaying: false}));
-  stream.addEventListener('error', () => set({streamPlaying: false, streamError: 'Az adás most nem érhető el.'}));
-  stream.addEventListener('stalled', () => set({streamError: 'Az adás akadozik…'}));
+  stream.addEventListener('playing', () => set({streamPlaying: true, streamLoading: false, streamError: null}));
+  stream.addEventListener('waiting', () => set({streamLoading: true}));
+  stream.addEventListener('pause', () => set({streamPlaying: false, streamLoading: false}));
+  stream.addEventListener('error', () => {
+    if (!stream.getAttribute('src')) return;
+    set({streamPlaying: false, streamLoading: false, streamError: 'Az adás most nem érhető el.'});
+  });
+  stream.addEventListener('stalled', () => {
+    if (get().streamPlaying) set({streamError: 'Az adás akadozik…'});
+  });
 
   return {
     isPlaying: false,
@@ -68,6 +84,7 @@ export const useAudioStore = create<AudioState>((set, get) => {
 
     streamUrl: null,
     streamPlaying: false,
+    streamLoading: false,
     streamVolume: initialStreamVolume,
     streamMuted: false,
     streamError: null,
@@ -76,7 +93,7 @@ export const useAudioStore = create<AudioState>((set, get) => {
     togglePlay: () => {
       const next = !get().isPlaying;
       if (next) {
-        if (get().streamPlaying) get().pauseStream();
+        if (get().streamPlaying || get().streamLoading) get().pauseStream();
         music.play().catch(() => {});
         localStorage.setItem('redmoon-sound', 'on');
       } else {
@@ -106,9 +123,12 @@ export const useAudioStore = create<AudioState>((set, get) => {
     setLive: (live, streamUrl) => {
       const state = get();
       const url = streamUrl || null;
+      let takeOver = false;
       if (live && !state.live) {
-        // The show starts: the house music steps aside.
+        // The show starts: the house music steps aside, and if it was on the
+        // visitor wanted sound — the show takes its place.
         resumeMusicAfterShow = state.isPlaying;
+        takeOver = state.isPlaying;
         if (state.isPlaying) {
           music.pause();
           set({isPlaying: false});
@@ -116,10 +136,8 @@ export const useAudioStore = create<AudioState>((set, get) => {
       }
       if (!live && state.live) {
         // The show ends: stop the stream, bring the music back if it was on.
-        stream.pause();
-        stream.removeAttribute('src');
-        stream.load();
-        set({streamPlaying: false, streamUrl: null, streamError: null});
+        unload();
+        set({streamPlaying: false, streamLoading: false, streamUrl: null, streamError: null});
         if (resumeMusicAfterShow) {
           music.play().catch(() => {});
           set({isPlaying: true});
@@ -127,18 +145,17 @@ export const useAudioStore = create<AudioState>((set, get) => {
         resumeMusicAfterShow = false;
       }
       if (url !== state.streamUrl) {
-        const wasPlaying = state.streamPlaying;
-        if (url) {
-          stream.src = url;
-          if (wasPlaying) stream.play().catch(() => {});
-        } else {
-          stream.pause();
-          stream.removeAttribute('src');
-          stream.load();
+        const wasPlaying = state.streamPlaying || state.streamLoading;
+        unload();
+        set({streamUrl: url, streamPlaying: false, streamLoading: false});
+        if (url && wasPlaying) {
+          set({live});
+          get().playStream();
+          return;
         }
-        set({streamUrl: url, streamPlaying: url ? wasPlaying : false});
       }
       set({live});
+      if (takeOver && url) get().playStream();
     },
 
     playStream: () => {
@@ -148,17 +165,21 @@ export const useAudioStore = create<AudioState>((set, get) => {
         music.pause();
         set({isPlaying: false});
       }
-      if (!stream.src) stream.src = streamUrl;
-      set({streamError: null});
-      stream.play().catch(() => set({streamError: 'Kattints újra a lejátszáshoz.'}));
+      stream.src = streamUrl;
+      set({streamError: null, streamLoading: true});
+      stream.play().catch((error: unknown) => {
+        // The browser wants a tap first; anything else means the stream itself is not there.
+        const blocked = (error as {name?: string})?.name === 'NotAllowedError';
+        set({streamLoading: false, streamError: blocked ? 'Kattints a lejátszásra a hallgatáshoz.' : 'Az adás most nem érhető el — a rádió csendes.'});
+      });
     },
 
     pauseStream: () => {
-      stream.pause();
-      set({streamPlaying: false});
+      unload();
+      set({streamPlaying: false, streamLoading: false});
     },
 
-    toggleStream: () => (get().streamPlaying ? get().pauseStream() : get().playStream()),
+    toggleStream: () => (get().streamPlaying || get().streamLoading ? get().pauseStream() : get().playStream()),
 
     setStreamVolume: (volume) => {
       const value = clamp(volume);

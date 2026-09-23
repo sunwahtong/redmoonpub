@@ -11,6 +11,8 @@ export interface HouseStatus {
   /** A shift is running — the precondition for opening the door. */
   shiftOpen: boolean;
   live: boolean;
+  /** The show started by itself because the station came on air; nobody has claimed the booth yet. */
+  autoLive: boolean;
   /** The DJ's nickname while the booth is live. */
   dj: string | null;
   title: string;
@@ -18,8 +20,18 @@ export interface HouseStatus {
   streamUrl: string;
   /** The station page (gocast.fm) for listening outside the site. */
   providerUrl: string;
+  /** GoCast's own player, for an iframe fallback. */
+  embedUrl: string;
   liveSince: string | null;
+  /** Open club pages on this site. */
   listenerCount: number;
+  /** Whether the station itself is on air, and who listens to it directly. */
+  stationLive: boolean;
+  stationListeners: number;
+  /** The track named by the stream's metadata, if any. */
+  nowPlaying: {title: string; artist: string} | null;
+  /** The DJ's pinned line. */
+  notice: string;
   nextEvent: RedMoonEvent | null;
   serverNow: string;
 }

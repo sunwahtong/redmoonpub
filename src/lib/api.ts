@@ -36,7 +36,7 @@ export function apiGet<T>(url: string, signal?: AbortSignal): Promise<T> {
 }
 
 /** Requests that only observe (heartbeats, presence) must not trigger page-wide refreshes. */
-const QUIET = [/\/api\/presence\/heartbeat$/, /\/api\/club\/listener$/, /\/api\/dj\/player-sync$/, /\/read$/];
+const QUIET = [/\/api\/presence\/heartbeat$/, /\/api\/club\/listener$/, /\/api\/dj\/player-sync$/, /\/read$/, /\/api\/club\/react$/, /\/api\/club\/(request|poll)\/[^/]+\/vote$/];
 
 export async function apiSend<T>(
   url: string,

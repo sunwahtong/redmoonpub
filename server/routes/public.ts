@@ -32,6 +32,7 @@ import {mediaProvider} from '../media.ts';
 import {broadcast, realtimeEnabled} from '../realtime.ts';
 import {config} from '../config.ts';
 import type {Queryable, Request, Row} from '../types.ts';
+import {effectiveStreamUrl, stationEmbedUrl, stationSlug, syncStation} from '../station.ts';
 
 export const RESERVATION_OCCASIONS = ['este', 'szuletesnap', 'uzleti', 'randi', 'csapat', 'vip', 'egyeb'] as const;
 export const RESERVATION_TIERS = ['none', 'silver', 'gold', 'black', 'royal'] as const;
@@ -191,10 +192,12 @@ const reviewBody = z.object({
 /* ------------------------------------------------------------------ */
 
 export async function houseStatus(db: Queryable) {
+  // The station check rides on the status feed: every open page polls it.
+  await syncStation(db);
   const [house, shift, club, event] = await Promise.all([
     db.query('select pub_open, pub_opened_at, pub_opened_by_name, pub_note, pub_closed_at from public.house where id = 1'),
     db.query(`select id, started_at, started_by_name from public.shifts where status = 'open' limit 1`),
-    db.query('select live, dj_name, title, stream_url, provider_url, started_at from public.club_state where id = 1'),
+    db.query('select live, auto_live, dj_name, title, stream_url, provider_url, started_at, station_live, station_listeners, station_title, station_artist, notice from public.club_state where id = 1'),
     db.query(
       `select * from public.events where active and (ends_at is null and starts_at > now() - interval '4 hours' or ends_at > now())
        order by featured desc, starts_at asc limit 1`
@@ -210,12 +213,18 @@ export async function houseStatus(db: Queryable) {
     closedAt: iso(h.pub_closed_at),
     shiftOpen: shift.rows.length > 0,
     live: !!club.rows[0]?.live,
+    autoLive: !!club.rows[0]?.auto_live,
     dj: club.rows[0]?.dj_name || null,
     title: club.rows[0]?.title || '',
-    streamUrl: club.rows[0]?.stream_url || '',
+    streamUrl: club.rows[0] ? effectiveStreamUrl(club.rows[0]) : '',
     providerUrl: club.rows[0]?.provider_url || '',
+    embedUrl: stationEmbedUrl(stationSlug(club.rows[0]?.provider_url)),
     liveSince: iso(club.rows[0]?.started_at),
     listenerCount: listeners.rows[0]?.n || 0,
+    stationLive: !!club.rows[0]?.station_live,
+    stationListeners: Number(club.rows[0]?.station_listeners) || 0,
+    nowPlaying: club.rows[0]?.station_title ? {title: club.rows[0].station_title as string, artist: (club.rows[0].station_artist || '') as string} : null,
+    notice: club.rows[0]?.notice || '',
     nextEvent: event.rows[0] ? eventFromRow(event.rows[0]) : null,
     serverNow: new Date().toISOString()
   };

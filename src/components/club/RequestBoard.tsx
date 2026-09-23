@@ -1,0 +1,92 @@
+import React from 'react';
+import {Check, Disc3, Music2, ThumbsUp, Trash2, X} from 'lucide-react';
+import type {MusicRequest} from '../../hooks/useClub';
+import {formatTime} from '../../lib/api';
+
+export type RequestAction = 'accept' | 'decline' | 'played' | 'delete';
+
+interface Props {
+  requests: MusicRequest[];
+  requestsOpen: boolean;
+  votedIds: string[];
+  onVote?: (id: string) => void;
+  canModerate?: boolean;
+  onAction?: (id: string, action: RequestAction) => void;
+  /** The booth sees declined ones too. */
+  showDeclined?: boolean;
+  emptyText?: string;
+}
+
+const STATUS_LABEL: Record<string, string> = {pending: 'VÁR', accepted: 'SORBAN', played: 'MENT', declined: 'NEM'};
+
+/**
+ * Tonight's song requests, backed by the room. The most wanted rise to the
+ * top; the DJ works the same list from the booth.
+ */
+export const RequestBoard: React.FC<Props> = ({requests, requestsOpen, votedIds, onVote, canModerate, onAction, showDeclined, emptyText}) => {
+  const visible = requests.filter((request) => showDeclined || request.status !== 'declined');
+  const order = (status: string) => (status === 'pending' ? 0 : status === 'accepted' ? 1 : status === 'played' ? 2 : 3);
+  const sorted = [...visible].sort((a, b) => order(a.status) - order(b.status) || b.votes - a.votes || a.at.localeCompare(b.at));
+
+  return (
+    <div className="rm-card p-0">
+      <div className="flex items-center justify-between border-b border-[color:var(--rm-line)] px-6 py-4">
+        <span className="rm-label flex items-center gap-2">
+          <Music2 size={11}/> KÉRÉSEK ({visible.filter((request) => request.status === 'pending').length})
+        </span>
+        <span className={`text-[8px] tracking-[0.2em] ${requestsOpen ? 'text-emerald-300' : 'text-amber-300'}`}>{requestsOpen ? 'NYITVA' : 'ZÁRVA'}</span>
+      </div>
+      <div className="max-h-[360px] overflow-y-auto">
+        {!sorted.length && <p className="px-6 py-5 text-[11px] text-[#8d8584]">{emptyText || 'Még nincs kérés ma este. A chatben a „ZENÉT KÉREK” gombbal kérhetsz.'}</p>}
+        {sorted.map((request) => {
+          const voted = votedIds.includes(request.id);
+          const closed = request.status === 'played' || request.status === 'declined';
+          return (
+            <div key={request.id} className={`rm-board-row${closed ? ' is-closed' : ''}${request.status === 'accepted' ? ' is-accepted' : ''}`} style={{'--bubble': request.color || '#ff5c7a'} as React.CSSProperties}>
+              <button
+                type="button"
+                onClick={() => onVote?.(request.id)}
+                disabled={closed || !onVote}
+                className={`rm-vote${voted ? ' is-on' : ''}`}
+                aria-pressed={voted}
+                aria-label={voted ? 'Szavazat visszavonása' : 'Ezt akarom hallani'}
+                title={voted ? 'Szavazat visszavonása' : 'Ezt akarom hallani'}
+              >
+                <ThumbsUp size={11}/>
+                <b>{request.votes}</b>
+              </button>
+              <div className="min-w-0 flex-1">
+                <strong className="block truncate text-[11px] text-white">{request.item?.name || '—'}</strong>
+                <span className="text-[9px]" style={{color: request.color || '#8d8584'}}>{request.name}</span>
+                <span className="text-[9px] text-[#777]"> · {formatTime(request.at)}</span>
+              </div>
+              <span className={`rm-board-status is-${request.status}`}>{STATUS_LABEL[request.status] || request.status}</span>
+              {canModerate && onAction && (
+                <span className="flex shrink-0 items-center gap-0.5">
+                  {request.status === 'pending' && (
+                    <>
+                      <button type="button" onClick={() => onAction(request.id, 'accept')} aria-label="Elfogadás" title={request.item?.requestOnly ? 'Elfogadás (jelzed, hogy jön)' : 'Elfogadás és sorba'} className="p-1 text-emerald-400 hover:opacity-70">
+                        <Check size={13}/>
+                      </button>
+                      <button type="button" onClick={() => onAction(request.id, 'decline')} aria-label="Elutasítás" title="Elutasítás" className="p-1 text-[color:var(--rm-red)] hover:opacity-70">
+                        <X size={13}/>
+                      </button>
+                    </>
+                  )}
+                  {(request.status === 'pending' || request.status === 'accepted') && (
+                    <button type="button" onClick={() => onAction(request.id, 'played')} aria-label="Most szól" title="Most szól — a setlistre kerül" className="p-1 text-[#ffd166] hover:opacity-70">
+                      <Disc3 size={13}/>
+                    </button>
+                  )}
+                  <button type="button" onClick={() => onAction(request.id, 'delete')} aria-label="Törlés" title="Törlés" className="p-1 text-[#777] hover:text-[color:var(--rm-red)]">
+                    <Trash2 size={12}/>
+                  </button>
+                </span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};

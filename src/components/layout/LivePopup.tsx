@@ -1,6 +1,6 @@
 import React, {useEffect} from 'react';
 import {Link, useLocation} from 'react-router-dom';
-import {ChevronDown, ChevronUp, ExternalLink, Pause, Play, Radio, Volume2, VolumeX} from 'lucide-react';
+import {ChevronDown, ChevronUp, ExternalLink, Loader2, Pause, Play, Radio, Volume2, VolumeX} from 'lucide-react';
 import {useHouseStatus} from '../../hooks/useHouseStatus';
 import {useAudioStore} from '../../stores/useAudioStore';
 import {useChromeStore} from '../../stores/useChromeStore';
@@ -8,18 +8,16 @@ import {useChromeStore} from '../../stores/useChromeStore';
 /**
  * The show, everywhere.
  *
- * Appears in the corner of every page while the booth is live. The house
+ * Appears in the corner of every page while the station is on air. The house
  * music has already stepped aside (the audio store does that the moment
- * `live` flips); this is the visitor's handle on the show: play it here,
- * set its volume, mute it, or go to the club. Folds to a chip on request.
- *
- * Playing here needs a stream URL the DJ set in the booth. Without one the
- * popup offers the station page instead.
+ * `live` flips, and if the music was on the show is already playing); this
+ * is the visitor's handle on it: play or pause it here, set its volume, mute
+ * it, or go to the club. Folds to a chip on request.
  */
 export const LivePopup: React.FC = () => {
   const {data} = useHouseStatus();
   const location = useLocation();
-  const {live, streamUrl, streamPlaying, streamVolume, streamMuted, streamError, setLive, toggleStream, setStreamVolume, toggleStreamMuted} = useAudioStore();
+  const {live, streamUrl, streamPlaying, streamLoading, streamVolume, streamMuted, streamError, setLive, toggleStream, setStreamVolume, toggleStreamMuted} = useAudioStore();
   const minimized = useChromeStore((state) => state.liveMinimized);
   const setMinimized = useChromeStore((state) => state.setLiveMinimized);
 
@@ -31,15 +29,17 @@ export const LivePopup: React.FC = () => {
 
   if (!data || !live) return null;
 
-  // The booth has its own monitor; a listener on the club page has the player in view.
-  const onClub = location.pathname === '/club';
-  if (location.pathname === '/dj') return null;
+  // The booth has its own monitor, and the club page has the stage: no popup there.
+  if (location.pathname === '/dj' || location.pathname === '/club') return null;
+
+  const listeners = Math.max(data.listenerCount, data.stationListeners);
+  const playing = data.nowPlaying ? `${data.nowPlaying.artist ? `${data.nowPlaying.artist} – ` : ''}${data.nowPlaying.title}` : '';
 
   if (minimized) {
     return (
       <button type="button" className="rm-live-chip" onClick={() => setMinimized(false)} aria-label="Élő adás megnyitása">
         <span className="rm-live-dot" aria-hidden="true"/>
-        ÉLŐ · {data.dj || 'DJ'}
+        ÉLŐ · {data.dj || 'RED MOON'}
         {streamPlaying && <span className="rm-sound-bars" aria-hidden="true"><i/><i/><i/></span>}
         <ChevronUp size={12}/>
       </button>
@@ -52,7 +52,7 @@ export const LivePopup: React.FC = () => {
         <span className="rm-live-badge">
           <span className="rm-live-dot" aria-hidden="true"/> ÉLŐ ADÁS
         </span>
-        <span className="text-[9px] tracking-[0.18em] text-[#8d8584]">{data.listenerCount} HALLGATÓ</span>
+        <span className="text-[9px] tracking-[0.18em] text-[#8d8584]">{listeners} HALLGATÓ</span>
         <button type="button" onClick={() => setMinimized(true)} aria-label="Összecsukás" className="rm-live-fold">
           <ChevronDown size={14}/>
         </button>
@@ -64,11 +64,12 @@ export const LivePopup: React.FC = () => {
         <span className="rm-live-dj">
           <Radio size={10}/> {data.dj || 'Red Moon DJ'} a pultban
         </span>
+        {playing && <span className="rm-live-track" title={playing}>♪ {playing}</span>}
 
         {streamUrl ? (
           <div className="rm-live-controls">
-            <button type="button" onClick={toggleStream} className={`rm-live-play${streamPlaying ? ' is-on' : ''}`} aria-label={streamPlaying ? 'Szünet' : 'Lejátszás'}>
-              {streamPlaying ? <Pause size={15}/> : <Play size={15}/>}
+            <button type="button" onClick={toggleStream} className={`rm-live-play${streamPlaying || streamLoading ? ' is-on' : ''}`} aria-label={streamPlaying || streamLoading ? 'Szünet' : 'Lejátszás'}>
+              {streamLoading ? <Loader2 size={15} className="animate-spin"/> : streamPlaying ? <Pause size={15}/> : <Play size={15}/>}
             </button>
             <button type="button" onClick={toggleStreamMuted} className="rm-live-mute" aria-label={streamMuted ? 'Hang vissza' : 'Némítás'}>
               {streamMuted ? <VolumeX size={14}/> : <Volume2 size={14}/>}
@@ -85,16 +86,14 @@ export const LivePopup: React.FC = () => {
             />
           </div>
         ) : (
-          <p className="mt-3 text-[10px] leading-[1.7] text-[#8d8584]">A műsor a gocast.fm-en szól. Nyisd meg ott, vagy kérd a DJ-t, hogy állítsa be a stream címét.</p>
+          <p className="mt-3 text-[10px] leading-[1.7] text-[#8d8584]">Az adás címe még nincs beállítva. A klub oldalon a GoCast lejátszó szól.</p>
         )}
         {streamError && <p className="mt-2 text-[10px] text-[color:var(--rm-red)]">{streamError}</p>}
 
         <div className="rm-live-links">
-          {!onClub && (
-            <Link to="/club" className="rm-btn is-red !px-3 !py-2 !text-[8px]">
-              A KLUBBA ↗
-            </Link>
-          )}
+          <Link to="/club" className="rm-btn is-red !px-3 !py-2 !text-[8px]">
+            A KLUBBA ↗
+          </Link>
           {data.providerUrl && (
             <a href={data.providerUrl} target="_blank" rel="noreferrer" className="rm-btn !px-3 !py-2 !text-[8px]">
               GOCAST <ExternalLink size={10}/>

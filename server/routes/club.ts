@@ -1,15 +1,18 @@
 /**
- * The Red Moon Club: the public live page (chat, requests, approved names)
- * and the DJ booth (stream, library, queue, playback, moderation).
+ * The Red Moon Club: the public live page (player, chat, requests, polls,
+ * reactions, setlist, approved names) and the DJ booth (stream, library,
+ * queue, playback, announcements, moderation).
  *
  * Listeners are anonymous. A name is approved by whoever runs the booth and
  * tied to a hash of the browser id, an IP and a secret token; the raw token
  * only ever lives in that browser. Every approved listener gets a colour so
  * the chat reads like a room full of people, and the DJ speaks under their
- * nickname in the house red.
+ * nickname in the house red. Reactions, request votes and poll votes need no
+ * name: a hash of the network and the browser id is enough to count once.
  *
- * Changes are pushed to open pages over Realtime (see ../realtime.ts); the
- * pages also poll slowly as a safety net.
+ * The station itself is watched by ../station.ts: when it starts streaming
+ * the club goes live on its own. Changes are pushed to open pages over
+ * Realtime (see ../realtime.ts); the pages also poll slowly as a safety net.
  */
 import crypto from 'node:crypto';
 import {z} from 'zod';
@@ -18,11 +21,16 @@ import {bad, clientIp, conflict, created, forbidden, iso, notFound, parse, readJ
 import {AUDIO_TYPES, cloudinaryEnabled, extensionOf, firstFilePart, isOurCloudinaryUrl, destroyMedia, localStoreAllowed, sanitizeFilename, signUpload, storeLocal} from '../media.ts';
 import {broadcast} from '../realtime.ts';
 import {config} from '../config.ts';
+import {effectiveStreamUrl, stationEmbedUrl, stationSlug, syncStation} from '../station.ts';
 import type {Queryable, Row, SessionUser, UserCtx} from '../types.ts';
 
 const NAME_TTL_MS = 3 * 24 * 60 * 60 * 1000;
 const DECLINE_RETRY_MS = 5 * 60 * 1000;
 const CHAT_KEEP = 250;
+const SLOW_MODES = [0, 5, 15, 30, 60];
+const REACTIONS = ['🔥', '❤️', '🍻', '🎉', '👏', '🙌'];
+/** Reactions pushed to every open page per minute, across the whole room. Beyond it they still count, quietly. */
+const REACTION_PUSHES_PER_MINUTE = 40;
 
 /** Listener colours. Chosen so any two read apart on the dark page. */
 export const PALETTE = ['#ff5c7a', '#ff9f43', '#ffd166', '#2ee6a6', '#4cc9f0', '#5b8cff', '#c77dff', '#f472b6', '#9ef01a', '#ff8fab', '#00e5ff', '#ffb347'];
@@ -31,6 +39,9 @@ const DJ_COLOR = '#ff2b4f';
 const browserHashOf = (clientId: unknown): string => (clientId ? sha256(String(clientId).trim().slice(0, 160)) : '');
 const tokenHashOf = (token: unknown): string => (token ? sha256(String(token).trim().slice(0, 160)) : '');
 const djName = (user: Pick<SessionUser, 'name' | 'nickname'>): string => user.nickname || user.name;
+
+/** Who is voting or reacting: this network plus this browser, hashed. */
+const voterOf = (ip: string, clientId: unknown): string => sha256(`${ip}|${browserHashOf(clientId)}`);
 
 const requireModerator = (ctx: UserCtx): SessionUser => {
   const user = requireUser(ctx);
@@ -65,6 +76,9 @@ async function housekeeping(db: Queryable): Promise<void> {
   await db.query(`delete from public.club_bans where until is not null and until < now()`);
   await db.query(`delete from public.club_name_requests where status <> 'pending' and at < now() - interval '1 day'`);
   await db.query(`delete from public.club_requests where status <> 'pending' and at < now() - interval '1 day'`);
+  await db.query(`delete from public.club_reactions where at < now() - interval '10 minutes'`);
+  await db.query(`delete from public.club_setlist where at < now() - interval '3 days'`);
+  await db.query(`delete from public.club_polls where created_at < now() - interval '3 days'`);
 }
 
 const chatPublic = (row: Row) => ({
@@ -77,6 +91,42 @@ const chatPublic = (row: Row) => ({
   requestId: row.request_id || null
 });
 const chatModerator = (row: Row) => ({...chatPublic(row), ip: row.ip || null, browserHash: row.browser_hash || null});
+
+const setlistOf = (row: Row) => ({id: row.id, at: iso(row.at), title: row.title, artist: row.artist || '', source: row.source, byName: row.by_name || '', requestId: row.request_id || null});
+
+const requestPublic = (row: Row) => ({
+  id: row.id,
+  at: iso(row.at),
+  name: row.name,
+  color: row.color || '',
+  status: row.status,
+  votes: Number(row.votes) || 0,
+  item: row.item ? {id: row.item.id, name: row.item.name, requestOnly: !!row.item.requestOnly} : null
+});
+
+async function pollOf(db: Queryable, row: Row | null | undefined) {
+  if (!row) return null;
+  const counts = (await db.query<{option_id: string; n: number}>('select option_id, count(*)::int as n from public.club_poll_votes where poll_id = $1 group by option_id', [row.id])).rows;
+  const tally = Object.fromEntries(counts.map((entry) => [entry.option_id, entry.n]));
+  const options = ((row.options || []) as {id: string; label: string}[]).map((option) => ({...option, votes: tally[option.id] || 0}));
+  const closesAt = row.closes_at ? new Date(row.closes_at).getTime() : null;
+  return {
+    id: row.id,
+    question: row.question,
+    options,
+    total: options.reduce((sum, option) => sum + option.votes, 0),
+    byName: row.by_name || '',
+    createdAt: iso(row.created_at),
+    closesAt: iso(row.closes_at),
+    closedAt: iso(row.closed_at),
+    open: !row.closed_at && (!closesAt || closesAt > Date.now())
+  };
+}
+
+async function latestPoll(db: Queryable) {
+  const row = (await db.query(`select * from public.club_polls where created_at > now() - interval '4 hours' order by created_at desc limit 1`)).rows[0];
+  return pollOf(db, row);
+}
 
 async function activeBan(db: Queryable, ip: string, browserHash = ''): Promise<Row | null> {
   const {rows} = await db.query(
@@ -107,30 +157,62 @@ interface PlayItem {
   addedBy?: string;
 }
 
+const vibeOf = async (db: Queryable): Promise<number> => (await db.query<{n: number}>(`select count(*)::int as n from public.club_reactions where at > now() - interval '60 seconds'`)).rows[0].n;
+
 export async function clubState(db: Queryable, {moderator = false}: {moderator?: boolean} = {}) {
   await housekeeping(db);
+  await syncStation(db);
   const state = (await db.query('select * from public.club_state where id = 1')).rows[0];
-  const listeners = (await db.query<{n: number}>('select count(*)::int as n from public.club_presence')).rows[0].n;
-  const chat = (await db.query('select * from public.club_chat order by at desc limit 80')).rows;
-  const people = (await db.query('select name, color from public.club_listeners where expires_at > now() order by approved_at desc limit 200')).rows;
+  const [listeners, chat, people, setlist, poll, board, vibe, dj] = await Promise.all([
+    db.query<{n: number}>('select count(*)::int as n from public.club_presence'),
+    db.query('select * from public.club_chat order by at desc limit 80'),
+    db.query('select name, color from public.club_listeners where expires_at > now() order by approved_at desc limit 200'),
+    db.query(`select * from public.club_setlist where at > now() - interval '12 hours' order by at desc limit ${moderator ? 40 : 12}`),
+    latestPoll(db),
+    db.query(
+      `select * from public.club_requests where at > now() - interval '8 hours' and status <> 'declined'
+        order by case status when 'pending' then 0 when 'accepted' then 1 else 2 end, votes desc, at asc limit 30`
+    ),
+    vibeOf(db),
+    state.dj_user_id ? db.query<{avatar: string}>('select avatar from public.staff_accounts where id = $1', [state.dj_user_id]) : Promise.resolve({rows: [] as {avatar: string}[]})
+  ]);
+  const slug = stationSlug(state.provider_url);
   const out = {
     serverNow: Date.now(),
     live: !!state.live,
+    autoLive: !!state.auto_live,
     dj: (state.dj_name || null) as string | null,
+    djAvatar: (dj.rows[0]?.avatar || '') as string,
     title: (state.title || '') as string,
     provider: (state.provider || 'gocast') as string,
     providerUrl: (state.provider_url || '') as string,
-    streamUrl: (state.stream_url || '') as string,
+    streamUrl: effectiveStreamUrl(state),
+    embedUrl: stationEmbedUrl(slug),
     startedAt: iso(state.started_at),
-    listenerCount: listeners,
-    people: people.map((row) => ({name: row.name, color: row.color || PALETTE[0]})),
+    listenerCount: listeners.rows[0].n,
+    peakListeners: Number(state.peak_listeners) || 0,
+    station: {
+      slug,
+      live: !!state.station_live,
+      listeners: Number(state.station_listeners) || 0,
+      nowPlaying: state.station_title ? {title: state.station_title as string, artist: (state.station_artist || '') as string} : null,
+      checkedAt: iso(state.station_checked_at)
+    },
+    notice: (state.notice || '') as string,
+    slowMode: Number(state.slow_mode_seconds) || 0,
+    requestsOpen: state.requests_open !== false,
+    vibe,
+    people: people.rows.map((row) => ({name: row.name, color: row.color || PALETTE[0]})),
     current: (moderator ? state.current : state.current ? {name: state.current.name, addedBy: state.current.addedBy || ''} : null) as Row | null,
+    setlist: setlist.rows.map(setlistOf),
+    poll,
+    requests: board.rows.map(requestPublic) as Row[],
     queue: [] as Row[],
     library: [] as Row[],
-    chat: chat.map(moderator ? chatModerator : chatPublic),
-    requests: [] as Row[],
+    chat: chat.rows.map(moderator ? chatModerator : chatPublic),
     nameRequests: [] as Row[],
-    registeredListeners: [] as Row[]
+    registeredListeners: [] as Row[],
+    customStreamUrl: undefined as string | undefined
   };
   if (!moderator) return out;
 
@@ -142,9 +224,16 @@ export async function clubState(db: Queryable, {moderator = false}: {moderator?:
     db.query('select * from public.club_listeners where expires_at > now() order by approved_at desc limit 300')
   ]);
   const bans = (await db.query('select * from public.club_bans where until is null or until > now()')).rows;
+  out.customStreamUrl = (state.stream_url || '') as string;
   out.queue = queue.rows.map((row) => ({id: row.id, trackId: row.track_id, name: row.name, url: row.url, addedBy: row.added_by_name || '', requestId: row.request_id || null, addedAt: iso(row.added_at)}));
   out.library = library.rows.map(trackOf);
-  out.requests = requests.rows.map((row) => ({id: row.id, at: iso(row.at), name: row.name, color: row.color || '', status: row.status, item: row.item || null, ip: row.ip || null, browserHash: row.browser_hash || null, handledBy: row.handled_by_name || null}));
+  out.requests = requests.rows.map((row) => ({
+    ...requestPublic(row),
+    item: row.item || null,
+    ip: row.ip || null,
+    browserHash: row.browser_hash || null,
+    handledBy: row.handled_by_name || null
+  }));
   out.nameRequests = names.rows.map((row) => ({id: row.id, clientId: row.client_id, name: row.name, at: iso(row.at), status: row.status, ip: row.ip}));
   out.registeredListeners = approved.rows.map((row) => {
     const ban = bans.find((entry) => entry.ip === row.ip && (!entry.browser_hash || entry.browser_hash === row.browser_hash));
@@ -170,20 +259,46 @@ const liveBody = z.object({
   providerUrl: z.string().trim().max(400).optional()
 });
 
+const announceBody = z.object({
+  title: z.string().trim().min(1, 'Add meg a szám címét.').max(160),
+  artist: z.string().trim().max(120).default('')
+});
+
+const pollBody = z.object({
+  question: z.string().trim().min(3, 'Írd be a kérdést.').max(160),
+  options: z.array(z.string().trim().min(1).max(60)).min(2, 'Legalább két válasz kell.').max(5),
+  minutes: z.coerce.number().int().min(0).max(240).default(0)
+});
+
+const chatModeBody = z.object({
+  slowSeconds: z.coerce.number().int().optional(),
+  requestsOpen: z.boolean().optional()
+});
+
 export function registerClubRoutes(router: Router): void {
   const moderatorState = (db: Queryable) => clubState(db, {moderator: true});
   const pushClub = (event: string, payload: Record<string, unknown> = {}) => broadcast('club', event, payload);
+
+  const houseLine = async (db: Queryable, text: string, kind = 'system', extra: {requestId?: string | null} = {}) => {
+    const {rows} = await db.query(`insert into public.club_chat (name, text, kind, color, request_id) values ('Red Moon', $1, $2, '', $3) returning *`, [text, kind, extra.requestId || null]);
+    await pushClub('chat', {message: chatPublic(rows[0])});
+    return rows[0];
+  };
 
   router.get('/api/club/state', async ({db, user}) => {
     const moderator = !!user && capabilitiesOf(user).dj;
     return {state: await clubState(db, {moderator})};
   });
 
+  /** Presence heartbeat; also keeps the show's peak. */
   router.post('/api/club/listener', async ({db, req}) => {
     const body = await readJson(req);
     const id = String(body.id || '').trim().slice(0, 80);
     if (!id) throw bad('Hiányzó listener azonosító');
     await db.query('insert into public.club_presence (client_id, last_seen) values ($1, now()) on conflict (client_id) do update set last_seen = now()', [id]);
+    await db.query(
+      `update public.club_state set peak_listeners = greatest(peak_listeners, (select count(*)::int from public.club_presence where last_seen > now() - interval '40 seconds')) where id = 1 and live`
+    );
     return {ok: true};
   });
 
@@ -273,7 +388,9 @@ export function registerClubRoutes(router: Router): void {
       browserHash = identity.browser_hash;
       const ban = await activeBan(db, ip, identity.browser_hash);
       if (ban) throw forbidden(`Chat tiltás aktív. Indok: ${ban.reason || 'nincs megadva'}`);
-      await rateLimit(db, `club-chat:${ip}`, 1, 2500);
+      // Slow mode stretches the pause between two lines from one person.
+      const slow = (await db.query<{slow_mode_seconds: number}>('select slow_mode_seconds from public.club_state where id = 1')).rows[0]?.slow_mode_seconds || 0;
+      await rateLimit(db, `club-chat:${ip}`, 1, Math.max(2500, slow * 1000));
     }
     const {rows} = await db.query('insert into public.club_chat (name, text, kind, color, ip, browser_hash) values ($1, $2, $3, $4, $5, $6) returning *', [
       name,
@@ -297,6 +414,34 @@ export function registerClubRoutes(router: Router): void {
     return {ok: true};
   });
 
+  /**
+   * A reaction: one emoji, from anyone in the room. Every open page sees it
+   * float up (pushed with the current vibe), within a room-wide budget so a
+   * busy night cannot flood the realtime channel. Beyond the budget the tap
+   * still counts toward the vibe meter.
+   */
+  router.post('/api/club/react', async ({db, req}) => {
+    const body = await readJson(req);
+    const emoji = String(body.emoji || '').trim();
+    if (!REACTIONS.includes(emoji)) throw bad('Ismeretlen reakció.');
+    const ip = clientIp(req);
+    const voter = voterOf(ip, body.clientId);
+    await rateLimit(db, `club-react:${voter}`, 1, 2500);
+    await db.query('insert into public.club_reactions (emoji, voter) values ($1, $2)', [emoji, voter]);
+    const vibe = await vibeOf(db);
+    let pushed = true;
+    try {
+      await rateLimit(db, 'club-react:room', REACTION_PUSHES_PER_MINUTE, 60_000);
+    } catch {
+      pushed = false;
+    }
+    if (pushed) {
+      const identity = body.token ? await identityOf(db, body.token, ip) : null;
+      await pushClub('reaction', {emoji, color: identity?.color || '', vibe});
+    }
+    return {ok: true, vibe, pushed};
+  });
+
   /** A listener asks for a song: one from the library, or any title in words. */
   router.post('/api/club/request', async ({db, req}) => {
     const body = await readJson(req);
@@ -305,6 +450,8 @@ export function registerClubRoutes(router: Router): void {
     if (!identity) throw forbidden('Érvényes névjóváhagyás szükséges');
     const ban = await activeBan(db, ip, identity.browser_hash);
     if (ban) throw forbidden(`Chat tiltás aktív. Indok: ${ban.reason || 'nincs megadva'}`);
+    const open = (await db.query<{requests_open: boolean}>('select requests_open from public.club_state where id = 1')).rows[0]?.requests_open !== false;
+    if (!open) throw conflict('A DJ most lezárta a kéréseket. Figyeld a chatet, mikor nyitja újra.');
     await rateLimit(db, `club-request:${ip}`, 1, 15000);
     let item: {id: string; name: string; url: string; requestOnly?: boolean} | null = null;
     if (body.trackId) {
@@ -328,7 +475,46 @@ export function registerClubRoutes(router: Router): void {
     ]);
     await pushClub('chat', {message: chatPublic(chat.rows[0])});
     await pushClub('requests');
-    return created({request: {id: rows[0].id, name: identity.name, item, status: 'pending'}});
+    return created({request: {id: rows[0].id, name: identity.name, item, status: 'pending', votes: 0}});
+  });
+
+  /** Anyone in the room can back a request; a second tap takes the vote back. */
+  router.post('/api/club/request/:id/vote', async ({db, req, params}) => {
+    const body = await readJson(req);
+    const ip = clientIp(req);
+    const voter = voterOf(ip, body.clientId);
+    await rateLimit(db, `club-vote:${voter}`, 1, 1200);
+    const request = (await db.query('select * from public.club_requests where id = $1', [params.id])).rows[0];
+    if (!request) throw notFound('Kérés nem található');
+    if (request.status === 'declined' || request.status === 'played') throw conflict('Erre a kérésre már nem lehet szavazni.');
+    const existing = (await db.query('select 1 from public.club_request_votes where request_id = $1 and voter = $2', [request.id, voter])).rows[0];
+    if (existing) await db.query('delete from public.club_request_votes where request_id = $1 and voter = $2', [request.id, voter]);
+    else await db.query('insert into public.club_request_votes (request_id, voter) values ($1, $2)', [request.id, voter]);
+    const {rows} = await db.query('update public.club_requests set votes = (select count(*)::int from public.club_request_votes where request_id = $1) where id = $1 returning votes', [request.id]);
+    await pushClub('requests');
+    return {ok: true, voted: !existing, votes: rows[0].votes};
+  });
+
+  /** One vote per network + browser; changing it is allowed while the poll is open. */
+  router.post('/api/club/poll/:id/vote', async ({db, req, params}) => {
+    const body = await readJson(req);
+    const ip = clientIp(req);
+    const voter = voterOf(ip, body.clientId);
+    await rateLimit(db, `club-poll:${voter}`, 1, 1200);
+    const row = (await db.query('select * from public.club_polls where id = $1', [params.id])).rows[0];
+    const poll = await pollOf(db, row);
+    if (!poll) throw notFound('Szavazás nem található');
+    if (!poll.open) throw conflict('Ez a szavazás már lezárult.');
+    const optionId = String(body.optionId || '');
+    if (!poll.options.some((option) => option.id === optionId)) throw bad('Érvénytelen válasz.');
+    await db.query(
+      `insert into public.club_poll_votes (poll_id, voter, option_id) values ($1, $2, $3)
+       on conflict (poll_id, voter) do update set option_id = excluded.option_id, at = now()`,
+      [poll.id, voter, optionId]
+    );
+    const fresh = await pollOf(db, row);
+    await pushClub('poll', {poll: fresh});
+    return {ok: true, poll: fresh, optionId};
   });
 
   router.post('/api/club/name-decision', async ({db, req, user}) => {
@@ -357,8 +543,7 @@ export function registerClubRoutes(router: Router): void {
         request.browser_hash,
         new Date(Date.now() + NAME_TTL_MS)
       ]);
-      const welcome = await db.query('insert into public.club_chat (name, text, kind, color) values ($1, $2, $3, $4) returning *', ['Red Moon', `${request.name} belépett a klubba.`, 'system', '']);
-      await pushClub('chat', {message: chatPublic(welcome.rows[0])});
+      await houseLine(db, `${request.name} belépett a klubba.`);
     }
     await audit(db, me, action === 'accept' ? 'DJ_NAME_ACCEPT' : 'DJ_NAME_DECLINE', request.name);
     await pushClub('names', {name: request.name, action});
@@ -427,47 +612,152 @@ export function registerClubRoutes(router: Router): void {
     return {state: await moderatorState(db), me: {id: me.id, name: me.name, nickname: me.nickname, role: me.role}};
   });
 
+  /**
+   * Going live by hand, or taking over a show the station started by itself
+   * (the booth then carries the DJ's name). Stopping by hand ends the show
+   * even if the station keeps streaming; it only restarts itself the next
+   * time the station goes from silent to on air.
+   */
   router.post('/api/dj/live', async ({db, req, user}) => {
     const me = requireModerator({user});
     const body = parse(liveBody, await readJson(req));
     const on = body.live;
+    const before = (await db.query('select live, auto_live from public.club_state where id = 1')).rows[0];
+    const takeover = on && !!before?.live && !!before?.auto_live;
     const title = on ? (body.title || 'Red Moon Live').slice(0, 80) : '';
     const streamUrl = body.streamUrl === undefined ? null : cleanUrl(body.streamUrl);
     const providerUrl = body.providerUrl === undefined ? null : cleanUrl(body.providerUrl);
     await db.tx(async (tx) => {
       await tx.query(
-        `update public.club_state set live = $1, dj_user_id = $2, dj_name = $3, title = $4, started_at = $5,
+        `update public.club_state set live = $1, auto_live = false, dj_user_id = $2, dj_name = $3, title = $4,
+           started_at = case when $1 then coalesce(started_at, $5) else null end,
+           peak_listeners = case when $1 and not live then 0 else peak_listeners end,
            current = case when $1 then current else null end,
            stream_url = coalesce($6, stream_url), provider_url = coalesce($7, provider_url), updated_at = now() where id = 1`,
         [on, on ? me.id : null, on ? djName(me) : '', title, on ? new Date() : null, streamUrl, providerUrl]
       );
       if (!on) await tx.query('delete from public.club_queue');
     });
-    await audit(db, me, on ? 'DJ_LIVE_START' : 'DJ_LIVE_STOP', on ? title : 'Adás leállítva');
-    const note = await db.query('insert into public.club_chat (name, text, kind, color) values ($1, $2, $3, $4) returning *', [
-      'Red Moon',
-      on ? `${djName(me)} adásba lépett: ${title}` : `${djName(me)} lezárta az adást.`,
-      'system',
-      ''
-    ]);
-    await pushClub('chat', {message: chatPublic(note.rows[0])});
+    await audit(db, me, on ? (takeover ? 'DJ_LIVE_TAKEOVER' : 'DJ_LIVE_START') : 'DJ_LIVE_STOP', on ? title : 'Adás leállítva');
+    await houseLine(db, on ? (takeover ? `${djName(me)} átvette a pultot: ${title}` : `${djName(me)} adásba lépett: ${title}`) : `${djName(me)} lezárta az adást.`);
     await pushClub('state');
     await broadcast('house', 'live', {live: on});
     return {state: await moderatorState(db)};
   });
 
-  /** The stream the site plays while the booth is live, and the public station page. */
+  /** The stream the site plays while the booth is live (empty = the station's own mount), and the station page. */
   router.patch('/api/dj/stream', async ({db, req, user}) => {
     const me = requireModerator({user});
     const body = await readJson(req);
     const streamUrl = body.streamUrl === undefined ? null : cleanUrl(body.streamUrl);
     const providerUrl = body.providerUrl === undefined ? null : cleanUrl(body.providerUrl);
-    await db.query('update public.club_state set stream_url = coalesce($1, stream_url), provider_url = coalesce($2, provider_url), updated_at = now() where id = 1', [streamUrl, providerUrl]);
+    if (providerUrl !== null && providerUrl && !stationSlug(providerUrl)) throw bad('Az állomás oldala gocast.fm/station/… alakú legyen.');
+    await db.query(
+      `update public.club_state set stream_url = coalesce($1, stream_url), provider_url = coalesce($2, provider_url),
+         station_checked_at = null, updated_at = now() where id = 1`,
+      [streamUrl, providerUrl]
+    );
     await audit(db, me, 'DJ_STREAM_UPDATE', `${streamUrl ?? '(változatlan)'} · ${providerUrl ?? '(változatlan)'}`);
     await pushClub('state');
     await broadcast('house', 'live');
     return {state: await moderatorState(db)};
   });
+
+  /** The DJ names what is playing; it heads the setlist and the room hears about it. */
+  router.post('/api/dj/announce', async ({db, req, user}) => {
+    const me = requireModerator({user});
+    const body = parse(announceBody, await readJson(req));
+    const {rows} = await db.query(`insert into public.club_setlist (title, artist, source, by_name) values ($1, $2, 'announce', $3) returning *`, [body.title, body.artist, djName(me)]);
+    await houseLine(db, `Most szól: ${body.artist ? `${body.artist} – ` : ''}${body.title}`, 'now-playing');
+    await pushClub('setlist');
+    return created({entry: setlistOf(rows[0]), state: await moderatorState(db)});
+  });
+
+  router.delete('/api/dj/setlist/:id', async ({db, user, params}) => {
+    requireModerator({user});
+    await db.query('delete from public.club_setlist where id = $1', [params.id]);
+    await pushClub('setlist');
+    return {ok: true, state: await moderatorState(db)};
+  });
+
+  /** A pinned line above the chat. Empty clears it. */
+  router.patch('/api/dj/notice', async ({db, req, user}) => {
+    const me = requireModerator({user});
+    const body = await readJson(req);
+    const text = String(body.text || '').trim().slice(0, 200);
+    await db.query('update public.club_state set notice = $1, updated_at = now() where id = 1', [text]);
+    await audit(db, me, 'DJ_NOTICE', text || '(törölve)');
+    if (text) await houseLine(db, `Közlemény: ${text}`, 'notice');
+    await pushClub('state');
+    return {ok: true, notice: text, state: await moderatorState(db)};
+  });
+
+  /** Slow mode for the chat and the request gate. */
+  router.patch('/api/dj/chat-mode', async ({db, req, user}) => {
+    const me = requireModerator({user});
+    const body = parse(chatModeBody, await readJson(req));
+    if (body.slowSeconds !== undefined) {
+      if (!SLOW_MODES.includes(body.slowSeconds)) throw bad('A lassú mód 0, 5, 15, 30 vagy 60 másodperc lehet.');
+      await db.query('update public.club_state set slow_mode_seconds = $1, updated_at = now() where id = 1', [body.slowSeconds]);
+      await houseLine(db, body.slowSeconds ? `Lassú mód: ${body.slowSeconds} másodperc két üzenet között.` : 'A lassú mód kikapcsolt.');
+    }
+    if (body.requestsOpen !== undefined) {
+      await db.query('update public.club_state set requests_open = $1, updated_at = now() where id = 1', [body.requestsOpen]);
+      await houseLine(db, body.requestsOpen ? 'A kérések újra nyitva.' : 'A DJ lezárta a kéréseket.');
+    }
+    await audit(db, me, 'DJ_CHAT_MODE', `slow=${body.slowSeconds ?? '-'} requests=${body.requestsOpen ?? '-'}`);
+    await pushClub('state');
+    return {state: await moderatorState(db)};
+  });
+
+  /** Wipes the room's chat. */
+  router.delete('/api/dj/chat', async ({db, user}) => {
+    const me = requireModerator({user});
+    await db.query('delete from public.club_chat');
+    await audit(db, me, 'DJ_CHAT_CLEAR', '');
+    await pushClub('chat_cleared');
+    await houseLine(db, `${djName(me)} tiszta lappal indította a chatet.`);
+    return {ok: true, state: await moderatorState(db)};
+  });
+
+  /* ---- polls ---- */
+
+  router.post('/api/dj/poll', async ({db, req, user}) => {
+    const me = requireModerator({user});
+    const body = parse(pollBody, await readJson(req));
+    const labels = [...new Set(body.options.map((option) => option.trim()))].filter(Boolean);
+    if (labels.length < 2) throw bad('Legalább két különböző válasz kell.');
+    const options = labels.map((label, index) => ({id: `o${index + 1}`, label}));
+    await db.query('update public.club_polls set closed_at = now() where closed_at is null');
+    const closesAt = body.minutes ? new Date(Date.now() + body.minutes * 60000) : null;
+    const {rows} = await db.query('insert into public.club_polls (question, options, by_name, closes_at) values ($1, $2, $3, $4) returning *', [body.question, JSON.stringify(options), djName(me), closesAt]);
+    await audit(db, me, 'DJ_POLL_OPEN', body.question);
+    await houseLine(db, `Szavazás: ${body.question}`, 'poll');
+    const poll = await pollOf(db, rows[0]);
+    await pushClub('poll', {poll});
+    return created({poll, state: await moderatorState(db)});
+  });
+
+  router.post('/api/dj/poll/:id/close', async ({db, user, params}) => {
+    const me = requireModerator({user});
+    const {rows} = await db.query('update public.club_polls set closed_at = coalesce(closed_at, now()) where id = $1 returning *', [params.id]);
+    if (!rows[0]) throw notFound('Szavazás nem található');
+    const poll = (await pollOf(db, rows[0]))!;
+    const winner = [...poll.options].sort((a, b) => b.votes - a.votes)[0];
+    await audit(db, me, 'DJ_POLL_CLOSE', poll.question);
+    await houseLine(db, poll.total ? `Szavazás lezárva: ${winner.label} (${winner.votes} szavazat).` : 'Szavazás lezárva, szavazat nélkül.', 'poll');
+    await pushClub('poll', {poll});
+    return {poll, state: await moderatorState(db)};
+  });
+
+  router.delete('/api/dj/poll/:id', async ({db, user, params}) => {
+    requireModerator({user});
+    await db.query('delete from public.club_polls where id = $1', [params.id]);
+    await pushClub('poll', {poll: null});
+    return {ok: true, state: await moderatorState(db)};
+  });
+
+  /* ---- library & playback ---- */
 
   /**
    * Step 1 of an upload. With Cloudinary configured the browser gets a signed
@@ -574,9 +864,11 @@ export function registerClubRoutes(router: Router): void {
   const playItem = async (db: Queryable, me: SessionUser, item: PlayItem) => {
     const current = {id: item.id, trackId: item.trackId || item.id, name: item.name, url: item.url, addedBy: item.addedBy || djName(me), playbackPosition: 0, playbackPlaying: true, playbackAt: Date.now()};
     await db.query(
-      `update public.club_state set current = $1, live = true, dj_user_id = $2, dj_name = $3, started_at = coalesce(started_at, now()), updated_at = now() where id = 1`,
+      `update public.club_state set current = $1, live = true, auto_live = false, dj_user_id = $2, dj_name = $3, started_at = coalesce(started_at, now()), updated_at = now() where id = 1`,
       [JSON.stringify(current), me.id, djName(me)]
     );
+    await db.query(`insert into public.club_setlist (title, artist, source, by_name) values ($1, '', 'library', $2)`, [item.name, item.addedBy || djName(me)]);
+    await pushClub('setlist');
     return current;
   };
 
@@ -651,30 +943,34 @@ export function registerClubRoutes(router: Router): void {
     return created({ok: true, message: chatPublic(rows[0])});
   });
 
+  /** Accept (queues a library track), decline, or mark a request played (it joins the setlist). */
   router.post('/api/dj/request', async ({db, req, user}) => {
     const me = requireModerator({user});
     const body = await readJson(req);
     const action = String(body.action || '').toLowerCase();
-    if (!['accept', 'decline'].includes(action)) throw bad('Érvénytelen művelet');
+    if (!['accept', 'decline', 'played'].includes(action)) throw bad('Érvénytelen művelet');
     const request = (await db.query('select * from public.club_requests where id = $1', [String(body.id || '')])).rows[0];
     if (!request) throw notFound('Kérés nem található');
-    await db.query(`update public.club_requests set status = $2, handled_by_name = $3, handled_at = now() where id = $1`, [request.id, action === 'accept' ? 'accepted' : 'declined', djName(me)]);
+    const status = action === 'accept' ? 'accepted' : action === 'decline' ? 'declined' : 'played';
+    await db.query(`update public.club_requests set status = $2, handled_by_name = $3, handled_at = now() where id = $1`, [request.id, status, djName(me)]);
     if (action === 'accept' && request.item?.id) {
       const track = await trackById(db, String(request.item.id));
       if (track) {
         await db.query('insert into public.club_queue (track_id, name, url, added_by_name, request_id) values ($1, $2, $3, $4, $5)', [track.id, track.name, track.url, request.name, request.id]);
       }
     }
-    const {rows} = await db.query('insert into public.club_chat (name, text, kind, color, request_id, ip, browser_hash) values ($1, $2, $3, $4, $5, $6, $7) returning *', [
-      'Red Moon',
-      action === 'accept' ? `${djName(me)} elfogadta ${request.name} kérését: ${request.item?.name || ''}` : `${djName(me)} most nem játssza: ${request.item?.name || ''}`,
-      action === 'accept' ? 'request-accepted' : 'request-declined',
-      '',
-      request.id,
-      request.ip,
-      request.browser_hash
-    ]);
-    await pushClub('chat', {message: chatPublic(rows[0])});
+    if (action === 'played') {
+      await db.query(`insert into public.club_setlist (title, artist, source, request_id, by_name) values ($1, '', 'request', $2, $3)`, [request.item?.name || 'Kérés', request.id, request.name]);
+      await pushClub('setlist');
+    }
+    const text =
+      action === 'accept'
+        ? `${djName(me)} elfogadta ${request.name} kérését: ${request.item?.name || ''}`
+        : action === 'decline'
+          ? `${djName(me)} most nem játssza: ${request.item?.name || ''}`
+          : `Most szól: ${request.item?.name || ''} — ${request.name} kérésére`;
+    const kind = action === 'accept' ? 'request-accepted' : action === 'decline' ? 'request-declined' : 'now-playing';
+    await houseLine(db, text, kind, {requestId: request.id});
     await pushClub('requests');
     return {state: await moderatorState(db)};
   });
