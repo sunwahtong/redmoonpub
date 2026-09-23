@@ -21,7 +21,7 @@ interface Puff {
 }
 
 /**
- * A haze of pale smoke drifting slowly upward behind the hero.
+ * A bank of pale smoke rolling slowly upward across the hero.
  *
  * Canvas rather than a stack of blurred, animated divs: a handful of large
  * soft-edged circles is cheap to redraw every frame, where the same look
@@ -34,7 +34,7 @@ interface Puff {
  * Purely decorative: renders nothing when the visitor has asked for reduced
  * motion, and pauses while the tab is hidden.
  */
-export const Smoke: React.FC<Props> = ({density = 5, className = ''}) => {
+export const Smoke: React.FC<Props> = ({density = 7, className = ''}) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -53,22 +53,22 @@ export const Smoke: React.FC<Props> = ({density = 5, className = ''}) => {
     let running = true;
 
     const spawn = (seeded: boolean): Puff => {
-      const maxLife = 1400 + Math.random() * 1600;
-      const maxRadius = width * (0.32 + Math.random() * 0.3);
+      const maxLife = 900 + Math.random() * 1000;
+      const maxRadius = width * (0.4 + Math.random() * 0.38);
       return {
         x: Math.random() * width,
         // Seeded puffs start already drifting through the frame; spawned ones
         // rise in from below so nothing pops into view mid-air.
-        y: seeded ? height * (0.25 + Math.random() * 0.85) : height + maxRadius * 0.3,
+        y: seeded ? height * (0.15 + Math.random() * 0.95) : height + maxRadius * 0.3,
         radius: maxRadius,
         maxRadius,
-        driftX: (Math.random() - 0.5) * 0.12,
+        driftX: (Math.random() - 0.5) * 0.3,
         wobble: Math.random() * Math.PI * 2,
-        wobbleSpeed: 0.0025 + Math.random() * 0.003,
-        rise: 0.05 + Math.random() * 0.09,
+        wobbleSpeed: 0.004 + Math.random() * 0.005,
+        rise: 0.12 + Math.random() * 0.2,
         life: seeded ? Math.random() * maxLife : 0,
         maxLife,
-        peak: 0.05 + Math.random() * 0.05
+        peak: 0.32 + Math.random() * 0.3
       };
     };
 
@@ -109,9 +109,10 @@ export const Smoke: React.FC<Props> = ({density = 5, className = ''}) => {
         puff.radius = puff.maxRadius * (0.7 + 0.3 * Math.min(1, progress / 0.25));
 
         const gradient = context.createRadialGradient(puff.x, puff.y, 0, puff.x, puff.y, puff.radius);
-        gradient.addColorStop(0, `rgba(255, 248, 244, ${alpha})`);
-        gradient.addColorStop(0.45, `rgba(255, 238, 232, ${alpha * 0.55})`);
-        gradient.addColorStop(1, 'rgba(255, 235, 230, 0)');
+        gradient.addColorStop(0, `rgba(255, 250, 247, ${alpha})`);
+        gradient.addColorStop(0.35, `rgba(255, 244, 240, ${alpha * 0.85})`);
+        gradient.addColorStop(0.7, `rgba(255, 236, 230, ${alpha * 0.4})`);
+        gradient.addColorStop(1, 'rgba(255, 230, 224, 0)');
 
         context.fillStyle = gradient;
         context.beginPath();
