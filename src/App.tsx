@@ -1,4 +1,4 @@
-import React, {useEffect} from 'react';
+import React, {lazy, Suspense, useEffect} from 'react';
 import {BrowserRouter, Routes, Route} from 'react-router-dom';
 import {Navbar} from './components/layout/Navbar';
 import {Footer} from './components/layout/Footer';
@@ -7,11 +7,13 @@ import {IntroLoader} from './components/effects/IntroLoader';
 import {PageTransition} from './components/effects/PageTransition';
 import {CustomCursor} from './components/effects/CustomCursor';
 import {StatusPill} from './components/layout/StatusPill';
+import {LivePopup} from './components/layout/LivePopup';
 import {ScrollProgress} from './components/effects/ScrollProgress';
 import {FilmGrain} from './components/effects/FilmGrain';
 import {PointerSpotlight} from './components/effects/PointerSpotlight';
 import {Toaster} from './components/ui/Toaster';
 import {DialogHost} from './components/ui/DialogHost';
+import {ErrorBoundary} from './components/ui/ErrorBoundary';
 import {useUiSounds} from './hooks/useUiSounds';
 import {useAuthStore} from './stores/useAuthStore';
 import {HomePage} from './pages/HomePage';
@@ -19,32 +21,42 @@ import {MenuPage} from './pages/MenuPage';
 import {EventsPage} from './pages/EventsPage';
 import {GalleryPage} from './pages/GalleryPage';
 import {AboutPage} from './pages/AboutPage';
-import {LocationPage} from './pages/LocationPage';
 import {ReservationsPage} from './pages/ReservationsPage';
 import {VipPage} from './pages/VipPage';
 import {CareersPage} from './pages/CareersPage';
 import {StaffLoginPage} from './pages/StaffLoginPage';
 import {ClubPage} from './pages/ClubPage';
-import {DjPage} from './pages/DjPage';
-import {DashboardPage} from './pages/staff/DashboardPage';
-import {ProfilePage} from './pages/staff/ProfilePage';
-import {ShiftPage} from './pages/staff/ShiftPage';
-import {RegisterPage} from './pages/staff/RegisterPage';
-import {InventoryPage} from './pages/staff/InventoryPage';
-import {SalesPage} from './pages/staff/SalesPage';
-import {UsersPage} from './pages/staff/UsersPage';
-import {AuditPage} from './pages/staff/AuditPage';
-import {ProductsPage} from './pages/staff/ProductsPage';
-import {ReportsPage} from './pages/staff/ReportsPage';
-import {DocumentsPage} from './pages/staff/DocumentsPage';
-import {StaffReservationsPage} from './pages/staff/ReservationsPage';
-import {ApplicationsPage} from './pages/staff/ApplicationsPage';
-import {OrdersPage} from './pages/staff/OrdersPage';
-import {StaffEventsPage} from './pages/staff/EventsPage';
-import {ShowcasePage} from './pages/staff/ShowcasePage';
 import {RequireRole} from './components/auth/RequireRole';
 import {NotFoundPage} from './pages/NotFoundPage';
 import type {Role} from './stores/useAuthStore';
+
+/*
+ * The public pages ship in the main bundle: they are what a visitor opens.
+ * The map (Leaflet), the booth and the whole console load on first use, so
+ * nobody downloads the register to read the drink list.
+ */
+const load = <T extends Record<string, React.ComponentType<any>>>(loader: () => Promise<T>, name: keyof T) =>
+  lazy(() => loader().then((module) => ({default: module[name] as React.ComponentType<any>})));
+
+const LocationPage = load(() => import('./pages/LocationPage'), 'LocationPage');
+const DjPage = load(() => import('./pages/DjPage'), 'DjPage');
+const DashboardPage = load(() => import('./pages/staff/DashboardPage'), 'DashboardPage');
+const ProfilePage = load(() => import('./pages/staff/ProfilePage'), 'ProfilePage');
+const ShiftPage = load(() => import('./pages/staff/ShiftPage'), 'ShiftPage');
+const RegisterPage = load(() => import('./pages/staff/RegisterPage'), 'RegisterPage');
+const InventoryPage = load(() => import('./pages/staff/InventoryPage'), 'InventoryPage');
+const SalesPage = load(() => import('./pages/staff/SalesPage'), 'SalesPage');
+const UsersPage = load(() => import('./pages/staff/UsersPage'), 'UsersPage');
+const AuditPage = load(() => import('./pages/staff/AuditPage'), 'AuditPage');
+const ProductsPage = load(() => import('./pages/staff/ProductsPage'), 'ProductsPage');
+const ReportsPage = load(() => import('./pages/staff/ReportsPage'), 'ReportsPage');
+const DocumentsPage = load(() => import('./pages/staff/DocumentsPage'), 'DocumentsPage');
+const StaffReservationsPage = load(() => import('./pages/staff/ReservationsPage'), 'StaffReservationsPage');
+const ApplicationsPage = load(() => import('./pages/staff/ApplicationsPage'), 'ApplicationsPage');
+const OrdersPage = load(() => import('./pages/staff/OrdersPage'), 'OrdersPage');
+const StaffEventsPage = load(() => import('./pages/staff/EventsPage'), 'StaffEventsPage');
+const ShowcasePage = load(() => import('./pages/staff/ShowcasePage'), 'ShowcasePage');
+const StaffGalleryPage = load(() => import('./pages/staff/GalleryPage'), 'StaffGalleryPage');
 
 /** Console routes and the lowest rank that may open them. */
 const CONSOLE_ROUTES: {path: string; need?: Role; element: React.ReactNode}[] = [
@@ -61,10 +73,18 @@ const CONSOLE_ROUTES: {path: string; need?: Role; element: React.ReactNode}[] = 
   {path: '/staff/documents', need: 'manager', element: <DocumentsPage/>},
   {path: '/staff/events', need: 'owner', element: <StaffEventsPage/>},
   {path: '/staff/showcase', need: 'owner', element: <ShowcasePage/>},
+  {path: '/staff/gallery', need: 'owner', element: <StaffGalleryPage/>},
   {path: '/staff/reports', need: 'owner', element: <ReportsPage/>},
   {path: '/staff/users', need: 'owner', element: <UsersPage/>},
   {path: '/staff/audit', need: 'owner', element: <AuditPage/>}
 ];
+
+const PageLoading: React.FC = () => (
+  <main className="flex min-h-[70vh] items-center justify-center pt-[68px]">
+    <span className="rm-loading-line" aria-hidden="true"/>
+    <span className="sr-only">Betöltés</span>
+  </main>
+);
 
 export const App: React.FC = () => {
   useUiSounds();
@@ -84,6 +104,7 @@ export const App: React.FC = () => {
       <PageTransition/>
       <CustomCursor/>
       <StatusPill/>
+      <LivePopup/>
       <ScrollProgress/>
       <FilmGrain/>
       <PointerSpotlight/>
@@ -92,31 +113,31 @@ export const App: React.FC = () => {
       <div className="flex min-h-screen flex-col">
         <Navbar/>
         <div className="flex-1">
-          <Routes>
-            <Route path="/" element={<HomePage/>}/>
-            <Route path="/menu" element={<MenuPage/>}/>
-            <Route path="/events" element={<EventsPage/>}/>
-            <Route path="/gallery" element={<GalleryPage/>}/>
-            <Route path="/about" element={<AboutPage/>}/>
-            <Route path="/location" element={<LocationPage/>}/>
-            <Route path="/reservations" element={<ReservationsPage/>}/>
-            <Route path="/vip" element={<VipPage/>}/>
-            <Route path="/careers" element={<CareersPage/>}/>
+          <ErrorBoundary>
+            <Suspense fallback={<PageLoading/>}>
+              <Routes>
+                <Route path="/" element={<HomePage/>}/>
+                <Route path="/menu" element={<MenuPage/>}/>
+                <Route path="/events" element={<EventsPage/>}/>
+                <Route path="/gallery" element={<GalleryPage/>}/>
+                <Route path="/about" element={<AboutPage/>}/>
+                <Route path="/location" element={<LocationPage/>}/>
+                <Route path="/reservations" element={<ReservationsPage/>}/>
+                <Route path="/vip" element={<VipPage/>}/>
+                <Route path="/careers" element={<CareersPage/>}/>
 
-            <Route path="/club" element={<ClubPage/>}/>
-            <Route path="/dj" element={<DjPage/>}/>
-            <Route path="/staff-login" element={<StaffLoginPage/>}/>
+                <Route path="/club" element={<ClubPage/>}/>
+                <Route path="/dj" element={<DjPage/>}/>
+                <Route path="/staff-login" element={<StaffLoginPage/>}/>
 
-            {CONSOLE_ROUTES.map((route) => (
-              <Route
-                key={route.path}
-                path={route.path}
-                element={<RequireRole need={route.need}>{route.element}</RequireRole>}
-              />
-            ))}
+                {CONSOLE_ROUTES.map((route) => (
+                  <Route key={route.path} path={route.path} element={<RequireRole need={route.need}>{route.element}</RequireRole>}/>
+                ))}
 
-            <Route path="*" element={<NotFoundPage/>}/>
-          </Routes>
+                <Route path="*" element={<NotFoundPage/>}/>
+              </Routes>
+            </Suspense>
+          </ErrorBoundary>
         </div>
         <Footer/>
       </div>

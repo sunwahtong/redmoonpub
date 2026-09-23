@@ -11,6 +11,7 @@ import {
   createSession,
   dummyHash,
   ensureSignature,
+  replaceSignature,
   hashPassword,
   loadAccount,
   needsRehash,
@@ -25,6 +26,9 @@ import {
 } from '../auth.ts';
 import {bad, clientIp, conflict, formatPhone, iso, normalizePhone, parse, parseCookies, readJson, unauthorized, type Router} from '../http.ts';
 import {config} from '../config.ts';
+import {destroyMedia, ownsMedia} from '../media.ts';
+import {generateSignatureSvg, SIGNATURE_PATH_PATTERN, svgFromImage, svgFromPath} from '../../shared/signature.ts';
+import {roleAtLeast} from '../auth.ts';
 
 const loginBody = z.object({
   username: z.string().trim().min(1, 'Add meg a felhasználóneved.').max(80),
@@ -41,7 +45,9 @@ const profilePatch = z.object({
   name: z.string().trim().min(2, 'A név legalább két karakter.').max(100).optional(),
   nickname: z.string().trim().max(40).optional(),
   idNumber: z.string().trim().max(40).optional(),
-  avatar: z.string().max(config.maxAvatarBytes).optional()
+  /** An upload of ours (URL + public id), or '' to remove the picture. */
+  avatar: z.string().trim().max(600).optional(),
+  avatarPublicId: z.string().trim().max(200).optional()
 });
 
 export function registerSessionRoutes(router: Router): void {
@@ -78,7 +84,7 @@ export function registerSessionRoutes(router: Router): void {
     await createSession(db, req, res, row.id);
 
     const account = (await loadAccount(db, row.id))!;
-    account.signatureSvg = await ensureSignature(db, account);
+    await ensureSignature(db, account);
     await audit(db, account, live.length ? 'SESSION_TAKEOVER' : 'LOGIN', live.length ? 'Korábbi munkamenet lezárva új belépéskor' : 'Sikeres belépés');
     return {user: publicUser(account, {self: true})};
   });
@@ -95,7 +101,7 @@ export function registerSessionRoutes(router: Router): void {
     if (!user) return {user: null};
     const fresh = await loadAccount(db, user.id);
     if (!fresh) return {user: null};
-    fresh.signatureSvg = await ensureSignature(db, fresh);
+    await ensureSignature(db, fresh);
     return {user: publicUser(fresh, {self: true})};
   });
 
@@ -103,7 +109,9 @@ export function registerSessionRoutes(router: Router): void {
     const me = requireUser({user});
     await db.query('update public.sessions set last_seen_at = now() where id = $1', [me.sessionId]);
     await db.query('update public.staff_accounts set last_active_at = now() where id = $1', [me.id]);
-    return {ok: true, at: new Date().toISOString()};
+    // A promotion while signed in shows up here, so the signature prompt can appear at once.
+    const signaturePrompt = roleAtLeast(me.role, 'manager') && !me.signatureDecided && !me.signatureLockedAt;
+    return {ok: true, at: new Date().toISOString(), role: me.role, signaturePrompt};
   });
 
   router.get('/api/presence', async ({db, user}) => {
@@ -149,10 +157,10 @@ export function registerSessionRoutes(router: Router): void {
   router.patch('/api/profile', async ({db, req, user}) => {
     const me = requireUser({user});
     const body = parse(profilePatch, await readJson(req));
-    if (body.avatar !== undefined && body.avatar && !/^data:image\/(png|jpe?g|webp);base64,[A-Za-z0-9+/=]+$/.test(body.avatar)) {
-      throw bad('A profilképnek PNG/JPG/WebP képnek kell lennie.');
-    }
-    if (body.avatar !== undefined && body.avatar.length > config.maxAvatarBytes) throw bad('A profilkép túl nagy.');
+    const target = await loadAccount(db, me.id);
+    if (!target) throw unauthorized('A fiók nem található');
+    const avatarPublicId = body.avatar ? body.avatarPublicId || '' : '';
+    if (body.avatar && !ownsMedia(body.avatar, avatarPublicId, 'image', 'avatar')) throw bad('A profilkép csak a ház médiatárából jöhet: tölts fel egyet.');
     const fields: string[] = [];
     const values: unknown[] = [me.id];
     const set = (column: string, value: unknown) => {
@@ -162,8 +170,13 @@ export function registerSessionRoutes(router: Router): void {
     if (body.name !== undefined) set('name', body.name);
     if (body.nickname !== undefined) set('nickname', body.nickname);
     if (body.idNumber !== undefined) set('id_number', body.idNumber);
-    if (body.avatar !== undefined) set('avatar', body.avatar);
+    if (body.avatar !== undefined) {
+      set('avatar', body.avatar);
+      set('avatar_public_id', avatarPublicId);
+    }
     if (fields.length) await db.query(`update public.staff_accounts set ${fields.join(', ')} where id = $1`, values);
+    // The previous picture leaves the store with the reference.
+    if (body.avatar !== undefined && target.avatarPublicId && target.avatarPublicId !== avatarPublicId) await destroyMedia(target.avatarPublicId, 'image');
     const fresh = (await loadAccount(db, me.id))!;
     await audit(db, fresh, 'PROFILE_UPDATE', 'Saját profil frissítve');
     return {user: publicUser(fresh, {self: true})};
@@ -182,6 +195,49 @@ export function registerSessionRoutes(router: Router): void {
     const revoked = await revokeUserSessions(db, me.id, 'password_changed', me.tokenHash);
     await audit(db, me, 'PASSWORD_CHANGE', `Jelszó megváltoztatva · ${revoked} másik munkamenet lezárva`);
     return {ok: true};
+  });
+
+  /* ---------------- signature ---------------- */
+
+  const signatureBody = z.discriminatedUnion('mode', [
+    z.object({mode: z.literal('draw'), path: z.string().min(10).max(40_000)}),
+    z.object({mode: z.literal('upload'), image: z.string().min(50).max(config.maxSignatureBytes)}),
+    z.object({mode: z.literal('generated'), seed: z.string().trim().max(80).default('')}),
+    z.object({mode: z.literal('keep')})
+  ]);
+
+  /**
+   * The person chooses their signature: draws it, uploads a picture, picks a
+   * generated variant, or keeps the current one. Allowed for managers and
+   * owners until a document has carried the signature.
+   */
+  router.put('/api/profile/signature', async ({db, req, user}) => {
+    const me = requireUser({user});
+    if (!roleAtLeast(me.role, 'manager')) throw bad('Aláírás csak manager vagy tulajdonosi fióknak készül.');
+    const fresh = (await loadAccount(db, me.id))!;
+    if (fresh.signatureLockedAt) throw conflict('Az aláírásod már dokumentumon szerepel, ezért végleges.');
+    const body = parse(signatureBody, await readJson(req));
+    let svg: string | null = null;
+    let kind = fresh.signatureKind || 'generated';
+    if (body.mode === 'draw') {
+      if (!SIGNATURE_PATH_PATTERN.test(body.path)) throw bad('A rajz nem olvasható. Próbáld újra.');
+      svg = svgFromPath(body.path.trim(), fresh.name);
+      kind = 'drawn';
+    } else if (body.mode === 'upload') {
+      if (!/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(body.image)) throw bad('PNG képet várunk.');
+      svg = svgFromImage(body.image, fresh.name);
+      kind = 'uploaded';
+    } else if (body.mode === 'generated') {
+      svg = generateSignatureSvg(fresh.name, body.seed || fresh.id);
+      kind = 'generated';
+    }
+    if (svg) {
+      await replaceSignature(db, fresh, svg, kind, true);
+    } else {
+      await db.query('update public.staff_accounts set signature_decided = true where id = $1', [me.id]);
+    }
+    await audit(db, fresh, 'SIGNATURE_SET', body.mode === 'keep' ? 'A meglévő aláírás megerősítve' : `Új aláírás · ${kind}`);
+    return {user: publicUser((await loadAccount(db, me.id))!, {self: true})};
   });
 
   router.get('/api/permissions', async ({user}) => {

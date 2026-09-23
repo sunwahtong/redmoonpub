@@ -1,5 +1,6 @@
 import React, {useEffect, useRef, useState} from 'react';
 import {useLocation, useNavigate} from 'react-router-dom';
+import {assetUrl} from '../../lib/api';
 
 /** How long the overlay covers the screen before the route actually changes. */
 const LEAD_MS = 520;
@@ -88,7 +89,7 @@ export const PageTransition: React.FC = () => {
       <div className="rm-transition-inner">
         <span className="rm-transition-ring top"/>
         <span className="rm-transition-ring bottom"/>
-        <img className="rm-transition-logo" src="/assets/red-moon-logo.png" alt=""/>
+        <img className="rm-transition-logo" src={assetUrl('/assets/red-moon-logo.png')} alt=""/>
         <b className="rm-transition-title">RED MOON</b>
         <span className="rm-transition-line"/>
         <span className="rm-transition-status">BETÖLTÉS</span>

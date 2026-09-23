@@ -10,6 +10,7 @@ import {SectionHead} from '../components/ui/SectionHead';
 import {Embers} from '../components/effects/Embers';
 import {apiGet, apiSend, formatDate, getVisitorToken} from '../lib/api';
 import {useParallax} from '../hooks/useParallax';
+import {backgroundImage} from '../lib/media';
 import {playSfx} from '../lib/sfx';
 import {dialog} from '../stores/useDialogStore';
 import {toast} from '../stores/useToastStore';
@@ -33,7 +34,6 @@ export const CareersPage: React.FC = () => {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState(PHONE_PREFIX);
   const [age, setAge] = useState('');
-  const [radio, setRadio] = useState('');
   const [availability, setAvailability] = useState('');
   const [experience, setExperience] = useState('');
   const [why, setWhy] = useState('');
@@ -93,7 +93,6 @@ export const CareersPage: React.FC = () => {
         name: name.trim(),
         phone: phoneDigits,
         age: ageNumber,
-        radio: radio.trim(),
         position,
         availability: availability.trim(),
         experience: experience.trim(),
@@ -106,7 +105,6 @@ export const CareersPage: React.FC = () => {
       setName('');
       setPhone(PHONE_PREFIX);
       setAge('');
-      setRadio('');
       setAvailability('');
       setExperience('');
       setWhy('');
@@ -148,7 +146,8 @@ export const CareersPage: React.FC = () => {
       <section className="relative flex min-h-[560px] items-end overflow-hidden border-b border-[color:var(--rm-line)] px-[8vw] pb-16 pt-[170px]">
         <div
           ref={backdropRef}
-          className="pointer-events-none absolute inset-x-0 -top-20 bottom-[-80px] bg-[url('/assets/red-moon-cinematic.png')] bg-cover bg-center opacity-[0.28]"
+          style={backgroundImage('/assets/red-moon-cinematic.png')}
+          className="pointer-events-none absolute inset-x-0 -top-20 bottom-[-80px] bg-cover bg-center opacity-[0.28]"
           aria-hidden="true"
         />
         <div
@@ -187,7 +186,7 @@ export const CareersPage: React.FC = () => {
           aside="Válassz egy pozíciót — a jelentkezési űrlap alul nyílik meg."
         />
 
-        <div className="grid grid-cols-1 gap-3.5 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3.5 md:grid-cols-3">
           {POSITIONS.map((entry, index) => {
             const active = position === entry.id;
             return (
@@ -283,23 +282,16 @@ export const CareersPage: React.FC = () => {
                   )}
                 </div>
 
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                  {(
-                    [
-                      {key: 'name', label: 'KARAKTER NEVE', value: name, set: setName, max: 80},
-                      {key: 'radio', label: 'RÁDIÓFREKVENCIA (OPCIONÁLIS)', value: radio, set: setRadio, max: 24}
-                    ] as const
-                  ).map((field) => (
-                    <label key={field.key} className="flex flex-col gap-2">
-                      <span className="text-[8px] tracking-[0.25em] text-[#777]">{field.label}</span>
-                      <input
-                        value={field.value}
-                        onChange={(event) => field.set(event.target.value)}
-                        maxLength={field.max}
-                        className="border border-white/10 bg-black/50 p-3.5 text-xs tracking-wider text-white outline-none transition-colors focus:border-[color:var(--rm-red)]"
-                      />
-                    </label>
-                  ))}
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                  <label className="flex flex-col gap-2">
+                    <span className="text-[8px] tracking-[0.25em] text-[#777]">KARAKTER NEVE</span>
+                    <input
+                      value={name}
+                      onChange={(event) => setName(event.target.value)}
+                      maxLength={80}
+                      className="border border-white/10 bg-black/50 p-3.5 text-xs tracking-wider text-white outline-none transition-colors focus:border-[color:var(--rm-red)]"
+                    />
+                  </label>
 
                   <label className="flex flex-col gap-2">
                     <span className="text-[8px] tracking-[0.25em] text-[#777]">TELEFONSZÁM</span>
@@ -426,7 +418,7 @@ export const CareersPage: React.FC = () => {
                   <span className="rm-label relative">AHOGY FELVESZÜNK</span>
                   <ol className="relative mt-4 flex flex-col gap-4">
                     {[
-                      ['01', 'Elolvassuk', 'Minden jelentkezést egy üzletvezető néz át. Nincs automata szűrő.'],
+                      ['01', 'Elolvassuk', 'Minden jelentkezést egy manager néz át. Nincs automata szűrő.'],
                       ['02', 'Behívunk', 'Ha jó az illeszkedés, telefonon keresünk és behívunk egy estére.'],
                       ['03', 'Próbaműszak', 'Egy közös műszak. Utána mindkét fél eldönti, hogy akarja-e.']
                     ].map(([no, title, body]) => (

@@ -11,6 +11,7 @@ import {fileURLToPath} from 'node:url';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 const bool = (value: unknown): boolean => ['1', 'true', 'yes', 'on'].includes(String(value || '').trim().toLowerCase());
+const text = (value: unknown): string => String(value || '').trim();
 
 export const config = Object.freeze({
   root: ROOT,
@@ -24,21 +25,35 @@ export const config = Object.freeze({
   serverless: !!process.env.VERCEL || bool(process.env.RM_SERVERLESS),
 
   /** PostgreSQL connection string. Empty means the embedded local database. */
-  databaseUrl: String(process.env.DATABASE_URL || '').trim(),
-  databaseSsl: String(process.env.DB_SSLMODE || '').toLowerCase() !== 'disable',
+  databaseUrl: text(process.env.DATABASE_URL),
+  databaseSsl: text(process.env.DB_SSLMODE).toLowerCase() !== 'disable',
   /** Where the embedded database keeps its files when DATABASE_URL is empty. */
   localDataDir: path.join(ROOT, 'data', 'pglite'),
 
-  /** Supabase Storage, used for DJ audio and uploaded images. */
-  supabaseUrl: String(process.env.SUPABASE_URL || '').replace(/\/+$/, ''),
-  supabaseServiceKey: String(process.env.SUPABASE_SERVICE_ROLE_KEY || ''),
-  musicBucket: String(process.env.SUPABASE_BUCKET || 'dj-music'),
-  mediaBucket: String(process.env.SUPABASE_MEDIA_BUCKET || 'media'),
+  /**
+   * Supabase Realtime, used to push changes to open browsers. The publishable
+   * key (sb_publishable_…) is enough for public broadcast channels; the secret
+   * key (sb_secret_…) is used instead when present. The legacy anon /
+   * service_role JWT names still work as a fallback.
+   */
+  supabaseUrl: text(process.env.SUPABASE_URL).replace(/\/+$/, ''),
+  supabasePublishableKey: text(process.env.SUPABASE_PUBLISHABLE_KEY) || text(process.env.SUPABASE_ANON_KEY),
+  supabaseSecretKey: text(process.env.SUPABASE_SECRET_KEY) || text(process.env.SUPABASE_SERVICE_ROLE_KEY),
+
+  /**
+   * Cloudinary holds every uploaded picture and audio file (gallery, event
+   * covers, product images, DJ tracks). Without it, uploads land on the local
+   * disk under public/assets/uploads — fine for development, not for Vercel.
+   */
+  cloudinaryCloudName: text(process.env.CLOUDINARY_CLOUD_NAME),
+  cloudinaryApiKey: text(process.env.CLOUDINARY_API_KEY),
+  cloudinaryApiSecret: text(process.env.CLOUDINARY_API_SECRET),
+  cloudinaryFolder: text(process.env.CLOUDINARY_FOLDER) || 'redmoon',
 
   /** First owner, created once while no owner account exists. */
-  ownerUsername: String(process.env.OWNER_USERNAME || '').trim(),
+  ownerUsername: text(process.env.OWNER_USERNAME),
   ownerPassword: String(process.env.OWNER_PASSWORD || ''),
-  ownerName: String(process.env.OWNER_NAME || 'Red Moon Owner').trim() || 'Red Moon Owner',
+  ownerName: text(process.env.OWNER_NAME) || 'Red Moon Owner',
 
   /** Sessions: idle timeout and absolute lifetime. */
   sessionIdleMs: 12 * 60 * 60 * 1000,
@@ -48,8 +63,10 @@ export const config = Object.freeze({
   loginMaxPerUser: 8,
   loginMaxPerIp: 40,
 
-  /** Largest JSON body accepted, in bytes. Avatars have their own limit. */
+  /** Largest JSON body accepted, in bytes. Avatars and signatures have their own limits. */
   maxJsonBytes: 1024 * 1024,
   maxAvatarBytes: 700 * 1024,
-  maxAudioBytes: 80 * 1024 * 1024
+  maxSignatureBytes: 260 * 1024,
+  maxAudioBytes: 80 * 1024 * 1024,
+  maxImageBytes: 12 * 1024 * 1024
 });

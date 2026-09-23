@@ -3,6 +3,7 @@ import {Link} from 'react-router-dom';
 import {CalendarClock, DoorOpen, Radio} from 'lucide-react';
 import {useHouseStatus} from '../../hooks/useHouseStatus';
 import {formatTime, formatWeekday} from '../../lib/api';
+import {closedLine} from '../layout/StatusPill';
 
 /**
  * "Ma este" — one strip answering the three things a visitor actually wants to
@@ -10,7 +11,7 @@ import {formatTime, formatWeekday} from '../../lib/api';
  * Every piece degrades to a useful line when the house has nothing to say.
  */
 export const TonightBar: React.FC = () => {
-  const {data: status} = useHouseStatus(20000);
+  const {data: status} = useHouseStatus();
   const nextEvent = status?.nextEvent || null;
   const live = !!status?.live;
 
@@ -21,7 +22,7 @@ export const TonightBar: React.FC = () => {
       value: status?.open ? 'MOST NYITVA' : 'MOST ZÁRVA',
       hint: status?.open
         ? `${status.since ? formatTime(status.since) + ' óta' : 'Gyere be'}${status.note ? ' · ' + status.note : ', szól a zene.'}`
-        : 'Naplemente után nyitunk.',
+        : closedLine(status?.closedAt, nextEvent),
       hot: !!status?.open,
       to: '/location'
     },
@@ -29,7 +30,7 @@ export const TonightBar: React.FC = () => {
       icon: Radio,
       label: 'RED MOON CLUB',
       value: live ? `ÉLŐ · ${status?.dj || 'DJ'}` : 'NINCS ADÁS',
-      hint: live ? `${status?.listenerCount ?? 0} hallgató a vonalban.` : 'Nézz vissza később.',
+      hint: live ? `${status?.title ? status.title + ' · ' : ''}${status?.listenerCount ?? 0} hallgató a vonalban.` : 'A klub chat és a kérések bármikor élnek.',
       hot: live,
       to: '/club'
     },
@@ -54,24 +55,15 @@ export const TonightBar: React.FC = () => {
             to={cell.to}
             className="group flex items-center gap-4 border-b border-[color:var(--rm-line)] px-[var(--rm-gutter)] py-7 transition-colors last:border-b-0 hover:bg-[rgba(213,31,60,0.05)] md:border-b-0 md:border-r md:px-8 md:last:border-r-0"
           >
-            <cell.icon
-              size={17}
-              className={cell.hot ? 'text-[color:var(--rm-red)]' : 'text-[#6d5d64]'}
-            />
+            <cell.icon size={17} className={cell.hot ? 'text-[color:var(--rm-red)]' : 'text-[#6d5d64]'}/>
             <div className="min-w-0">
               <span className="block text-[8px] tracking-[0.25em] text-[#777]">{cell.label}</span>
-              <strong
-                className={`mt-1 block truncate font-heading text-[17px] leading-none ${
-                  cell.hot ? 'text-white' : 'text-[#c9c0c4]'
-                }`}
-              >
+              <strong className={`mt-1 block truncate font-heading text-[17px] leading-none ${cell.hot ? 'text-white' : 'text-[#c9c0c4]'}`}>
                 {cell.value}
               </strong>
               <span className="mt-1.5 block truncate text-[10px] text-[#8d8584]">{cell.hint}</span>
             </div>
-            {cell.hot && (
-              <span className="ml-auto h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-[color:var(--rm-red)]"/>
-            )}
+            {cell.hot && <span className="ml-auto h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-[color:var(--rm-red)]"/>}
           </Link>
         ))}
       </div>

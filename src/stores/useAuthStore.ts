@@ -39,7 +39,16 @@ export interface AuthUser {
   phone: string;
   idNumber: string;
   hasSignature: boolean;
-  signatureSvg: string | null;
+  /** Where the stored signature lives (media store URL), or null. */
+  signatureUrl: string | null;
+  /** generated | drawn | uploaded */
+  signatureKind: string;
+  /** A document has carried it: it can no longer change. */
+  signatureLocked: boolean;
+  signatureLockedAt: string | null;
+  signatureDecided: boolean;
+  /** Own account only: manager+ who has not chosen a signature yet. */
+  signaturePrompt?: boolean;
   showPublic: boolean;
   active: boolean;
   lastActiveAt: string | null;

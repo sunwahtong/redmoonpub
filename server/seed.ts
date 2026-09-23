@@ -10,7 +10,6 @@
 import crypto from 'node:crypto';
 import {config} from './config.ts';
 import {hashPassword} from './auth.ts';
-import {generateSignatureSvg} from '../shared/signature.ts';
 import type {Db} from './types.ts';
 
 export interface CanonicalDrink {
@@ -49,9 +48,9 @@ const DEFAULT_SIGNATURE_DRINKS = [
 
 const DEFAULT_PEOPLE = [
   {name: 'Zhen Yu Xiao', title: 'Tulajdonos / Vezető', note: 'Cégtulajdonos · Főnök', monogram: 'XIXO', tier: 'owner', sort: 0},
-  {name: 'Ruan Yu Celeste', title: 'Társtulajdonos / Üzletvezető', note: 'Társtulajdonos · Üzletvezető', monogram: 'CELI', tier: 'co-owner', sort: 1},
-  {name: 'Yuna Yue Rei', title: 'Red Moon üzletvezető', note: 'Red Moon Manager', monogram: 'REI', tier: 'manager', sort: 2},
-  {name: 'Red Moon Manager', title: 'Red Moon üzletvezető', note: 'Red Moon Manager · MGR', monogram: 'MGR', tier: 'manager', sort: 3}
+  {name: 'Ruan Yu Celeste', title: 'Társtulajdonos / Manager', note: 'Társtulajdonos · Manager', monogram: 'CELI', tier: 'co-owner', sort: 1},
+  {name: 'Yuna Yue Rei', title: 'Red Moon manager', note: 'Red Moon Manager', monogram: 'REI', tier: 'manager', sort: 2},
+  {name: 'Red Moon Manager', title: 'Red Moon manager', note: 'Red Moon Manager · MGR', monogram: 'MGR', tier: 'manager', sort: 3}
 ];
 
 const HOUSE_DEFAULTS = {
@@ -62,10 +61,38 @@ const HOUSE_DEFAULTS = {
   transferName: 'Zhen Yu Xiao'
 };
 
+/** The pictures that ship with the site, until the owner replaces them from the console. */
+const DEFAULT_GALLERY = [
+  {title: 'A BÁR', caption: 'Vörös fények, sötét fa, és az este első pohara.', tag: 'ter', image: '/assets/red-moon-cinematic-v27.webp', width: 1600, height: 900},
+  {title: 'THE CROWD', caption: 'Amikor a zene átveszi az irányítást.', tag: 'este', image: '/assets/gallery/red-moon-dj-crowd.webp', width: 1200, height: 800},
+  {title: 'RED MOON', caption: 'A jel, ami alatt minden este kezdődik.', tag: 'jel', image: '/assets/red-moon-logo.png', width: 800, height: 800},
+  {title: 'SEE CITY', caption: 'A hely a térképen — a Red Moon koordinátái.', tag: 'ter', image: '/assets/red-moon-map-v8.png', width: 1200, height: 900},
+  {title: 'NEON NIGHT', caption: 'Fekete és vörös. Neonfények. Zene.', tag: 'jel', image: '/assets/red-moon-cinematic.png', width: 1600, height: 900}
+];
+
 export async function seed(db: Db): Promise<void> {
   await seedCatalogue(db);
   await seedHouse(db);
+  await seedGallery(db);
   await bootstrapOwner(db);
+}
+
+async function seedGallery(db: Db): Promise<void> {
+  const {rows} = await db.query<{n: number}>('select count(*)::int as n from public.gallery_items');
+  if (rows[0].n > 0) return;
+  let order = 0;
+  for (const shot of DEFAULT_GALLERY) {
+    await db.query('insert into public.gallery_items (title, caption, tag, image_url, width, height, sort_order, created_by_name) values ($1, $2, $3, $4, $5, $6, $7, $8)', [
+      shot.title,
+      shot.caption,
+      shot.tag,
+      shot.image,
+      shot.width,
+      shot.height,
+      order++,
+      'Red Moon'
+    ]);
+  }
 }
 
 async function seedCatalogue(db: Db): Promise<void> {
@@ -132,9 +159,9 @@ async function bootstrapOwner(db: Db): Promise<void> {
   if (taken.rows.length) return;
   const id = crypto.randomUUID();
   await db.query(
-    `insert into public.staff_accounts (id, username, name, nickname, role, password_hash, signature_svg, signature_at, show_public)
-     values ($1, $2, $3, $4, 'owner', $5, $6, now(), true)`,
-    [id, config.ownerUsername, config.ownerName, config.ownerName.split(' ').pop() || 'Owner', await hashPassword(config.ownerPassword), generateSignatureSvg(config.ownerName, id)]
+    `insert into public.staff_accounts (id, username, name, nickname, role, password_hash, show_public)
+     values ($1, $2, $3, $4, 'owner', $5, true)`,
+    [id, config.ownerUsername, config.ownerName, config.ownerName.split(' ').pop() || 'Owner', await hashPassword(config.ownerPassword)]
   );
   await db.query('update public.house set owner_user_id = $1 where id = 1 and owner_user_id is null', [id]);
   console.log(`[seed] owner account "${config.ownerUsername}" created`);

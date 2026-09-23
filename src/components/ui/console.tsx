@@ -1,6 +1,7 @@
 import React from 'react';
 import {Search} from 'lucide-react';
 import {NeonHeading} from './NeonHeading';
+import {assetUrl} from '../../lib/api';
 
 /**
  * The console's building blocks.
@@ -148,7 +149,7 @@ export const SearchField: React.FC<{
       value={value}
       onChange={(event) => onChange(event.target.value)}
       placeholder={placeholder}
-      className="rm-input pl-10 text-[10px] tracking-[0.15em]"
+      className="rm-input rm-search text-[10px] tracking-[0.15em]"
     />
   </label>
 );
@@ -196,7 +197,7 @@ export const Avatar: React.FC<{name: string; nickname?: string; src?: string; si
   const monogram = (nickname || name || '?').slice(0, 2).toUpperCase();
   return src ? (
     <img
-      src={src}
+      src={assetUrl(src)}
       alt=""
       width={size}
       height={size}

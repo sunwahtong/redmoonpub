@@ -1,4 +1,4 @@
-import type {Role} from '../stores/useAuthStore';
+import type {Capabilities, Role} from '../stores/useAuthStore';
 
 export interface NavLink {
   to: string;
@@ -48,7 +48,7 @@ export const NAV_GROUP: NavGroup = {
       to: '/about',
       label: 'RÓLUNK',
       glyph: '家',
-      description: 'A tulajdonosok, az üzletvezetők és a csapat.'
+      description: 'A tulajdonosok, a managerek és a csapat.'
     },
     {
       to: '/gallery',
@@ -89,6 +89,8 @@ export const STAFF_LINK: NavLink = {to: '/staff-login', label: 'STAFF'};
 export interface StaffNavLink extends NavLink {
   /** Lowest role that may open it. Mirrors the RequireRole guard in App.tsx. */
   need: Role;
+  /** A capability that opens it regardless of role (the DJ booth for the DJ job). */
+  capability?: keyof Capabilities;
   /** Grouping in the console sub-header. */
   group: 'MŰSZAK' | 'VENDÉG' | 'KÉSZLET' | 'HÁZ';
 }
@@ -116,8 +118,10 @@ export const STAFF_NAV: StaffNavLink[] = [
   {to: '/staff/products', label: 'TERMÉKEK', need: 'manager', group: 'KÉSZLET'},
   {to: '/staff/documents', label: 'BIZONYLATOK', need: 'manager', group: 'KÉSZLET'},
 
+  {to: '/dj', label: 'DJ PULT', need: 'owner', capability: 'dj', group: 'HÁZ'},
   {to: '/staff/events', label: 'RENDEZVÉNYEK', need: 'owner', group: 'HÁZ'},
   {to: '/staff/showcase', label: 'KIRAKAT', need: 'owner', group: 'HÁZ'},
+  {to: '/staff/gallery', label: 'GALÉRIA', need: 'owner', group: 'HÁZ'},
   {to: '/staff/reports', label: 'JELENTÉSEK', need: 'owner', group: 'HÁZ'},
   {to: '/staff/users', label: 'FIÓKOK', need: 'owner', group: 'HÁZ'},
   {to: '/staff/audit', label: 'NAPLÓ', need: 'owner', group: 'HÁZ'},

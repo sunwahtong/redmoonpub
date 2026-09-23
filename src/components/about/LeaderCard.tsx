@@ -4,17 +4,18 @@ import type {HousePerson} from '../../types';
 interface Props {
   person: HousePerson;
   /** The owner tier gets a stronger halo than the managers below it. */
-  emphasis?: 'primary' | 'secondary' | 'muted';
+  emphasis?: 'primary' | 'secondary' | 'tertiary' | 'muted';
 }
 
 const AVATAR_RING: Record<NonNullable<Props['emphasis']>, string> = {
   primary: 'border-[rgba(213,31,60,0.5)] shadow-[0_0_60px_rgba(213,31,60,0.18)]',
   secondary: 'border-[rgba(213,31,60,0.38)] shadow-[0_0_50px_rgba(213,31,60,0.12)]',
+  tertiary: 'border-[rgba(213,31,60,0.24)] shadow-[0_0_40px_rgba(213,31,60,0.09)]',
   muted: 'border-white/15 shadow-[0_0_34px_rgba(213,31,60,0.07)]'
 };
 
 export const emphasisOf = (tier: HousePerson['tier']): NonNullable<Props['emphasis']> =>
-  tier === 'owner' ? 'primary' : tier === 'co-owner' ? 'secondary' : 'muted';
+  tier === 'owner' ? 'primary' : tier === 'co-owner' ? 'secondary' : tier === 'manager' ? 'tertiary' : 'muted';
 
 /**
  * Legacy `.rm17-owner`: a tall square portrait card with a ruby bloom behind a

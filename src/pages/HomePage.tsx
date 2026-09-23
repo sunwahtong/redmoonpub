@@ -15,11 +15,12 @@ import {TonightBar} from '../components/home/TonightBar';
 import {CountdownUnits, EventCard} from '../components/events/EventCard';
 import {LeaderCard} from '../components/about/LeaderCard';
 import {useLiveData} from '../hooks/useLiveData';
+import {backgroundImage} from '../lib/media';
 import {useHouseStatus} from '../hooks/useHouseStatus';
 import {apiSend, assetUrl, getVisitorToken} from '../lib/api';
 import {MEMBERSHIP} from '../lib/content';
 import {Skeleton} from '../components/ui/Skeleton';
-import type {PublicHouse, RedMoonEvent, Review, SignatureDrink} from '../types';
+import type {GalleryItem, PublicHouse, RedMoonEvent, Review, SignatureDrink} from '../types';
 
 const PHONE_PREFIX = '+38-76-';
 const REVIEW_MAX_CHARS = 140;
@@ -33,7 +34,9 @@ export const HomePage: React.FC = () => {
     average: number;
     count: number;
   }>('/api/reviews');
-  const {data: houseData} = useLiveData<PublicHouse>('/api/public/house', {intervalMs: 0});
+  const {data: houseData} = useLiveData<PublicHouse>('/api/public/house', {intervalMs: 0, topics: ['content']});
+  const {data: galleryData} = useLiveData<{items: GalleryItem[]}>('/api/public/gallery', {intervalMs: 0, topics: ['content']});
+  const shots = (galleryData?.items || []).slice(0, 8);
   const {data: house} = useHouseStatus(20000);
   const leaders = (houseData?.people || []).filter((person) => person.tier === 'owner' || person.tier === 'co-owner');
 
@@ -173,7 +176,7 @@ export const HomePage: React.FC = () => {
         <div className="grid grid-cols-1 items-center gap-[9vw] lg:grid-cols-2">
           <Reveal>
             {/* Legacy .rm17-story-art: full-bleed still, 月 watermark, corner caption */}
-            <div className="relative min-h-[470px] overflow-hidden border border-[color:var(--rm-line)] bg-[url('/assets/red-moon-cinematic.png')] bg-cover bg-center lg:min-h-[570px]">
+            <div style={backgroundImage('/assets/red-moon-cinematic.png')} className="relative min-h-[470px] overflow-hidden border border-[color:var(--rm-line)] bg-cover bg-center lg:min-h-[570px]">
               <span className="pointer-events-none absolute right-8 top-4 font-heading text-[120px] leading-none text-[rgba(213,31,60,0.35)]">
                 月
               </span>
@@ -428,9 +431,35 @@ export const HomePage: React.FC = () => {
       </section>
 
       {/* 7. VÉLEMÉNYEK */}
+      {shots.length > 0 && (
+        <section className="border-t border-[color:var(--rm-line)] bg-[#070709]">
+          <div className="rm-section !py-[clamp(48px,6vw,80px)]">
+            <SectionHead
+              label="06 / PILLANATOK"
+              title={
+                <>
+                  Ahogy az esték
+                  <br/>
+                  <em>megtörténtek.</em>
+                </>
+              }
+              aside={<BtnLink to="/gallery">A TELJES GALÉRIA ↗</BtnLink>}
+            />
+            <div className="rm-strip">
+              {shots.map((shot) => (
+                <Link key={shot.id} to="/gallery" className="rm-strip-tile group">
+                  <img src={assetUrl(shot.src)} alt={shot.title} loading="lazy" decoding="async"/>
+                  <span>{shot.title}</span>
+                </Link>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
       <section className="rm-section">
         <SectionHead
-          label="06 / RED MOON ÉLMÉNYEK"
+          label="07 / RED MOON ÉLMÉNYEK"
           title={
             <>
               Amit rólunk

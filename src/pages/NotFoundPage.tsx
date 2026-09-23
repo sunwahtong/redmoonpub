@@ -6,6 +6,7 @@ import {Magnetic} from '../components/ui/Magnetic';
 import {SplitReveal} from '../components/ui/SplitReveal';
 import {Embers} from '../components/effects/Embers';
 import {NAV_GROUP, NAV_LINKS, RESERVE_LINK} from '../lib/navigation';
+import {backgroundImage} from '../lib/media';
 
 /** Where a lost visitor most likely meant to go. */
 const SUGGESTIONS = [
@@ -17,7 +18,7 @@ const SUGGESTIONS = [
 export const NotFoundPage: React.FC = () => (
   <main className="relative flex min-h-[88vh] items-center overflow-hidden px-[var(--rm-gutter)] pt-[68px]">
     <div
-      className="pointer-events-none absolute inset-0 bg-[url('/assets/red-moon-cinematic-v27.webp')] bg-cover bg-center opacity-20"
+      style={backgroundImage('/assets/red-moon-cinematic-v27.webp')} className="pointer-events-none absolute inset-0 bg-cover bg-center opacity-20"
       aria-hidden="true"
     />
     <div

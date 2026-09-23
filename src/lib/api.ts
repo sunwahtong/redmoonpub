@@ -4,6 +4,7 @@
  * The legacy frontend re-implemented fetch/escape/format logic in every script
  * (site.js, v56-public.js, menu.js, staff.js ...). Everything lives here now.
  */
+import {liveBus} from './live';
 
 export class ApiError extends Error {
   constructor(message: string, public status: number) {
@@ -34,26 +35,56 @@ export function apiGet<T>(url: string, signal?: AbortSignal): Promise<T> {
   return request<T>(url, {method: 'GET', signal});
 }
 
-export function apiSend<T>(
+/** Requests that only observe (heartbeats, presence) must not trigger page-wide refreshes. */
+const QUIET = [/\/api\/presence\/heartbeat$/, /\/api\/club\/listener$/, /\/api\/dj\/player-sync$/, /\/read$/];
+
+export async function apiSend<T>(
   url: string,
   method: 'POST' | 'PUT' | 'PATCH' | 'DELETE',
   body?: unknown,
   headers?: Record<string, string>
 ): Promise<T> {
-  return request<T>(url, {method, headers, body: body === undefined ? undefined : JSON.stringify(body)});
+  const result = await request<T>(url, {method, headers, body: body === undefined ? undefined : JSON.stringify(body)});
+  if (!QUIET.some((pattern) => pattern.test(url))) liveBus.emit({topic: 'mutation', event: method, payload: {url}});
+  return result;
 }
 
+/* ------------------------------------------------------------------ */
+/* Media                                                               */
+/* ------------------------------------------------------------------ */
+
+const CLOUD = String(import.meta.env.VITE_CLOUDINARY_CLOUD_NAME || '').trim();
+const FOLDER = String(import.meta.env.VITE_CLOUDINARY_FOLDER || 'redmoon').replace(/^\/+|\/+$/g, '');
+const AUDIO = /\.(mp3|wav|ogg|m4a|aac|webm)$/i;
+
 /**
- * The API stores image paths relative ("assets/menu/drinks/x.png"). On a nested
- * route those resolve against the current path instead of the site root, so the
- * image silently 404s. Always anchor them to the root.
+ * Resolves a stored media reference to something the browser can load.
+ *
+ * Relative paths ("assets/menu/drinks/x.png") are anchored to the site root;
+ * on a nested route they would otherwise resolve against the current path.
+ * With Cloudinary configured (VITE_CLOUDINARY_CLOUD_NAME) the site's own
+ * pictures and the background music are served from there instead — after
+ * `npm run media:upload` mirrored public/assets to the account — with
+ * automatic format and quality. Uploads already carry absolute URLs.
  */
 export function assetUrl(path: string): string {
   const raw = String(path || '').trim();
   if (!raw) return '';
-  if (/^(https?:)?\/\//.test(raw) || raw.startsWith('data:')) return raw;
-  return raw.startsWith('/') ? raw : `/${raw}`;
+  if (/^(https?:)?\/\//.test(raw) || raw.startsWith('data:') || raw.startsWith('blob:')) return raw;
+  const local = raw.startsWith('/') ? raw : `/${raw}`;
+  if (!CLOUD || !local.startsWith('/assets/') || local.startsWith('/assets/map/') || local.startsWith('/assets/uploads/')) return local;
+  const key = local.slice(1);
+  return AUDIO.test(key)
+    ? `https://res.cloudinary.com/${CLOUD}/video/upload/${FOLDER}/${key}`
+    : `https://res.cloudinary.com/${CLOUD}/image/upload/f_auto,q_auto/${FOLDER}/${key}`;
 }
+
+/** Whether the site's own pictures come from Cloudinary. */
+export const mediaFromCloudinary = !!CLOUD;
+
+/* ------------------------------------------------------------------ */
+/* Visitors                                                            */
+/* ------------------------------------------------------------------ */
 
 const VISITOR_TOKEN_KEY = 'rm-visitor-token';
 
@@ -71,6 +102,10 @@ export function getVisitorToken(): string {
   return token;
 }
 
+/* ------------------------------------------------------------------ */
+/* Formatting                                                          */
+/* ------------------------------------------------------------------ */
+
 const hufFormatter = new Intl.NumberFormat('hu-HU');
 const dateFormatter = new Intl.DateTimeFormat('hu-HU', {year: 'numeric', month: 'long', day: 'numeric'});
 const timeFormatter = new Intl.DateTimeFormat('hu-HU', {hour: '2-digit', minute: '2-digit'});
@@ -80,3 +115,15 @@ export const formatHuf = (value: number): string => `${hufFormatter.format(Numbe
 export const formatDate = (value: string | number | Date): string => dateFormatter.format(new Date(value));
 export const formatTime = (value: string | number | Date): string => timeFormatter.format(new Date(value));
 export const formatWeekday = (value: string | number | Date): string => weekdayFormatter.format(new Date(value));
+
+/** "most", "3 perce", "2 órája" — for feeds and threads. */
+export function formatAgo(value: string | number | Date): string {
+  const diff = Date.now() - new Date(value).getTime();
+  if (!Number.isFinite(diff) || diff < 45000) return 'most';
+  const minutes = Math.round(diff / 60000);
+  if (minutes < 60) return `${minutes} perce`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} órája`;
+  const days = Math.round(hours / 24);
+  return `${days} napja`;
+}

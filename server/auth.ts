@@ -14,6 +14,7 @@ import type {ServerResponse} from 'node:http';
 import {config} from './config.ts';
 import {clientIp, forbidden, formatPhone, isSecure, parseCookies, setCookie, sha256, tooMany, unauthorized} from './http.ts';
 import {generateSignatureSvg} from '../shared/signature.ts';
+import {destroyMedia, storeSignature} from './media.ts';
 import type {Account, Capabilities, Queryable, Request, Role, Row, SessionUser, UserCtx} from './types.ts';
 
 export const ROLES = ['staff', 'manager', 'owner'] as const;
@@ -174,8 +175,9 @@ export async function activeSessionsOf(db: Queryable, userId: string, withinMs =
   return rows;
 }
 
-const USER_COLUMNS = `id, username, name, nickname, title, role, jobs, phone, id_number, avatar,
-  signature_svg, signature_at, must_change_password, show_public, active, last_login_at, last_active_at, created_at`;
+const USER_COLUMNS = `id, username, name, nickname, title, role, jobs, phone, id_number, avatar, avatar_public_id,
+  signature_url, signature_public_id, signature_at, signature_kind, signature_locked_at, signature_decided,
+  must_change_password, show_public, active, last_login_at, last_active_at, created_at`;
 
 /**
  * Resolves the signed-in account from the session cookie, or null.
@@ -224,8 +226,13 @@ export function accountFromRow(row: Row): Account {
     phone: row.phone || '',
     idNumber: row.id_number || '',
     avatar: row.avatar || '',
-    signatureSvg: row.signature_svg || null,
+    avatarPublicId: row.avatar_public_id || '',
+    signatureUrl: row.signature_url || '',
+    signaturePublicId: row.signature_public_id || '',
     signatureAt: row.signature_at ? new Date(row.signature_at).toISOString() : null,
+    signatureKind: row.signature_kind || 'generated',
+    signatureLockedAt: row.signature_locked_at ? new Date(row.signature_locked_at).toISOString() : null,
+    signatureDecided: !!row.signature_decided,
     mustChangePassword: !!row.must_change_password,
     showPublic: !!row.show_public,
     active: row.active !== false,
@@ -268,8 +275,14 @@ export function publicUser(account: Account, {self = false}: {self?: boolean} = 
     avatar: account.avatar || '',
     phone: formatPhone(account.phone || ''),
     idNumber: account.idNumber || '',
-    hasSignature: !!account.signatureSvg,
-    signatureSvg: account.signatureSvg || null,
+    hasSignature: !!account.signatureUrl,
+    signatureUrl: account.signatureUrl || null,
+    signatureKind: account.signatureKind || 'generated',
+    signatureLocked: !!account.signatureLockedAt,
+    signatureLockedAt: account.signatureLockedAt || null,
+    signatureDecided: !!account.signatureDecided,
+    /** Manager or above who has not yet chosen a signature and can still change it. */
+    signaturePrompt: self ? roleAtLeast(account.role, 'manager') && !account.signatureDecided && !account.signatureLockedAt : undefined,
     showPublic: !!account.showPublic,
     active: account.active !== false,
     lastActiveAt: account.lastActiveAt || null,
@@ -297,11 +310,35 @@ export async function listAccounts(db: Queryable, {includeInactive = true}: {inc
  * Gives an account its signature the moment it holds manager rank or above.
  * Existing signatures are kept, so promotions and demotions never redraw it.
  */
-export async function ensureSignature(db: Queryable, account: Account): Promise<string | null> {
-  if (!roleAtLeast(account.role, 'manager') || account.signatureSvg) return account.signatureSvg || null;
-  const svg = generateSignatureSvg(account.name, account.id);
-  await db.query('update public.staff_accounts set signature_svg = $2, signature_at = now() where id = $1', [account.id, svg]);
-  return svg;
+export async function ensureSignature(db: Queryable, account: Account): Promise<string> {
+  if (!roleAtLeast(account.role, 'manager') || account.signatureUrl) return account.signatureUrl || '';
+  try {
+    const stored = await storeSignature(account.username, generateSignatureSvg(account.name, account.id));
+    await db.query('update public.staff_accounts set signature_url = $2, signature_public_id = $3, signature_at = now() where id = $1', [account.id, stored.url, stored.publicId]);
+    account.signatureUrl = stored.url;
+    account.signaturePublicId = stored.publicId;
+    return stored.url;
+  } catch (error) {
+    // No media store yet (Vercel without Cloudinary): signing in must still work.
+    console.warn('[media] signature could not be stored:', (error as Error).message);
+    return '';
+  }
+}
+
+/** Stores a new signature for the account and removes the previous picture from the store. */
+export async function replaceSignature(db: Queryable, account: Account, svg: string, kind: string, decided: boolean): Promise<void> {
+  const stored = await storeSignature(account.username, svg);
+  await db.query(
+    `update public.staff_accounts set signature_url = $2, signature_public_id = $3, signature_kind = $4, signature_at = now(), signature_decided = $5, signature_svg = null where id = $1`,
+    [account.id, stored.url, stored.publicId, kind, decided]
+  );
+  if (account.signaturePublicId && account.signaturePublicId !== stored.publicId) await destroyMedia(account.signaturePublicId, 'image');
+}
+
+/** Removes an account's pictures from the store once the account is gone. */
+export async function destroyAccountMedia(account: Pick<Account, 'avatarPublicId' | 'signaturePublicId'>): Promise<void> {
+  await destroyMedia(account.avatarPublicId, 'image');
+  await destroyMedia(account.signaturePublicId, 'image');
 }
 
 /* ------------------------------------------------------------------ */

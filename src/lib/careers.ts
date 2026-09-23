@@ -1,13 +1,7 @@
-/** Shared recruitment vocabulary. Mirrors the enums in server.cjs. */
+/** Shared recruitment vocabulary. Mirrors the enums in server/routes/public.ts. */
 
-export type CareerPosition =
-  | 'bartender'
-  | 'pultos'
-  | 'felszolgalo'
-  | 'dj'
-  | 'biztonsag'
-  | 'hostess'
-  | 'uzletvezeto';
+/** Every position that ever existed, so old applications still have a label. */
+export type CareerPosition = 'bartender' | 'pultos' | 'felszolgalo' | 'dj' | 'biztonsag' | 'hostess' | 'uzletvezeto';
 
 export type CareerStatus = 'pending' | 'interview' | 'accepted' | 'rejected' | 'withdrawn';
 
@@ -23,8 +17,6 @@ export interface Application {
   staffNote: string;
   handledAt: string | null;
   /* Manager view only — the candidate never gets these back. */
-  /** Radio frequency the applicant can be reached on. */
-  radio?: string;
   availability?: string;
   experience?: string;
   why?: string;
@@ -42,10 +34,9 @@ export interface PositionInfo {
 }
 
 /**
- * The roles the house recruits for.
- *
- * Copy lives here rather than in the page so the careers page, the staff
- * console and any future listing all read the same words.
+ * The roles the house recruits for right now. Copy lives here rather than in
+ * the page so the careers page, the staff console and any future listing all
+ * read the same words.
  */
 export const POSITIONS: PositionInfo[] = [
   {
@@ -53,24 +44,8 @@ export const POSITIONS: PositionInfo[] = [
     name: 'BARTENDER',
     glyph: '酒',
     tagline: 'A pult mögött te vagy az este.',
-    duties: ['Signature koktélok keverése', 'Vendégek kiszolgálása a pultnál', 'A pult rendje és készlete'],
+    duties: ['Signature koktélok keverése', 'Vendégek kiszolgálása a pultnál', 'A pult rendje és készlete', 'Eladások rögzítése a konzolon'],
     looking: 'Nyugodt kéz, jó memória, és az a fajta ember, akivel szívesen beszélgetnek éjfél után.'
-  },
-  {
-    id: 'pultos',
-    name: 'KASSZÁS',
-    glyph: '銭',
-    tagline: 'A kassza pontossága a ház bizalma.',
-    duties: ['Eladások rögzítése a konzolon', 'Nyugták és számlák kezelése', 'Műszakzárás egyeztetése'],
-    looking: 'Pontosság. Egy elrontott műszakzárás mindenki estéjét elviszi.'
-  },
-  {
-    id: 'felszolgalo',
-    name: 'FELSZOLGÁLÓ',
-    glyph: '侍',
-    tagline: 'Az asztaloknál dől el, milyen volt az este.',
-    duties: ['Asztalok kiszolgálása', 'Foglalások fogadása a bejáratnál', 'Kapcsolattartás a pulttal'],
-    looking: 'Gyors láb, figyelem a részletekre, és türelem a hosszú estékhez.'
   },
   {
     id: 'dj',
@@ -87,29 +62,19 @@ export const POSITIONS: PositionInfo[] = [
     tagline: 'Hogy az este végig este maradjon.',
     duties: ['Bejárat és vendéglista', 'Konfliktusok kezelése', 'A ház szabályainak érvényesítése'],
     looking: 'Hideg fej. Aki nem eszkalál, hanem lezár.'
-  },
-  {
-    id: 'hostess',
-    name: 'HOSTESS',
-    glyph: '迎',
-    tagline: 'Az első benyomás.',
-    duties: ['Vendégek fogadása', 'Asztalhoz kísérés', 'Foglalások egyeztetése'],
-    looking: 'Megjelenés és modor. Te vagy az első, akit a Red Moonból látnak.'
-  },
-  {
-    id: 'uzletvezeto',
-    name: 'ÜZLETVEZETŐ',
-    glyph: '長',
-    tagline: 'A műszak a te felelősséged.',
-    duties: ['Műszakok szervezése és zárása', 'Raktár és beszerzés', 'A csapat irányítása'],
-    looking: 'Vezetői tapasztalat a házon belülről. Ezt a szintet jellemzően belülről töltjük be.'
   }
 ];
 
-export const POSITION_LABEL: Record<CareerPosition, string> = POSITIONS.reduce(
-  (map, position) => ({...map, [position.id]: position.name}),
-  {} as Record<CareerPosition, string>
-);
+/** Labels for every position, including the ones no longer advertised. */
+export const POSITION_LABEL: Record<CareerPosition, string> = {
+  bartender: 'BARTENDER',
+  pultos: 'KASSZÁS',
+  felszolgalo: 'FELSZOLGÁLÓ',
+  dj: 'DJ',
+  biztonsag: 'BIZTONSÁG',
+  hostess: 'HOSTESS',
+  uzletvezeto: 'MANAGER'
+};
 
 export const STATUS_LABEL: Record<CareerStatus, string> = {
   pending: 'Elbírálás alatt',

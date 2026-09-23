@@ -30,6 +30,7 @@ const CONSOLE = [
   '/staff/documents',
   '/staff/events',
   '/staff/showcase',
+  '/staff/gallery',
   '/staff/reports',
   '/staff/users',
   '/staff/audit',
@@ -101,6 +102,15 @@ if (await page.getByText('Telefonszám').count()) {
   await page.waitForTimeout(1500);
 }
 await page.screenshot({path: `${OUT}/logged-in.png`, fullPage: true});
+
+// A manager or owner who has not chosen a signature yet is asked once per visit.
+await page.goto(BASE + '/staff', {waitUntil: 'networkidle'});
+const later = page.getByRole('button', {name: 'KÉSŐBB'});
+if (await later.count()) {
+  await page.screenshot({path: `${OUT}/dialog-signature.png`});
+  await later.click();
+  await page.waitForTimeout(400);
+}
 
 for (const route of CONSOLE) await shoot(route);
 

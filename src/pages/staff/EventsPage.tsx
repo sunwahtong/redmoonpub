@@ -1,10 +1,11 @@
 import React, {useMemo, useState} from 'react';
-import {CalendarPlus, Check, Eye, EyeOff, PenLine, Star, Trash2, X} from 'lucide-react';
+import {CalendarPlus, Check, Eye, EyeOff, ImagePlus, PenLine, Star, Trash2, X} from 'lucide-react';
 import {Btn} from '../../components/ui/Btn';
 import {Badge, Chips, Field, inputClass, PageHeader, Panel} from '../../components/ui/console';
 import {CountdownUnits} from '../../components/events/EventCard';
 import {useLiveData} from '../../hooks/useLiveData';
-import {apiSend, formatDate, formatHuf, formatTime, formatWeekday} from '../../lib/api';
+import {apiSend, assetUrl, formatDate, formatHuf, formatTime, formatWeekday} from '../../lib/api';
+import {uploadMedia} from '../../lib/media';
 import {playSfx} from '../../lib/sfx';
 import {toast} from '../../stores/useToastStore';
 import {dialog} from '../../stores/useDialogStore';
@@ -21,6 +22,7 @@ interface Draft {
   endsAt: string;
   tag: string;
   coverImage: string;
+  coverPublicId: string;
   entryFee: string;
   dressCode: string;
   featured: boolean;
@@ -53,6 +55,7 @@ const emptyDraft = (): Draft => ({
   endsAt: '',
   tag: '',
   coverImage: '',
+  coverPublicId: '',
   entryFee: '',
   dressCode: '',
   featured: false,
@@ -68,6 +71,7 @@ const draftOf = (event: RedMoonEvent): Draft => ({
   endsAt: toLocalInput(event.endsAt),
   tag: event.tag || '',
   coverImage: event.coverImage || '',
+  coverPublicId: event.coverPublicId || '',
   entryFee: event.entryFee === null || event.entryFee === undefined ? '' : String(event.entryFee),
   dressCode: event.dressCode || '',
   featured: !!event.featured,
@@ -75,11 +79,12 @@ const draftOf = (event: RedMoonEvent): Draft => ({
 });
 
 export const StaffEventsPage: React.FC = () => {
-  const {data, refresh} = useLiveData<{events: RedMoonEvent[]}>('/api/events', {intervalMs: 30000});
+  const {data, refresh, mutate} = useLiveData<{events: RedMoonEvent[]}>('/api/events', {intervalMs: 30000, topics: ['events']});
   const [filter, setFilter] = useState<Filter>('upcoming');
   const [editingId, setEditingId] = useState<string | 'new' | null>(null);
   const [draft, setDraft] = useState<Draft>(emptyDraft);
   const [busy, setBusy] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
   const events = useMemo(() => data?.events || [], [data]);
   const now = Date.now();
@@ -130,6 +135,7 @@ export const StaffEventsPage: React.FC = () => {
     endsAt: draft.endsAt ? new Date(draft.endsAt).toISOString() : null,
     tag: draft.tag,
     coverImage: draft.coverImage,
+    coverPublicId: draft.coverPublicId,
     entryFee: draft.entryFee === '' ? null : Number(draft.entryFee),
     dressCode: draft.dressCode,
     featured: draft.featured,
@@ -155,11 +161,48 @@ export const StaffEventsPage: React.FC = () => {
       tone: 'danger'
     });
     if (!sure) return;
-    run(() => apiSend(`/api/events/${event.id}`, 'DELETE'), 'Rendezvény törölve.');
+    // Gone from the list now; the server confirms. Nothing waits on the round trip.
+    mutate((current) => (current ? {events: current.events.filter((entry) => entry.id !== event.id)} : current));
+    if (editingId === event.id) setEditingId(null);
+    try {
+      await apiSend(`/api/events/${event.id}`, 'DELETE');
+      toast.success('Rendezvény törölve.');
+      playSfx('delete');
+    } catch (err) {
+      toast.error('Nem sikerült', (err as Error).message);
+      playSfx('error');
+      refresh();
+    }
   };
 
-  const toggle = (event: RedMoonEvent, key: 'active' | 'featured') =>
-    run(() => apiSend(`/api/events/${event.id}`, 'PATCH', {[key]: !event[key]}), key === 'featured' ? 'Kiemelés frissítve.' : 'Láthatóság frissítve.');
+  const pickCover = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const media = await uploadMedia('image', 'event', file);
+      setDraft((current) => ({...current, coverImage: media.url, coverPublicId: media.publicId}));
+      toast.success('Borítókép feltöltve.');
+      playSfx('success');
+    } catch (err) {
+      toast.error('A feltöltés nem sikerült', (err as Error).message);
+      playSfx('error');
+    } finally {
+      setUploading(false);
+      event.target.value = '';
+    }
+  };
+
+  const toggle = async (event: RedMoonEvent, key: 'active' | 'featured') => {
+    mutate((current) => (current ? {events: current.events.map((entry) => (entry.id === event.id ? {...entry, [key]: !event[key]} : key === 'featured' && !event.featured ? {...entry, featured: false} : entry))} : current));
+    try {
+      await apiSend(`/api/events/${event.id}`, 'PATCH', {[key]: !event[key]});
+      playSfx('ui_click');
+    } catch (err) {
+      toast.error('Nem sikerült', (err as Error).message);
+      refresh();
+    }
+  };
 
   const formOpen = editingId !== null;
 
@@ -235,8 +278,15 @@ export const StaffEventsPage: React.FC = () => {
               <Field label="DRESS CODE">
                 <input value={draft.dressCode} onChange={(event) => setDraft({...draft, dressCode: event.target.value})} maxLength={120} placeholder="pl. elegáns, fekete" className={inputClass}/>
               </Field>
-              <Field label="BORÍTÓKÉP (URL VAGY assets/… ÚTVONAL)">
-                <input value={draft.coverImage} onChange={(event) => setDraft({...draft, coverImage: event.target.value})} maxLength={600} placeholder="assets/gallery/red-moon-dj-crowd.webp" className={inputClass}/>
+              <Field label="BORÍTÓKÉP" hint="Tölts fel egy képet, vagy írj be egy címet / assets/… útvonalat.">
+                <div className="flex gap-2">
+                  <input value={draft.coverImage} onChange={(event) => setDraft({...draft, coverImage: event.target.value, coverPublicId: ''})} maxLength={600} placeholder="assets/gallery/red-moon-dj-crowd.webp" className={inputClass}/>
+                  <label className={`rm-btn is-ghost !px-3 !py-2 !text-[8px] cursor-pointer${uploading ? ' opacity-50' : ''}`}>
+                    <input type="file" accept="image/*" onChange={pickCover} className="hidden" disabled={uploading}/>
+                    <ImagePlus size={12}/> {uploading ? 'FELTÖLTÉS…' : 'KÉP'}
+                  </label>
+                </div>
+                {draft.coverImage && <img src={assetUrl(draft.coverImage)} alt="" className="mt-2 h-24 w-full object-cover opacity-80"/>}
               </Field>
               <Field label="LEÍRÁS" className="md:col-span-2">
                 <textarea value={draft.description} onChange={(event) => setDraft({...draft, description: event.target.value})} rows={4} maxLength={1200} className={inputClass}/>

@@ -1,6 +1,7 @@
 import type {Column, Content, TDocumentDefinitions, TableCell} from 'pdfmake/interfaces';
-import {DOCUMENT_LABEL, documentFileName, issuedStamp, type DocumentContext, type DocumentPayload} from './documents';
+import {DOCUMENT_LABEL, documentFileName, issuedStamp, resolveSignatures, type DocumentContext, type DocumentPayload} from './documents';
 import type {Person} from './house';
+import {signatureImageData} from './signature';
 
 /**
  * Turns a document model into a PDF the operator saves locally.
@@ -44,7 +45,9 @@ function cleanSvg(svg: string): string {
 function signatureColumn(person: Person | null, fallbackTitle: string): Column {
   if (!person) return {text: '', width: '*'};
   const stack: Content[] = [];
-  if (person.signatureSvg) stack.push({svg: cleanSvg(person.signatureSvg), width: 200, margin: [0, 0, 0, -6]});
+  const picture = person.signatureImage || signatureImageData(person.signatureSvg);
+  if (picture) stack.push({image: picture, fit: [200, 56], margin: [0, 0, 0, -2]});
+  else if (person.signatureSvg) stack.push({svg: cleanSvg(person.signatureSvg), width: 200, margin: [0, 0, 0, -6]});
   else stack.push({text: '— aláírás nélkül —', color: MUTED, fontSize: 8, margin: [0, 44, 0, 4]});
   stack.push({canvas: [{type: 'line', x1: 0, y1: 0, x2: 210, y2: 0, lineWidth: 0.6, lineColor: INK}]});
   stack.push({text: person.name, bold: true, fontSize: 10, margin: [0, 4, 0, 0]});
@@ -156,7 +159,7 @@ export function buildPdfDefinition(payload: DocumentPayload, context: DocumentCo
 
   const countersign = payload.countersign !== false;
   content.push({
-    columns: [signatureColumn(issuer, issuer.role === 'owner' ? 'Tulajdonos' : 'Üzletvezető'), {text: '', width: '*'}, countersign ? signatureColumn(owner, 'Tulajdonos') : {text: '', width: 230}],
+    columns: [signatureColumn(issuer, issuer.role === 'owner' ? 'Tulajdonos' : 'Manager'), {text: '', width: '*'}, countersign ? signatureColumn(owner, 'Tulajdonos') : {text: '', width: 230}],
     margin: [0, 34, 0, 0],
     unbreakable: true
   });
@@ -183,6 +186,6 @@ export function buildPdfDefinition(payload: DocumentPayload, context: DocumentCo
 /** Builds the PDF and hands it to the browser as a download. */
 export async function downloadDocumentPdf(payload: DocumentPayload, context: DocumentContext, reference: string): Promise<void> {
   const pdfMake = await loadEngine();
-  const definition = buildPdfDefinition(payload, context, reference);
+  const definition = buildPdfDefinition(payload, await resolveSignatures(context), reference);
   pdfMake.createPdf(definition).download(documentFileName(payload, reference));
 }

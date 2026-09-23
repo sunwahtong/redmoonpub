@@ -34,8 +34,18 @@ export interface Account {
   phone: string;
   idNumber: string;
   avatar: string;
-  signatureSvg: string | null;
+  /** The store's id of the profile picture, so a replaced one can be removed. */
+  avatarPublicId: string;
+  /** Where the stored signature lives; empty until one exists. */
+  signatureUrl: string;
+  signaturePublicId: string;
   signatureAt: string | null;
+  /** generated | drawn | uploaded */
+  signatureKind: string;
+  /** Set once a document carried the signature; it can no longer change. */
+  signatureLockedAt: string | null;
+  /** The person has chosen (or explicitly kept) their signature. */
+  signatureDecided: boolean;
   mustChangePassword: boolean;
   showPublic: boolean;
   active: boolean;

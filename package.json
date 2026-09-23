@@ -12,12 +12,14 @@
     "verify": "node scripts/verify.mjs",
     "verify:nav": "node scripts/verify-nav.mjs",
     "tiles:upload": "node scripts/upload-tiles.mjs",
+    "media:upload": "node scripts/media-upload.ts",
     "user:create": "node scripts/create-user.ts",
     "data:reset": "node scripts/reset-data.ts",
     "typecheck": "tsc -b && tsc -p tsconfig.server.json"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.8",
+    "@supabase/realtime-js": "^2.117.0",
     "dotenv": "^18.0.1",
     "gta-v-map": "^2.0.1",
     "hash-wasm": "^4.12.0",

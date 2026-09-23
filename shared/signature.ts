@@ -189,3 +189,32 @@ export function generateSignatureSvg(name: string, seed = '', color = '#12121a')
 }
 
 export const SIGNATURE_VIEWBOX = {width: VIEW_W, height: VIEW_H};
+
+/** Path data as the signature pad produces it: moves, lines and cubic curves only. */
+export const SIGNATURE_PATH_PATTERN = /^[MLCQZmlcqz0-9.,\s-]+$/;
+
+/** Wraps hand-drawn path data (in the signature view box) as the stored SVG. */
+export function svgFromPath(d: string, name = '', color = '#12121a'): string {
+  const label = String(name || '').replace(/[<>&"]/g, '');
+  return (
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${VIEW_W} ${VIEW_H}" width="${VIEW_W}" height="${VIEW_H}" role="img" aria-label="${label} aláírása">` +
+    `<path d="${d}" fill="none" stroke="${color}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>` +
+    `</svg>`
+  );
+}
+
+/** Wraps an uploaded, background-stripped PNG (data URL) as the stored SVG. */
+export function svgFromImage(dataUrl: string, name = ''): string {
+  const label = String(name || '').replace(/[<>&"]/g, '');
+  return (
+    `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 ${VIEW_W} ${VIEW_H}" width="${VIEW_W}" height="${VIEW_H}" role="img" aria-label="${label} aláírása">` +
+    `<image href="${dataUrl}" xlink:href="${dataUrl}" x="0" y="0" width="${VIEW_W}" height="${VIEW_H}" preserveAspectRatio="xMidYMid meet"/>` +
+    `</svg>`
+  );
+}
+
+/** The embedded picture of an uploaded signature, or null for a drawn one. */
+export function signatureImageData(svg: string | null | undefined): string | null {
+  const match = String(svg || '').match(/href="(data:image\/png;base64,[A-Za-z0-9+/=]+)"/);
+  return match ? match[1] : null;
+}

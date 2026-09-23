@@ -1,7 +1,8 @@
 import React, {useEffect, useMemo, useRef} from 'react';
 import {NavLink, useLocation} from 'react-router-dom';
 import {STAFF_NAV} from '../../lib/navigation';
-import {roleAtLeast, useAuthStore} from '../../stores/useAuthStore';
+import {can, roleAtLeast, useAuthStore} from '../../stores/useAuthStore';
+import {realtimeAvailable, useRealtimeConnected} from '../../lib/realtime';
 
 /**
  * Persistent navigation for the staff console.
@@ -11,18 +12,19 @@ import {roleAtLeast, useAuthStore} from '../../stores/useAuthStore';
  * first, and two of the newer pages had no entry point at all outside the
  * address bar.
  *
- * Links are filtered by role so the UI never offers something the route guard
- * would bounce. The guard is still what enforces it — this only decides what is
- * worth showing.
+ * Links are filtered by role (or by a capability, for the DJ booth) so the UI
+ * never offers something the route guard would bounce. The guard is still what
+ * enforces it — this only decides what is worth showing.
  */
 export const ConsoleNav: React.FC = () => {
   const user = useAuthStore((state) => state.user);
   const location = useLocation();
   const scrollRef = useRef<HTMLDivElement>(null);
+  const connected = useRealtimeConnected();
 
   const links = useMemo(
-    () => STAFF_NAV.filter((link) => roleAtLeast(user?.role, link.need)),
-    [user?.role]
+    () => STAFF_NAV.filter((link) => roleAtLeast(user?.role, link.need) || (link.capability && can(user, link.capability))),
+    [user]
   );
 
   // The rail scrolls horizontally on a phone, so the active tool can sit off
@@ -44,24 +46,27 @@ export const ConsoleNav: React.FC = () => {
       <div className="h-[68px]" aria-hidden="true"/>
 
       <div className="rm-console-nav">
-      <nav ref={scrollRef} className="rm-console-scroll px-6 lg:px-12" aria-label="Konzol">
-        {links.map((link) => {
-          const first = link.group !== previousGroup;
-          previousGroup = link.group;
-          return (
-            <NavLink
-              key={link.to}
-              to={link.to}
-              end={link.to === '/staff'}
-              data-first={first}
-              className="rm-console-link"
-              title={link.group}
-            >
-              {link.label}
-            </NavLink>
-          );
-        })}
-      </nav>
+        <nav ref={scrollRef} className="rm-console-scroll px-6 lg:px-12" aria-label="Konzol">
+          {links.map((link) => {
+            const first = link.group !== previousGroup;
+            previousGroup = link.group;
+            return (
+              <NavLink
+                key={link.to}
+                to={link.to}
+                end={link.to === '/staff'}
+                data-first={first}
+                className={`rm-console-link${link.to === '/dj' ? ' is-booth' : ''}`}
+                title={link.group}
+              >
+                {link.label}
+              </NavLink>
+            );
+          })}
+          <span className={`rm-console-live${connected ? ' is-on' : ''}`} title={connected ? 'A változások azonnal megjelennek' : realtimeAvailable ? 'Kapcsolódás… addig rendszeres frissítés' : 'Rendszeres frissítés'}>
+            <i aria-hidden="true"/> {connected ? 'ÉLŐ' : 'FRISSÍTÉS'}
+          </span>
+        </nav>
       </div>
     </>
   );

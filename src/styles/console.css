@@ -495,35 +495,6 @@ textarea.rm-input { resize: vertical; min-height: 64px; line-height: 1.6; }
     transition-delay: 0s;
 }
 
-.rm-volume-panel {
-    position: relative;
-    width: 224px;
-    height: 50px;
-    display: grid;
-    grid-template-columns: 57px 1fr;
-    grid-template-rows: 18px 15px;
-    column-gap: 10px;
-    align-items: center;
-    padding: 8px 13px 8px 16px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 10px;
-    background: linear-gradient(135deg, rgba(17, 10, 13, 0.96), rgba(6, 5, 7, 0.92));
-    box-shadow: 0 16px 44px rgba(0, 0, 0, 0.55), 0 0 24px rgba(255, 40, 75, 0.08);
-    backdrop-filter: blur(18px) saturate(130%);
-}
-
-/* Ruby filament down the left edge. */
-.rm-volume-panel::before {
-    content: "";
-    position: absolute;
-    left: 8px;
-    top: 9px;
-    bottom: 9px;
-    width: 1px;
-    background: linear-gradient(180deg, transparent, rgba(238, 42, 73, 0.48), transparent);
-    box-shadow: 0 0 6px rgba(238, 42, 73, 0.2);
-}
-
 /* ---------------------------------------------------------------- */
 /* Signature preview                                                 */
 /* ---------------------------------------------------------------- */
@@ -536,10 +507,13 @@ textarea.rm-input { resize: vertical; min-height: 64px; line-height: 1.6; }
     overflow: hidden;
 }
 
-.rm-signature-card svg {
+.rm-signature-card svg,
+.rm-signature-card img {
     display: block;
     width: 100%;
     height: auto;
+    aspect-ratio: 5 / 2;
+    object-fit: contain;
 }
 
 .rm-signature-card::after {

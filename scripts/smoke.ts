@@ -24,7 +24,7 @@ function jar(name: string): Map<string, string> {
 
 interface CallOptions {
   headers?: Record<string, string>;
-  expect?: number;
+  expect?: number | number[];
 }
 
 async function call(who: string, method: string, path: string, body?: unknown, {headers = {}, expect}: CallOptions = {}): Promise<{status: number; data: Json}> {
@@ -49,7 +49,7 @@ async function call(who: string, method: string, path: string, body?: unknown, {
   } catch {
     data = {};
   }
-  const ok = expect === undefined ? response.ok : response.status === expect;
+  const ok = expect === undefined ? response.ok : Array.isArray(expect) ? expect.includes(response.status) : response.status === expect;
   const tag = ok ? 'ok ' : 'FAIL';
   if (!ok) failures += 1;
   console.log(`${tag} ${String(response.status).padEnd(3)} ${method.padEnd(6)} ${path}${ok ? '' : ' → ' + JSON.stringify(data)}`);
@@ -68,7 +68,8 @@ await call('guest', 'POST', '/api/login', {username: USER, password: 'wrong-pass
 await call('guest', 'POST', '/api/login', {username: 'nobody', password: 'wrong-password'}, {expect: 401});
 
 // ---------- owner ----------
-const login = await call(owner, 'POST', '/api/login', {username: USER, password: PASS});
+// Takes over any session left open by a browser run, so the suite is repeatable.
+const login = await call(owner, 'POST', '/api/login', {username: USER, password: PASS, force: true});
 const me = login.data?.user;
 if (!me) {
   console.error('Login failed, cannot continue.');
@@ -105,8 +106,46 @@ await call(owner, 'POST', '/api/users', {username: 'x', password: 'short', name:
 
 // ---------- house ----------
 await call(owner, 'GET', '/api/house');
-await call(owner, 'PATCH', '/api/house', {hourlyWage: 2000, registration: 'SC-RM-0001'});
+await call(owner, 'PATCH', '/api/house', {registration: 'SC-RM-0001'});
 await call(owner, 'GET', '/api/documents/context');
+
+// ---------- family tree order, gallery, signature ----------
+const houseData = await call(owner, 'GET', '/api/house');
+const people = (houseData.data?.people || []) as {id: string; tier: string}[];
+if (people.length) {
+  await call(owner, 'PUT', '/api/house/people/order', people.map((person, index) => ({id: person.id, tier: person.tier, sortOrder: index})));
+}
+await call('guest', 'GET', '/api/public/gallery');
+const shot = await call(owner, 'POST', '/api/gallery', {title: 'SMOKE', caption: 'teszt', tag: 'este', imageUrl: '/assets/red-moon-logo.png', width: 800, height: 800}, {expect: 201});
+await call(owner, 'PATCH', `/api/gallery/${shot.data.item.id}`, {caption: 'teszt 2', active: false});
+await call(owner, 'PUT', '/api/gallery/order', [{id: shot.data.item.id, sortOrder: 0}]);
+await call(owner, 'POST', '/api/gallery', {title: 'BAD', imageUrl: 'https://evil.example/x.png'}, {expect: 400});
+await call(owner, 'DELETE', `/api/gallery/${shot.data.item.id}`);
+await call(owner, 'POST', '/api/media/sign', {kind: 'image', purpose: 'gallery', filename: 'x.png', size: 1000});
+await call(owner, 'POST', '/api/media/sign', {kind: 'image', purpose: 'gallery', filename: 'x.exe', size: 1000}, {expect: 400});
+await call('mgr', 'POST', '/api/login', {username: manager.data.user.username, password: 'Mgr12345x'});
+const mgrMe = await call('mgr', 'GET', '/api/me');
+if (!mgrMe.data?.user?.signaturePrompt) {
+  console.log('FAIL new manager should be asked to choose a signature', mgrMe.data?.user);
+  failures += 1;
+}
+await call('mgr', 'PUT', '/api/profile/signature', {mode: 'generated', seed: 'smoke:1'});
+await call('mgr', 'PUT', '/api/profile/signature', {mode: 'draw', path: 'M 20 60 C 40 20, 60 20, 80 60 L 120 50'});
+await call('mgr', 'PUT', '/api/profile/signature', {mode: 'draw', path: '<script>'}, {expect: 400});
+await call('mgr', 'PUT', '/api/profile/signature', {mode: 'upload', image: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='});
+const decided = await call('mgr', 'PUT', '/api/profile/signature', {mode: 'keep'});
+if (decided.data?.user?.signaturePrompt !== false || decided.data?.user?.signatureKind !== 'uploaded') {
+  console.log('FAIL signature choice not recorded', decided.data?.user);
+  failures += 1;
+}
+if (!/\/signature\/.+\.png/.test(String(decided.data?.user?.signatureUrl || ''))) {
+  console.log('FAIL uploaded signature should live in the media store as a PNG', decided.data?.user?.signatureUrl);
+  failures += 1;
+}
+// Profile pictures come from the media store too: inline data is refused, clearing is fine.
+await call('mgr', 'PATCH', '/api/profile', {avatar: 'data:image/png;base64,iVBORw0KGgo='}, {expect: 400});
+await call('mgr', 'PATCH', '/api/profile', {avatar: 'https://example.com/x.png', avatarPublicId: 'redmoon/avatar/x'}, {expect: 400});
+await call('mgr', 'PATCH', '/api/profile', {avatar: '', avatarPublicId: ''});
 await call(owner, 'POST', '/api/house/pub/open', {}, {expect: 409}); // no shift yet
 
 // ---------- shift ----------
@@ -161,8 +200,23 @@ const token = `v_smoke_${stamp}`;
 const booking = await call('guest', 'POST', '/api/reservations', {name: 'Smoke Guest', phone: '1234567', guests: 3, at: new Date(Date.now() + 3 * 3600000).toISOString(), occasion: 'este', tier: 'none', note: '', visitorToken: token}, {expect: 201});
 await call('guest', 'GET', `/api/reservations/mine?token=${token}`);
 await call(owner, 'GET', '/api/reservations');
+await call(owner, 'PATCH', `/api/reservations/${booking.data.reservation.id}`, {status: 'reviewing'});
+await call('guest', 'POST', `/api/reservations/${booking.data.reservation.id}/messages`, {visitorToken: token, text: 'Lehet ablak mellé?'}, {expect: 201});
+await call('guest', 'POST', `/api/reservations/${booking.data.reservation.id}/messages`, {visitorToken: 'wrong', text: 'x'}, {expect: 403});
+await call(owner, 'GET', `/api/reservations/${booking.data.reservation.id}/messages`);
+await call(owner, 'POST', `/api/reservations/${booking.data.reservation.id}/messages`, {text: 'Persze, ablak mellé.'});
+await call(owner, 'POST', `/api/reservations/${booking.data.reservation.id}/read`, {});
+const mine = await call('guest', 'GET', `/api/reservations/mine?token=${token}`);
+if ((mine.data?.reservations?.[0]?.messages || []).length !== 2 || mine.data?.reservations?.[0]?.unread !== 1) {
+  console.log('FAIL reservation thread', mine.data?.reservations?.[0]);
+  failures += 1;
+}
+await call('guest', 'POST', `/api/reservations/${booking.data.reservation.id}/read`, {visitorToken: token});
+await call(owner, 'PATCH', `/api/reservations/${booking.data.reservation.id}`, {status: 'waitlist'});
 await call(owner, 'PATCH', `/api/reservations/${booking.data.reservation.id}`, {status: 'confirmed', staffNote: 'Várunk!'});
+await call(owner, 'PATCH', `/api/reservations/${booking.data.reservation.id}`, {status: 'bogus'}, {expect: 400});
 await call('guest', 'DELETE', `/api/reservations/${booking.data.reservation.id}`, {visitorToken: token});
+await call('guest', 'POST', '/api/careers', {name: 'Old Role', phone: '7654321', age: 22, position: 'hostess', availability: 'este', experience: '', why: 'Mert a Red Moon a legjobb hely a városban, ezért.', visitorToken: token}, {expect: 400});
 const application = await call('guest', 'POST', '/api/careers', {name: 'Smoke Applicant', phone: '7654321', age: 22, position: 'bartender', availability: 'este', experience: '', why: 'Mert a Red Moon a legjobb hely a városban, ezért.', visitorToken: token}, {expect: 201});
 await call(owner, 'GET', '/api/applications');
 await call(owner, 'PATCH', `/api/applications/${application.data.application.id}`, {status: 'interview', staffNote: 'Gyere be'});
@@ -171,6 +225,11 @@ await call('guest', 'POST', '/api/reviews', {name: 'Smoke', rating: 5, text: 'Re
 await call('guest', 'GET', '/api/reviews', undefined, {headers: {'X-Review-Token': token}});
 
 // ---------- club ----------
+// A previous run on this machine may have left a listener behind; clear it so the flow is repeatable.
+const before = await call(owner, 'GET', '/api/dj/state');
+for (const listener of (before.data?.state?.registeredListeners || []) as {name: string; ip: string; browserHash: string}[]) {
+  if (listener.name === 'SmokeListener') await call(owner, 'POST', '/api/club/listener-action', {action: 'remove', ip: listener.ip, browserHash: listener.browserHash});
+}
 await call('guest', 'POST', '/api/club/listener', {id: `c_${stamp}`});
 await call('guest', 'GET', `/api/club/name-status?clientId=c_${stamp}`);
 await call('guest', 'POST', '/api/club/name-request', {name: 'SmokeListener', clientId: `c_${stamp}`}, {expect: 201});
@@ -181,12 +240,28 @@ const named = await call('guest', 'GET', `/api/club/name-status?clientId=c_${sta
 if (named.data?.status === 'accepted') {
   await call('guest', 'POST', '/api/club/chat', {name: 'SmokeListener', text: 'Hello!', token: named.data.token}, {expect: 201});
   await call('guest', 'POST', '/api/club/chat', {name: 'SmokeListener', text: 'Too fast', token: named.data.token}, {expect: 429});
-  await call('guest', 'POST', '/api/club/request', {title: 'Smoke song', token: named.data.token}, {expect: 201});
+  await call('guest', 'POST', '/api/club/color', {token: named.data.token, color: '#4cc9f0'});
+  await call('guest', 'POST', '/api/club/color', {token: named.data.token, color: 'red'}, {expect: 400});
+  await call('guest', 'POST', '/api/club/request', {title: 'Smoke song', token: named.data.token}, {expect: [201, 429]});
+  const requests = await call(owner, 'GET', '/api/dj/state');
+  const pendingRequest = (requests.data?.state?.requests || []).find((entry: {status: string}) => entry.status === 'pending');
+  if (pendingRequest) await call(owner, 'POST', '/api/dj/request', {id: pendingRequest.id, action: 'accept'});
+  const colored = await call('guest', 'GET', '/api/club/state');
+  if (!(colored.data?.state?.people || []).some((person: {name: string; color: string}) => person.name === 'SmokeListener' && person.color === '#4cc9f0')) {
+    console.log('FAIL listener colour not applied', colored.data?.state?.people);
+    failures += 1;
+  }
 } else {
   console.log('FAIL listener not accepted', named.data);
   failures += 1;
 }
-await call(owner, 'POST', '/api/dj/live', {live: true, title: 'Smoke Live'});
+await call(owner, 'POST', '/api/dj/live', {live: true, title: 'Smoke Live', streamUrl: 'https://stream.example.com/redmoon', providerUrl: 'https://gocast.fm/station/red-moon-pub'});
+await call(owner, 'PATCH', '/api/dj/stream', {streamUrl: 'not a url'}, {expect: 400});
+const liveStatus = await call('guest', 'GET', '/api/public/status');
+if (!liveStatus.data?.live || liveStatus.data?.streamUrl !== 'https://stream.example.com/redmoon') {
+  console.log('FAIL live status should carry the stream', liveStatus.data);
+  failures += 1;
+}
 await call('guest', 'GET', '/api/club/state');
 await call(owner, 'POST', '/api/dj/chat', {text: 'DJ here'}, {expect: 201});
 await call(owner, 'POST', '/api/dj/live', {live: false});
@@ -203,6 +278,10 @@ await call('bar2', 'POST', '/api/logout', {});
 await call('bar2', 'GET', '/api/products', undefined, {expect: 401});
 
 // ---------- close ----------
+await call('mgr', 'POST', '/api/documents/issued', {kind: 'transactions', reference: `RM/TRX-SMOKE-${stamp}`, countersigned: false});
+await call('mgr', 'PUT', '/api/profile/signature', {mode: 'generated', seed: 'after-lock'}, {expect: 409});
+await call(owner, 'POST', `/api/users/${manager.data.user.id}/signature`, {}, {expect: 409});
+await call('mgr', 'POST', '/api/logout', {});
 await call(owner, 'POST', '/api/shifts/close', {closingCash: 9000, notes: 'smoke'});
 const closed = await call('guest', 'GET', '/api/public/status');
 if (closed.data?.open) {

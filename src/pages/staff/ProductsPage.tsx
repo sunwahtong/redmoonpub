@@ -1,10 +1,11 @@
 import React, {useMemo, useState} from 'react';
-import {Check, Eye, EyeOff, PackagePlus, Pencil, Search, X} from 'lucide-react';
+import {Check, Eye, EyeOff, ImagePlus, PackagePlus, Pencil, Search, X} from 'lucide-react';
 import {NeonHeading} from '../../components/ui/NeonHeading';
 import {Btn} from '../../components/ui/Btn';
 import {Select} from '../../components/ui/Select';
 import {useLiveData} from '../../hooks/useLiveData';
 import {apiSend, formatHuf} from '../../lib/api';
+import {uploadMedia} from '../../lib/media';
 import {playSfx} from '../../lib/sfx';
 import {SECTION_LABELS, SECTION_ORDER, sectionLabel} from '../../lib/sections';
 import {useAuthStore, roleAtLeast} from '../../stores/useAuthStore';
@@ -19,6 +20,7 @@ interface Product {
   stock: number;
   minStock: number;
   image: string;
+  imagePublicId?: string;
   subtitle: string;
   active: boolean;
 }
@@ -51,6 +53,32 @@ export const ProductsPage: React.FC = () => {
   const [newSection, setNewSection] = useState<DrinkSection>('beer');
   const [newCategory, setNewCategory] = useState<'drink' | 'food'>('drink');
   const [newImage, setNewImage] = useState('');
+  const [newImagePublicId, setNewImagePublicId] = useState('');
+  const [uploading, setUploading] = useState<string | null>(null);
+
+  /** A picture for a product: uploaded to the media library, stored by URL. */
+  const pickImage = async (event: React.ChangeEvent<HTMLInputElement>, productId: string | null) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setUploading(productId || 'new');
+    try {
+      const media = await uploadMedia('image', 'product', file);
+      if (productId) await apiSend(`/api/products/${productId}`, 'PATCH', {image: media.url, imagePublicId: media.publicId});
+      else {
+        setNewImage(media.url);
+        setNewImagePublicId(media.publicId);
+      }
+      setMessage({kind: 'ok', text: 'Kép feltöltve.'});
+      playSfx('success');
+      refresh();
+    } catch (err) {
+      setMessage({kind: 'error', text: (err as Error).message});
+      playSfx('error');
+    } finally {
+      setUploading(null);
+      event.target.value = '';
+    }
+  };
 
   const products = useMemo(() => data?.products || [], [data]);
 
@@ -120,13 +148,15 @@ export const ProductsPage: React.FC = () => {
         price: Number(newPrice),
         stock: Number(newStock),
         minStock: Number(newMinStock),
-        image: newImage
+        image: newImage,
+        imagePublicId: newImagePublicId
       });
       setNewName('');
       setNewPrice('');
       setNewStock('0');
       setNewMinStock('5');
       setNewImage('');
+      setNewImagePublicId('');
     }, 'Termék létrehozva.');
   };
 
@@ -244,6 +274,10 @@ export const ProductsPage: React.FC = () => {
                         <span className="shrink-0 font-heading text-[14px] text-[color:var(--rm-red)]">
                           {formatHuf(product.price)}
                         </span>
+                        <label className="cursor-pointer text-[#777] transition-colors hover:text-white" aria-label="Kép feltöltése" title="Kép feltöltése">
+                          <input type="file" accept="image/*" onChange={(event) => pickImage(event, product.id)} className="hidden" disabled={uploading === product.id}/>
+                          <ImagePlus size={12}/>
+                        </label>
                         <button
                           type="button"
                           onClick={() => startEdit(product)}
@@ -326,12 +360,21 @@ export const ProductsPage: React.FC = () => {
               />
             </div>
 
-            <input
-              value={newImage}
-              onChange={(event) => setNewImage(event.target.value)}
-              placeholder="assets/menu/drinks/kep.png"
-              className={field}
-            />
+            <div className="flex gap-2">
+              <input
+                value={newImage}
+                onChange={(event) => {
+                  setNewImage(event.target.value);
+                  setNewImagePublicId('');
+                }}
+                placeholder="assets/menu/drinks/kep.png"
+                className={field}
+              />
+              <label className="rm-btn is-ghost !px-3 !py-2 !text-[8px] cursor-pointer">
+                <input type="file" accept="image/*" onChange={(event) => pickImage(event, null)} className="hidden" disabled={uploading === 'new'}/>
+                <ImagePlus size={12}/> {uploading === 'new' ? '…' : 'KÉP'}
+              </label>
+            </div>
 
             <Btn type="submit" variant="red" className="mt-2 justify-center">
               <PackagePlus size={13}/> LÉTREHOZÁS

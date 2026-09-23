@@ -17,9 +17,10 @@ data/pglite/
 data/*.bak
 data/*.tmp
 
-# Uploaded media served from disk on a VPS (production uses object storage)
+# Uploaded media served from disk in development (production uses Cloudinary)
 public/assets/dj-music/*
 !public/assets/dj-music/.gitkeep
+public/assets/uploads/
 
 # Editors and operating systems
 .idea/

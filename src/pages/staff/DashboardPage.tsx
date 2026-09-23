@@ -85,7 +85,6 @@ interface PersonalAnalytics {
     sales: number;
     items: number;
     revenue: number;
-    wage: number;
     orders: number;
     orderEstimated: number;
     orderActual: number;
@@ -117,12 +116,13 @@ export const DashboardPage: React.FC = () => {
   const isManager = roleAtLeast(user?.role, 'manager');
   const isOwner = roleAtLeast(user?.role, 'owner');
 
-  const {data: dashboard, refresh: refreshDashboard} = useLiveData<Dashboard>('/api/dashboard', {intervalMs: 30000});
-  const {data: house, refresh: refreshHouse} = useHouseStatus(15000);
-  const {data: presence} = useLiveData<Presence>('/api/presence', {intervalMs: 30000});
+  const {data: dashboard, refresh: refreshDashboard} = useLiveData<Dashboard>('/api/dashboard', {intervalMs: 30000, topics: ['house', 'content']});
+  const {data: house, refresh: refreshHouse} = useHouseStatus();
+  const {data: presence} = useLiveData<Presence>('/api/presence', {intervalMs: 30000, topics: ['staff']});
   const {data: notifications, refresh: refreshNotifications} = useLiveData<Notifications>('/api/notifications', {
     intervalMs: 60000,
-    enabled: isManager
+    enabled: isManager,
+    topics: ['reservations', 'content']
   });
   const {data: me} = useLiveData<PersonalAnalytics>('/api/analytics/me', {intervalMs: 45000});
   const {data: orderData} = useLiveData<{orders: SupplyOrder[]; canRun: boolean}>('/api/orders', {intervalMs: 30000});
@@ -145,6 +145,16 @@ export const DashboardPage: React.FC = () => {
     () => (storage?.products || []).filter((product) => product.daysLeft !== null && product.daysLeft <= 5).slice(0, 6),
     [storage]
   );
+
+  const markAllRead = async () => {
+    try {
+      await apiSend('/api/notifications/read', 'POST', {all: true});
+      refreshNotifications();
+      playSfx('success');
+    } catch {
+      /* nothing to recover from */
+    }
+  };
 
   const markRead = async (id: string) => {
     try {
@@ -276,7 +286,7 @@ export const DashboardPage: React.FC = () => {
           <Stat icon={Timer} glyph="時" label="LEDOLGOZOTT ÓRA" value={totals ? `${totals.hours}` : '—'} hint={totals ? `${totals.shifts} műszak` : undefined}/>
           <Stat icon={Receipt} glyph="売" label="SAJÁT ELADÁS" value={totals ? String(totals.sales) : '—'} hint={totals ? `${totals.items} tétel` : undefined}/>
           <Stat icon={Coins} glyph="金" label="ÁLTALAD HOZOTT BEVÉTEL" value={totals ? formatHuf(totals.revenue) : '—'}/>
-          <Stat icon={Activity} glyph="給" label="BÉR (BECSÜLT)" value={totals ? formatHuf(totals.wage) : '—'} hint="Óradíj alapján"/>
+          <Stat icon={Truck} glyph="運" label="BESZERZÉS" value={totals ? String(totals.orders) : '—'} hint={totals ? `${formatHuf(totals.orderActual)} elköltve` : undefined}/>
         </div>
 
         {me && me.days.length > 0 && (
@@ -383,7 +393,17 @@ export const DashboardPage: React.FC = () => {
                 </div>
               </Panel>
 
-              <Panel label="ÉRTESÍTÉSEK" title={feed.length ? `${feed.length} olvasatlan` : 'Minden olvasva'}>
+              <Panel
+                label="ÉRTESÍTÉSEK"
+                title={feed.length ? `${feed.length} olvasatlan` : 'Minden olvasva'}
+                action={
+                  feed.length > 0 ? (
+                    <button type="button" onClick={markAllRead} className="text-[9px] tracking-[0.2em] text-[#777] transition-colors hover:text-emerald-400">
+                      MIND OLVASOTT
+                    </button>
+                  ) : undefined
+                }
+              >
                 {feed.length === 0 ? (
                   <p className="text-[11px] text-[#8d8584]">Nincs új értesítés.</p>
                 ) : (

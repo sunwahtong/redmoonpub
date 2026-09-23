@@ -185,8 +185,8 @@ export function buildShiftReport(shift: ShiftRow): DocumentPayload {
   };
 }
 
-/** Bérelszámolás a zárt műszakok alapján. */
-export function buildPayroll(shifts: ShiftRow[], period: Period, hourlyWage: number): DocumentPayload {
+/** Munkaidő-kimutatás a zárt műszakok alapján. */
+export function buildPayroll(shifts: ShiftRow[], period: Period): DocumentPayload {
   const start = periodStart(period);
   const closed = shifts.filter((shift) => shift.status === 'closed' && within(shift.startedAt, start));
 
@@ -203,34 +203,31 @@ export function buildPayroll(shifts: ShiftRow[], period: Period, hourlyWage: num
   }
 
   const rows = [...people.values()].sort((a, b) => b.hours - a.hours);
-  const wageTotal = rows.reduce((sum, row) => sum + row.hours * hourlyWage, 0);
 
   return {
     kind: 'payroll',
     period: periodText(period),
-    preamble: `A kifizetendő összeg a ledolgozott órák és a ${formatHuf(hourlyWage)} órabér szorzata. Az elszámolás a lezárt műszakok adatain alapul.`,
+    preamble: 'A kimutatás a lezárt műszakok adatain alapul: ki mikor volt bent, hány műszakban, és mennyi bevételt hozott.',
     columns: [
       {key: 'name', label: 'Dolgozó'},
       {key: 'shifts', label: 'Műszak', numeric: true},
       {key: 'hours', label: 'Óra', numeric: true},
       {key: 'sales', label: 'Eladás', numeric: true},
-      {key: 'revenue', label: 'Hozott bevétel', numeric: true},
-      {key: 'wage', label: 'Kifizetendő', numeric: true}
+      {key: 'revenue', label: 'Hozott bevétel', numeric: true}
     ],
     rows: rows.map((row) => ({
       name: row.name,
       shifts: row.shifts,
       hours: row.hours.toFixed(1),
       sales: row.sales,
-      revenue: formatHuf(row.revenue),
-      wage: formatHuf(Math.round(row.hours * hourlyWage))
+      revenue: formatHuf(row.revenue)
     })),
     summary: [
       {label: 'Dolgozók száma', value: String(rows.length)},
-      {label: 'Ledolgozott óra', value: rows.reduce((sum, row) => sum + row.hours, 0).toFixed(1)},
-      {label: 'Kifizetendő összesen', value: formatHuf(Math.round(wageTotal)), strong: true}
+      {label: 'Ledolgozott óra', value: rows.reduce((sum, row) => sum + row.hours, 0).toFixed(1), strong: true},
+      {label: 'Hozott bevétel összesen', value: formatHuf(rows.reduce((sum, row) => sum + row.revenue, 0))}
     ],
-    notes: ['Az órabér egységesen került alkalmazásra; egyedi megállapodások nincsenek rögzítve a rendszerben.', 'A kifizetés a dokumentum aláírását követően esedékes.']
+    notes: ['A ledolgozott idő a műszakba lépéstől a kilépésig vagy a műszak zárásáig számít.']
   };
 }
 

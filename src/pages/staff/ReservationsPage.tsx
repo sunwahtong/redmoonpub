@@ -1,53 +1,165 @@
-import React, {useMemo, useState} from 'react';
-import {CalendarClock, Phone, Search, Users} from 'lucide-react';
-import {NeonHeading} from '../../components/ui/NeonHeading';
+import React, {useEffect, useMemo, useRef, useState} from 'react';
+import {CalendarClock, Check, MessageSquare, Phone, Send, Users, X} from 'lucide-react';
 import {Btn} from '../../components/ui/Btn';
+import {Badge, Chips, PageHeader, SearchField, Stat} from '../../components/ui/console';
 import {useLiveData} from '../../hooks/useLiveData';
-import {apiSend, formatDate, formatTime} from '../../lib/api';
+import {apiSend, formatAgo, formatDate, formatTime} from '../../lib/api';
 import {playSfx} from '../../lib/sfx';
+import {toast} from '../../stores/useToastStore';
 import {roleAtLeast, useAuthStore} from '../../stores/useAuthStore';
 import {
   OCCASION_LABEL,
+  PIPELINE,
+  pipelineIndex,
   STATUS_CLASS,
   STATUS_LABEL,
   TIER_LABEL,
+  canMessage,
   type Reservation,
+  type ReservationMessage,
   type ReservationStatus
 } from '../../lib/reservations';
 
 const normalize = (value: string) => value.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 
-type Filter = 'live' | 'pending' | 'all';
+type Filter = 'live' | 'new' | 'unread' | 'all';
 
 /** Actions offered per status. Only the transitions that make sense. */
 const ACTIONS: Record<ReservationStatus, ReservationStatus[]> = {
-  pending: ['confirmed', 'declined'],
+  pending: ['reviewing', 'confirmed', 'waitlist', 'declined'],
+  reviewing: ['confirmed', 'waitlist', 'declined'],
+  waitlist: ['confirmed', 'declined'],
   confirmed: ['seated', 'noshow', 'cancelled'],
-  declined: ['pending'],
+  declined: ['reviewing'],
   seated: [],
-  cancelled: ['pending'],
+  cancelled: ['reviewing'],
   noshow: []
 };
 
 const ACTION_LABEL: Record<ReservationStatus, string> = {
   pending: 'VISSZAÁLLÍT',
+  reviewing: 'NÉZZÜK',
+  waitlist: 'VÁRÓLISTA',
   confirmed: 'VISSZAIGAZOL',
-  declined: 'ELUTASÍT',
+  declined: 'NEM FÉR BE',
   seated: 'LEÜLTETVE',
   cancelled: 'LEMOND',
   noshow: 'NEM JÖTT EL'
 };
 
+/** Ready-made lines for the thread, so a reply is one click. */
+const QUICK_REPLIES = [
+  'Megkaptuk, hamarosan visszajelzünk.',
+  'Az asztal készen áll, várunk titeket!',
+  'Erre az időpontra tele vagyunk. Egy órával később még van hely — jó lenne?',
+  'Kérlek, erősítsd meg, hogy jöttök.'
+];
+
+const Pipeline: React.FC<{status: ReservationStatus}> = ({status}) => {
+  const index = pipelineIndex(status);
+  const bad = status === 'declined' || status === 'noshow' || status === 'cancelled';
+  return (
+    <div className="rm-pipeline" aria-label="Folyamat">
+      {PIPELINE.map((stage, position) => (
+        <span
+          key={stage.id}
+          className={`rm-pipeline-step${position < index ? ' is-done' : ''}${position === index ? (bad ? ' is-bad' : ' is-current') : ''}`}
+        >
+          {stage.label}
+        </span>
+      ))}
+    </div>
+  );
+};
+
+/** The thread with one guest, opened inside the booking card. */
+const Thread: React.FC<{reservation: Reservation; canWrite: boolean}> = ({reservation, canWrite}) => {
+  const {data, refresh, mutate} = useLiveData<{messages: ReservationMessage[]}>(`/api/reservations/${reservation.id}/messages`, {
+    intervalMs: 15000,
+    topics: ['reservations']
+  });
+  const [text, setText] = useState('');
+  const [sending, setSending] = useState(false);
+  const listRef = useRef<HTMLDivElement>(null);
+  const messages = data?.messages || [];
+
+  useEffect(() => {
+    const element = listRef.current;
+    if (element) element.scrollTop = element.scrollHeight;
+  }, [messages.length]);
+
+  // Opening the thread reads it.
+  useEffect(() => {
+    if (reservation.unread) apiSend(`/api/reservations/${reservation.id}/read`, 'POST', {}).catch(() => {});
+  }, [reservation.id, reservation.unread]);
+
+  const send = async (value: string) => {
+    const line = value.trim();
+    if (!line || sending) return;
+    setSending(true);
+    try {
+      const reply = await apiSend<{message: ReservationMessage}>(`/api/reservations/${reservation.id}/messages`, 'POST', {text: line});
+      mutate((current) => ({messages: [...(current?.messages || []), reply.message]}));
+      setText('');
+      playSfx('chat_message');
+      refresh();
+    } catch (err) {
+      toast.error('Nem ment el', (err as Error).message);
+      playSfx('error');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="mt-4 border-t border-white/[0.06] pt-4">
+      <div ref={listRef} className="rm-thread">
+        {!messages.length && <p className="text-[10px] text-[#6f6968]">Még nincs üzenetváltás. Ami itt elhangzik, a vendég a foglalásainál látja.</p>}
+        {messages.map((message) => (
+          <div key={message.id} className={`rm-thread-msg${message.author === 'staff' ? ' is-mine' : ''}`}>
+            {message.text}
+            <small>
+              {message.author === 'staff' ? message.authorName || 'Red Moon' : reservation.name} · {formatAgo(message.at)}
+            </small>
+          </div>
+        ))}
+      </div>
+      {canWrite && canMessage(reservation.status) && (
+        <>
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            {QUICK_REPLIES.map((line) => (
+              <button key={line} type="button" onClick={() => send(line)} disabled={sending} className="rm-chip !px-2.5 !py-1.5 !text-[8px] !tracking-[0.08em] normal-case">
+                {line}
+              </button>
+            ))}
+          </div>
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              send(text);
+            }}
+            className="mt-3 flex gap-2"
+          >
+            <input value={text} onChange={(event) => setText(event.target.value.slice(0, 600))} placeholder="Üzenet a vendégnek…" className="rm-input"/>
+            <Btn type="submit" variant="red" disabled={sending || !text.trim()}>
+              <Send size={13}/>
+            </Btn>
+          </form>
+        </>
+      )}
+    </div>
+  );
+};
+
 export const StaffReservationsPage: React.FC = () => {
-  const {data, refresh} = useLiveData<{reservations: Reservation[]}>('/api/reservations', {intervalMs: 20000});
+  const {data, refresh, mutate} = useLiveData<{reservations: Reservation[]}>('/api/reservations', {intervalMs: 20000, topics: ['reservations']});
   const user = useAuthStore((state) => state.user);
   const canDecide = roleAtLeast(user?.role, 'manager');
 
   const [filter, setFilter] = useState<Filter>('live');
   const [query, setQuery] = useState('');
-  const [notes, setNotes] = useState<Record<string, string>>({});
+  const [openId, setOpenId] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [error, setError] = useState('');
 
   const reservations = useMemo(() => data?.reservations || [], [data]);
 
@@ -55,8 +167,9 @@ export const StaffReservationsPage: React.FC = () => {
     const needle = normalize(query.trim());
     return reservations
       .filter((reservation) => {
-        if (filter === 'pending' && reservation.status !== 'pending') return false;
-        if (filter === 'live' && !['pending', 'confirmed'].includes(reservation.status)) return false;
+        if (filter === 'new' && reservation.status !== 'pending') return false;
+        if (filter === 'unread' && !reservation.unread) return false;
+        if (filter === 'live' && !['pending', 'reviewing', 'waitlist', 'confirmed'].includes(reservation.status)) return false;
         if (!needle) return true;
         return normalize(`${reservation.code} ${reservation.name} ${reservation.phone}`).includes(needle);
       })
@@ -67,10 +180,11 @@ export const StaffReservationsPage: React.FC = () => {
   const counts = useMemo(
     () => ({
       pending: reservations.filter((r) => r.status === 'pending').length,
+      reviewing: reservations.filter((r) => r.status === 'reviewing' || r.status === 'waitlist').length,
       confirmed: reservations.filter((r) => r.status === 'confirmed').length,
-      guests: reservations
-        .filter((r) => r.status === 'confirmed')
-        .reduce((sum, r) => sum + Number(r.guests || 0), 0)
+      guests: reservations.filter((r) => r.status === 'confirmed').reduce((sum, r) => sum + Number(r.guests || 0), 0),
+      unread: reservations.reduce((sum, r) => sum + (r.unread || 0), 0),
+      live: reservations.filter((r) => ['pending', 'reviewing', 'waitlist', 'confirmed'].includes(r.status)).length
     }),
     [reservations]
   );
@@ -78,17 +192,16 @@ export const StaffReservationsPage: React.FC = () => {
   const decide = async (reservation: Reservation, status: ReservationStatus) => {
     if (busyId) return;
     setBusyId(reservation.id);
-    setError('');
+    // The card moves at once; the server's answer confirms it.
+    mutate((current) => (current ? {reservations: current.reservations.map((entry) => (entry.id === reservation.id ? {...entry, status} : entry))} : current));
     try {
-      await apiSend(`/api/reservations/${encodeURIComponent(reservation.id)}`, 'PATCH', {
-        status,
-        staffNote: notes[reservation.id] ?? reservation.staffNote ?? ''
-      });
+      await apiSend(`/api/reservations/${encodeURIComponent(reservation.id)}`, 'PATCH', {status});
       playSfx(status === 'declined' || status === 'noshow' ? 'decline' : 'accept');
-      refresh();
+      toast.success(`${reservation.code} · ${STATUS_LABEL[status]}`);
     } catch (err) {
-      setError((err as Error).message);
+      toast.error('Nem sikerült', (err as Error).message);
       playSfx('error');
+      refresh();
     } finally {
       setBusyId(null);
     }
@@ -97,86 +210,52 @@ export const StaffReservationsPage: React.FC = () => {
   return (
     <main>
       <section className="rm-section">
-        <div className="rm-label">RED MOON / ASZTALFOGLALÁSOK</div>
-        <NeonHeading as="h1" size={2} className="mb-8 mt-3.5">
-          A <em>foglalások.</em>
-        </NeonHeading>
+        <PageHeader
+          kicker="RED MOON / ASZTALFOGLALÁSOK"
+          title={
+            <>
+              A <em>foglalások.</em>
+            </>
+          }
+          lead="Ami beérkezik, azt előbb megnézzük, aztán döntünk. A vendég minden lépést lát a saját oldalán, és ha kérdés van, itt írtok egymásnak."
+        />
 
-        <div className="mb-6 grid grid-cols-1 gap-3.5 sm:grid-cols-3">
-          {[
-            {label: 'ELBÍRÁLÁSRA VÁR', value: counts.pending},
-            {label: 'VISSZAIGAZOLVA', value: counts.confirmed},
-            {label: 'VÁRT VENDÉG', value: counts.guests}
-          ].map((stat) => (
-            <div key={stat.label} className="rm-card p-5">
-              <span className="text-[8px] tracking-[0.25em] text-[#777]">{stat.label}</span>
-              <strong className="mt-2 block font-heading text-[24px] text-white">{stat.value}</strong>
-            </div>
-          ))}
+        <div className="mb-6 grid grid-cols-2 gap-3.5 lg:grid-cols-4">
+          <Stat label="BEÉRKEZETT" value={counts.pending} glyph="新" tone={counts.pending ? 'warn' : 'default'}/>
+          <Stat label="NÉZZÜK / VÁRÓLISTA" value={counts.reviewing} glyph="覧"/>
+          <Stat label="VISSZAIGAZOLVA" value={counts.confirmed} glyph="席" hint={`${counts.guests} vendég`}/>
+          <Stat label="OLVASATLAN ÜZENET" value={counts.unread} glyph="信" tone={counts.unread ? 'warn' : 'default'}/>
         </div>
 
         <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <label className="relative flex w-full items-center sm:max-w-xs">
-            <Search size={14} className="absolute left-4 text-[#6d5d64]"/>
-            <input
-              type="search"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="KÓD, NÉV VAGY TELEFONSZÁM…"
-              className="w-full border border-[color:var(--rm-line)] bg-black/50 py-3 pl-10 pr-4 text-[10px] tracking-[0.15em] text-white outline-none focus:border-[color:var(--rm-red)]"
-            />
-          </label>
-
-          <div className="flex gap-2">
-            {(
-              [
-                {id: 'live', label: 'ÉLŐ'},
-                {id: 'pending', label: 'ÚJ'},
-                {id: 'all', label: 'ÖSSZES'}
-              ] as const
-            ).map((option) => (
-              <button
-                key={option.id}
-                type="button"
-                onClick={() => setFilter(option.id)}
-                aria-pressed={filter === option.id}
-                className={`border px-4 py-2.5 text-[9px] font-bold tracking-[0.2em] transition-all ${
-                  filter === option.id
-                    ? 'border-[color:var(--rm-red)] bg-[rgba(213,31,60,0.12)] text-white'
-                    : 'border-white/10 text-[#8f8887] hover:border-white/30'
-                }`}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
+          <SearchField value={query} onChange={setQuery} placeholder="KÓD, NÉV VAGY TELEFONSZÁM…" className="sm:max-w-xs"/>
+          <Chips
+            value={filter}
+            onChange={setFilter}
+            options={[
+              {id: 'live', label: 'ÉLŐ', count: counts.live},
+              {id: 'new', label: 'ÚJ', count: counts.pending},
+              {id: 'unread', label: 'ÜZENET', count: counts.unread},
+              {id: 'all', label: 'ÖSSZES', count: reservations.length}
+            ]}
+          />
         </div>
 
-        {error && <p className="mb-4 text-[11px] text-[color:var(--rm-red)]">{error}</p>}
-
         <div className="flex flex-col gap-2.5">
-          {!visible.length && (
-            <p className="rm-card p-6 text-[11px] text-[#8d8584]">Nincs foglalás ezzel a szűréssel.</p>
-          )}
+          {!visible.length && <p className="rm-card p-6 text-[11px] text-[#8d8584]">Nincs foglalás ezzel a szűréssel.</p>}
 
           {visible.map((reservation) => {
             const actions = ACTIONS[reservation.status];
+            const open = openId === reservation.id;
             return (
-              <article key={reservation.id} className="rm-card p-6">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
+              <article key={reservation.id} className={`rm-card p-6 ${busyId === reservation.id ? 'opacity-70' : ''}`}>
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-3">
                       <strong className="font-heading text-[20px] text-white">{reservation.code}</strong>
-                      <span
-                        className={`border px-2.5 py-1 text-[8px] tracking-[0.18em] ${STATUS_CLASS[reservation.status]}`}
-                      >
-                        {STATUS_LABEL[reservation.status].toUpperCase()}
-                      </span>
-                      {reservation.tier !== 'none' && (
-                        <span className="border border-[color:var(--rm-line-red)] px-2.5 py-1 text-[8px] tracking-[0.18em] text-[color:var(--rm-red)]">
-                          {TIER_LABEL[reservation.tier].toUpperCase()}
-                        </span>
-                      )}
+                      <span className={`border px-2.5 py-1 text-[8px] tracking-[0.18em] ${STATUS_CLASS[reservation.status]}`}>{STATUS_LABEL[reservation.status].toUpperCase()}</span>
+                      {reservation.tier !== 'none' && <Badge tone="red">{TIER_LABEL[reservation.tier].toUpperCase()}</Badge>}
+                      {!!reservation.unread && <span className="rm-unread">{reservation.unread}</span>}
                     </div>
 
                     <div className="mt-3 flex flex-wrap gap-x-6 gap-y-2 text-[11px] text-[#c9c2c1]">
@@ -197,47 +276,57 @@ export const StaffReservationsPage: React.FC = () => {
                     <p className="mt-2 text-[10px] text-[#8d8584]">
                       {reservation.name} · {OCCASION_LABEL[reservation.occasion]}
                       {reservation.handledByName ? ` · kezelte: ${reservation.handledByName}` : ''}
+                      {reservation.updatedAt ? ` · ${formatAgo(reservation.updatedAt)}` : ''}
                     </p>
 
                     {reservation.note && (
-                      <p className="mt-3 max-w-xl border-l border-[color:var(--rm-line-red)] pl-3 text-[11px] leading-[1.8] text-[#a09998]">
-                        {reservation.note}
-                      </p>
+                      <p className="mt-3 max-w-xl border-l border-[color:var(--rm-line-red)] pl-3 text-[11px] leading-[1.8] text-[#a09998]">{reservation.note}</p>
                     )}
+
+                    <div className="mt-4">
+                      <Pipeline status={reservation.status}/>
+                    </div>
                   </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setOpenId(open ? null : reservation.id)}
+                    className={`rm-btn is-ghost !px-3 !py-2 !text-[8px]${open ? ' is-active' : ''}`}
+                    aria-expanded={open}
+                  >
+                    <MessageSquare size={11}/> {reservation.messageCount ? `${reservation.messageCount} ÜZENET` : 'ÜZENET'}
+                    {!!reservation.unread && <span className="rm-unread">{reservation.unread}</span>}
+                  </button>
                 </div>
 
+                {reservation.lastMessage && !open && (
+                  <p className="mt-3 truncate text-[10px] text-[#8d8584]">
+                    <span className="text-[#5f5959]">{reservation.lastMessage.author === 'guest' ? reservation.name : 'Red Moon'}:</span> {reservation.lastMessage.text}
+                  </p>
+                )}
+
+                {open && <Thread reservation={reservation} canWrite={canDecide}/>}
+
                 {canDecide && actions.length > 0 && (
-                  <div className="mt-5 flex flex-col gap-3 border-t border-white/[0.06] pt-5">
-                    <input
-                      value={notes[reservation.id] ?? reservation.staffNote ?? ''}
-                      onChange={(event) =>
-                        setNotes((current) => ({...current, [reservation.id]: event.target.value}))
-                      }
-                      maxLength={300}
-                      placeholder="ÜZENET A VENDÉGNEK (A FOGLALÁSAINÁL LÁTJA)"
-                      className="w-full border border-white/10 bg-black/50 px-3.5 py-2.5 text-[10px] tracking-wider text-white outline-none placeholder:text-white/25 focus:border-[color:var(--rm-red)]"
-                    />
-                    <div className="flex flex-wrap gap-2">
-                      {actions.map((action) => (
-                        <Btn
-                          key={action}
-                          type="button"
-                          variant={action === 'confirmed' ? 'red' : 'outline'}
-                          disabled={busyId === reservation.id}
-                          onClick={() => decide(reservation, action)}
-                        >
-                          {ACTION_LABEL[action]}
-                        </Btn>
-                      ))}
-                    </div>
+                  <div className="mt-5 flex flex-wrap gap-2 border-t border-white/[0.06] pt-5">
+                    {actions.map((action) => (
+                      <Btn
+                        key={action}
+                        type="button"
+                        variant={action === 'confirmed' ? 'red' : 'outline'}
+                        disabled={busyId === reservation.id}
+                        onClick={() => decide(reservation, action)}
+                        className="!px-4 !py-2.5 !text-[8px]"
+                      >
+                        {action === 'confirmed' ? <Check size={11}/> : action === 'declined' ? <X size={11}/> : null}
+                        {ACTION_LABEL[action]}
+                      </Btn>
+                    ))}
                   </div>
                 )}
 
                 {!canDecide && (
-                  <p className="mt-4 border-t border-white/[0.06] pt-4 text-[9px] tracking-[0.18em] text-[#777]">
-                    A FOGLALÁSOK ELBÍRÁLÁSÁHOZ ÜZLETVEZETŐI JOG KELL.
-                  </p>
+                  <p className="mt-4 border-t border-white/[0.06] pt-4 text-[9px] tracking-[0.18em] text-[#777]">A FOGLALÁSOK ELBÍRÁLÁSÁHOZ MANAGER JOG KELL.</p>
                 )}
               </article>
             );

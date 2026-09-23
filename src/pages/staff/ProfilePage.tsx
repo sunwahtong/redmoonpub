@@ -1,15 +1,17 @@
 import React, {useMemo, useRef, useState} from 'react';
 import {useNavigate} from 'react-router-dom';
-import {Camera, Coins, KeyRound, LogOut, PenLine, Receipt, Timer, Trash2, Truck} from 'lucide-react';
+import {Camera, Coins, KeyRound, LogOut, Receipt, Timer, Trash2, Truck} from 'lucide-react';
 import {Btn} from '../../components/ui/Btn';
 import {ActivityCalendar} from '../../components/ui/ActivityCalendar';
 import {Avatar, Badge, Chips, Field, inputClass, PageHeader, Panel, Stat} from '../../components/ui/console';
 import {useLiveData} from '../../hooks/useLiveData';
 import {apiSend, formatHuf, formatTime} from '../../lib/api';
+import {uploadMedia} from '../../lib/media';
 import {playSfx} from '../../lib/sfx';
 import {toast} from '../../stores/useToastStore';
 import {JOB_GLYPH, JOB_LABEL, type StaffJob} from '../../lib/orders';
-import {useAuthStore, type AuthUser} from '../../stores/useAuthStore';
+import {roleAtLeast, useAuthStore, type AuthUser} from '../../stores/useAuthStore';
+import {SignatureStudio} from '../../components/profile/SignatureStudio';
 
 interface PersonalAnalytics {
   totals: {
@@ -18,8 +20,6 @@ interface PersonalAnalytics {
     sales: number;
     items: number;
     revenue: number;
-    wage: number;
-    hourlyWage: number;
     orders: number;
     orderEstimated: number;
     orderActual: number;
@@ -33,12 +33,13 @@ type Metric = 'revenue' | 'hours' | 'orders';
 
 const METRIC_LABEL: Record<Metric, string> = {revenue: 'BEVÉTEL', hours: 'LEDOLGOZOTT ÓRA', orders: 'BESZERZÉS'};
 
-const ROLE_LABEL: Record<string, string> = {staff: 'STAFF', manager: 'ÜZLETVEZETŐ', owner: 'TULAJDONOS'};
+const ROLE_LABEL: Record<string, string> = {staff: 'STAFF', manager: 'MANAGER', owner: 'TULAJDONOS'};
 
 const PHONE_PREFIX = '+38-76-';
 
 /** Shrinks a picked image to a small square JPEG data URL. */
-async function resizeAvatar(file: File, size = 320): Promise<string> {
+/** Square crop at a modest size: the picture is uploaded, so it stays small. */
+async function resizeAvatar(file: File, size = 320): Promise<File> {
   const url = URL.createObjectURL(file);
   try {
     const image = await new Promise<HTMLImageElement>((resolve, reject) => {
@@ -56,7 +57,9 @@ async function resizeAvatar(file: File, size = 320): Promise<string> {
     const sx = (image.width - side) / 2;
     const sy = (image.height - side) / 2;
     context.drawImage(image, sx, sy, side, side, 0, 0, size, size);
-    return canvas.toDataURL('image/jpeg', 0.86);
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.86));
+    if (!blob) throw new Error('A kép nem dolgozható fel.');
+    return new File([blob], 'avatar.jpg', {type: 'image/jpeg'});
   } finally {
     URL.revokeObjectURL(url);
   }
@@ -114,8 +117,8 @@ export const ProfilePage: React.FC = () => {
       return;
     }
     try {
-      const avatar = await resizeAvatar(file);
-      const data = await apiSend<{user: AuthUser}>('/api/profile', 'PATCH', {avatar});
+      const media = await uploadMedia('image', 'avatar', await resizeAvatar(file));
+      const data = await apiSend<{user: AuthUser}>('/api/profile', 'PATCH', {avatar: media.url, avatarPublicId: media.publicId});
       setUser(data.user);
       toast.success('Profilkép frissítve.');
       playSfx('success');
@@ -129,7 +132,7 @@ export const ProfilePage: React.FC = () => {
 
   const clearAvatar = async () => {
     try {
-      const data = await apiSend<{user: AuthUser}>('/api/profile', 'PATCH', {avatar: ''});
+      const data = await apiSend<{user: AuthUser}>('/api/profile', 'PATCH', {avatar: '', avatarPublicId: ''});
       setUser(data.user);
       playSfx('delete');
     } catch (err) {
@@ -167,7 +170,7 @@ export const ProfilePage: React.FC = () => {
               A te <em>fiókod.</em>
             </>
           }
-          lead="Amit a ház nyilvántart rólad: ledolgozott órák, eladások, beszerzések — és az aláírásod, ha üzletvezetőként vagy tulajdonosként dokumentumot állítasz ki."
+          lead="Amit a ház nyilvántart rólad: ledolgozott órák, eladások, beszerzések — és az aláírásod, ha managerként vagy tulajdonosként dokumentumot állítasz ki."
           actions={
             <Btn
               onClick={async () => {
@@ -220,23 +223,20 @@ export const ProfilePage: React.FC = () => {
                 </button>
               )}
             </div>
-            {user?.hasSignature && user.signatureSvg && (
-              <div className="w-full md:w-64">
-                <span className="mb-2 flex items-center gap-2 text-[8px] tracking-[0.25em] text-[#777]">
-                  <PenLine size={10}/> AZ ALÁÍRÁSOD
-                </span>
-                <div className="rm-signature-card" dangerouslySetInnerHTML={{__html: user.signatureSvg}}/>
-                <p className="mt-2 text-[9px] leading-[1.6] text-[#6f6968]">A nevedből készült, minden dokumentumon ez szerepel. Újat a tulajdonos kérhet.</p>
-              </div>
-            )}
           </div>
         </Panel>
+
+        {user && roleAtLeast(user.role, 'manager') && (
+          <div className="mb-3.5">
+            <SignatureStudio user={user}/>
+          </div>
+        )}
 
         {/* ------------------------------------------------ RECORD */}
         <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 xl:grid-cols-4">
           <Stat icon={Timer} glyph="時" label="LEDOLGOZOTT ÓRA" value={totals ? String(totals.hours) : '—'} hint={totals ? `${totals.shifts} műszak` : undefined}/>
           <Stat icon={Receipt} glyph="売" label="ELADÁS" value={totals ? String(totals.sales) : '—'} hint={totals ? `${totals.items} tétel` : undefined}/>
-          <Stat icon={Coins} glyph="金" label="HOZOTT BEVÉTEL" value={totals ? formatHuf(totals.revenue) : '—'} hint={totals ? `Becsült bér: ${formatHuf(totals.wage)} (${formatHuf(totals.hourlyWage)}/óra)` : undefined}/>
+          <Stat icon={Coins} glyph="金" label="HOZOTT BEVÉTEL" value={totals ? formatHuf(totals.revenue) : '—'}/>
           <Stat icon={Truck} glyph="運" label="BESZERZÉS" value={totals ? String(totals.orders) : '—'} hint={totals ? `${formatHuf(totals.orderActual)} elköltve` : undefined}/>
         </div>
 

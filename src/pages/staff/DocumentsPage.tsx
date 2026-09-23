@@ -4,7 +4,7 @@ import {Btn} from '../../components/ui/Btn';
 import {Select} from '../../components/ui/Select';
 import {Badge, Chips, Field, PageHeader, Panel, SearchField} from '../../components/ui/console';
 import {useLiveData} from '../../hooks/useLiveData';
-import {apiSend, formatDate, formatHuf, formatTime} from '../../lib/api';
+import {apiSend, assetUrl, formatDate, formatHuf, formatTime} from '../../lib/api';
 import {toast} from '../../stores/useToastStore';
 import {dialog} from '../../stores/useDialogStore';
 import {useAuthStore, roleAtLeast} from '../../stores/useAuthStore';
@@ -13,6 +13,7 @@ import {
   DOCUMENT_DESCRIPTION,
   DOCUMENT_LABEL,
   renderDocumentHtml,
+  resolveSignatures,
   serial,
   type DocumentContext,
   type DocumentKind,
@@ -56,6 +57,7 @@ const normalize = (value: string) => value.toLowerCase().normalize('NFD').replac
 
 export const DocumentsPage: React.FC = () => {
   const user = useAuthStore((state) => state.user);
+  const restore = useAuthStore((state) => state.restore);
   const isOwner = roleAtLeast(user?.role, 'owner');
 
   const {data: context} = useLiveData<DocumentContext>('/api/documents/context', {intervalMs: 0});
@@ -104,7 +106,7 @@ export const DocumentsPage: React.FC = () => {
       return buildShiftReport(shift);
     }
     if (kind === 'transactions') return buildTransactions(sales, period);
-    if (kind === 'payroll') return buildPayroll(closedShifts, period, context?.house.hourlyWage || 0);
+    if (kind === 'payroll') return buildPayroll(closedShifts, period);
     if (kind === 'order-audit') return buildOrderAudit(orders, period);
     return buildInventory(stock);
   };
@@ -117,6 +119,9 @@ export const DocumentsPage: React.FC = () => {
     try {
       const reference = referenceFor(payload);
       await downloadDocumentPdf(payload, context, reference);
+      // The house's register of issued documents; from here on the signatures on it are final.
+      const issued = await apiSend<{newlyLocked: number}>('/api/documents/issued', 'POST', {kind: payload.kind, reference, countersigned: payload.countersign !== false, storedDocumentId: payload.reference}).catch(() => null);
+      if (issued?.newlyLocked) await restore();
       toast.success('PDF elmentve', `${DOCUMENT_LABEL[payload.kind]} · ${reference}`);
       playSfx('success');
     } catch (err) {
@@ -127,10 +132,10 @@ export const DocumentsPage: React.FC = () => {
     }
   };
 
-  const openPreview = (payload: DocumentPayload | null) => {
+  const openPreview = async (payload: DocumentPayload | null) => {
     if (!payload || !context) return;
     const reference = referenceFor(payload);
-    setPreview({html: renderDocumentHtml(payload, context, reference), payload, reference});
+    setPreview({html: renderDocumentHtml(payload, await resolveSignatures(context), reference), payload, reference});
     playSfx('open');
   };
 
@@ -249,13 +254,16 @@ export const DocumentsPage: React.FC = () => {
 
           <div className="mt-8 flex flex-wrap items-center justify-between gap-4 border-t border-white/[0.06] pt-6">
             <div className="flex items-center gap-4">
-              {context?.issuer.signatureSvg && (
+              {context?.issuer.signatureUrl && (
                 <div className="hidden w-32 sm:block">
-                  <div className="rm-signature-card !p-1" dangerouslySetInnerHTML={{__html: context.issuer.signatureSvg}}/>
+                  <div className="rm-signature-card !p-1">
+                    <img src={assetUrl(context.issuer.signatureUrl)} alt=""/>
+                  </div>
                 </div>
               )}
               <div className="text-[10px] leading-[1.7] text-[#8d8584]">
                 Kiállító: <b className="text-white">{context?.issuer.name || user?.name}</b> · {context?.issuer.title}
+                {user?.signatureLocked ? <span className="text-[#6f6968]"> · az aláírásod végleges</span> : <span className="text-amber-300/80"> · az első letöltéssel az aláírásod véglegessé válik</span>}
                 {context?.owner && (
                   <>
                     <br/>

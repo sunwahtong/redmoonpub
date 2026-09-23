@@ -4,7 +4,9 @@
 import {z} from 'zod';
 import {
   audit,
+  destroyAccountMedia,
   ensureSignature,
+  replaceSignature,
   hashPassword,
   JOBS,
   listAccounts,
@@ -19,6 +21,7 @@ import {
 } from '../auth.ts';
 import {bad, conflict, created, formatPhone, iso, notFound, parse, readJson, type Router} from '../http.ts';
 import {generateSignatureSvg} from '../../shared/signature.ts';
+import {broadcast} from '../realtime.ts';
 import {houseStatus} from './public.ts';
 import type {Row} from '../types.ts';
 
@@ -105,7 +108,7 @@ export function registerStaffRoutes(router: Router): void {
       [body.username, body.name, body.nickname, body.title, body.role, body.jobs, await hashPassword(body.password), body.idNumber, body.showPublic, body.mustChangePassword, me.id]
     );
     const account = (await loadAccount(db, rows[0].id))!;
-    account.signatureSvg = await ensureSignature(db, account);
+    await ensureSignature(db, account);
     await audit(db, me, 'USER_CREATE', `${account.name} (${account.username}) · ${account.role}${account.jobs.length ? ' · ' + account.jobs.join(', ') : ''}`);
     return created({user: publicUser(account)});
   });
@@ -143,6 +146,8 @@ export function registerStaffRoutes(router: Router): void {
     if (body.showPublic !== undefined) set('show_public', body.showPublic);
     if (body.active !== undefined) set('active', body.active);
     if (body.mustChangePassword !== undefined) set('must_change_password', body.mustChangePassword);
+    // Reaching manager rank asks the person to choose a signature at their next visit.
+    if (body.role && roleAtLeast(body.role, 'manager') && !roleAtLeast(target.role, 'manager') && !target.signatureLockedAt) set('signature_decided', false);
 
     let passwordChanged = false;
     if (body.password) {
@@ -155,7 +160,7 @@ export function registerStaffRoutes(router: Router): void {
     if (fields.length) await db.query(`update public.staff_accounts set ${fields.join(', ')} where id = $1`, values);
 
     const fresh = (await loadAccount(db, target.id))!;
-    fresh.signatureSvg = await ensureSignature(db, fresh);
+    await ensureSignature(db, fresh);
 
     let revoked = 0;
     if (passwordChanged || body.active === false) {
@@ -168,6 +173,7 @@ export function registerStaffRoutes(router: Router): void {
     if (body.active === true && !target.active) changes.push('engedélyezve');
     if (revoked) changes.push(`${revoked} munkamenet lezárva`);
     await audit(db, me, 'USER_UPDATE', `${fresh.name} (${fresh.username})${changes.length ? ' · ' + changes.join(' · ') : ''}`);
+    await broadcast('staff', 'user', {userId: fresh.id});
     return {user: publicUser(fresh), sessionRevoked: revoked > 0};
   });
 
@@ -181,6 +187,7 @@ export function registerStaffRoutes(router: Router): void {
       if (owners.rows[0].n <= 1) throw bad('Az utolsó OWNER fiók nem törölhető.');
     }
     await db.query('delete from public.staff_accounts where id = $1', [params.id]);
+    await destroyAccountMedia(target);
     await audit(db, me, 'USER_DELETE', `${target.name} (${target.username})`);
     return {ok: true};
   });
@@ -210,9 +217,10 @@ export function registerStaffRoutes(router: Router): void {
     const me = requireRole({user}, 'owner');
     const target = await loadAccount(db, params.id);
     if (!target) throw notFound('Felhasználó nem található');
-    if (!roleAtLeast(target.role, 'manager')) throw bad('Aláírás csak üzletvezetői vagy tulajdonosi fióknak készül.');
+    if (!roleAtLeast(target.role, 'manager')) throw bad('Aláírás csak manager vagy tulajdonosi fióknak készül.');
+    if (target.signatureLockedAt) throw conflict('Ez az aláírás már dokumentumon szerepel, ezért végleges.');
     const svg = generateSignatureSvg(target.name, `${target.id}:${Date.now()}`);
-    await db.query('update public.staff_accounts set signature_svg = $2, signature_at = now() where id = $1', [target.id, svg]);
+    await replaceSignature(db, target, svg, 'generated', false);
     await audit(db, me, 'SIGNATURE_REGENERATE', target.name);
     return {user: publicUser((await loadAccount(db, target.id))!)};
   });

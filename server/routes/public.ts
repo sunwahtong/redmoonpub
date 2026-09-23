@@ -28,7 +28,8 @@ import {
   type Router
 } from '../http.ts';
 import {dbKind} from '../db.ts';
-import {storageEnabled} from '../storage.ts';
+import {mediaProvider} from '../media.ts';
+import {broadcast, realtimeEnabled} from '../realtime.ts';
 import {config} from '../config.ts';
 import type {Queryable, Request, Row} from '../types.ts';
 
@@ -36,7 +37,9 @@ export const RESERVATION_OCCASIONS = ['este', 'szuletesnap', 'uzleti', 'randi', 
 export const RESERVATION_TIERS = ['none', 'silver', 'gold', 'black', 'royal'] as const;
 export const RESERVATION_MAX_DAYS = 60;
 export const RESERVATION_MAX_OPEN = 3;
-export const CAREER_POSITIONS = ['bartender', 'pultos', 'felszolgalo', 'dj', 'biztonsag', 'hostess', 'uzletvezeto'] as const;
+export const CAREER_POSITIONS = ['bartender', 'dj', 'biztonsag'] as const;
+/** A booking's life: asked → looked at → decided → the evening itself. */
+export const RESERVATION_STATUSES = ['pending', 'reviewing', 'waitlist', 'confirmed', 'declined', 'seated', 'cancelled', 'noshow'] as const;
 export const CAREER_MAX_OPEN = 1;
 
 /* ------------------------------------------------------------------ */
@@ -63,6 +66,7 @@ export const eventFromRow = (row: Row) => ({
   endsAt: iso(row.ends_at),
   tag: row.tag || '',
   coverImage: row.cover_image || '',
+  coverPublicId: row.cover_public_id || '',
   entryFee: row.entry_fee ?? null,
   dressCode: row.dress_code || '',
   featured: !!row.featured,
@@ -96,10 +100,34 @@ export const reservationPublic = (row: Row) => ({
   status: row.status,
   staffNote: row.staff_note || '',
   handledAt: iso(row.handled_at),
+  updatedAt: iso(row.updated_at),
   phone: formatPhone(row.phone || '')
 });
 
+export const messageOf = (row: Row) => ({
+  id: row.id,
+  at: iso(row.at),
+  author: row.author as 'guest' | 'staff',
+  authorName: row.author_name || '',
+  text: row.text,
+  readByGuest: !!row.read_by_guest,
+  readByStaff: !!row.read_by_staff
+});
+
 export const reservationStaff = (row: Row) => ({...reservationPublic(row), handledByName: row.handled_by_name || null});
+
+export const galleryPublic = (row: Row) => ({
+  id: row.id,
+  title: row.title || '',
+  caption: row.caption || '',
+  tag: row.tag || 'este',
+  src: row.image_url,
+  width: row.width || 0,
+  height: row.height || 0,
+  sortOrder: row.sort_order || 0,
+  active: row.active !== false,
+  createdAt: iso(row.created_at)
+});
 
 export const applicationPublic = (row: Row) => ({
   id: row.id,
@@ -166,7 +194,7 @@ export async function houseStatus(db: Queryable) {
   const [house, shift, club, event] = await Promise.all([
     db.query('select pub_open, pub_opened_at, pub_opened_by_name, pub_note, pub_closed_at from public.house where id = 1'),
     db.query(`select id, started_at, started_by_name from public.shifts where status = 'open' limit 1`),
-    db.query('select live, dj_name, title from public.club_state where id = 1'),
+    db.query('select live, dj_name, title, stream_url, provider_url, started_at from public.club_state where id = 1'),
     db.query(
       `select * from public.events where active and (ends_at is null and starts_at > now() - interval '4 hours' or ends_at > now())
        order by featured desc, starts_at asc limit 1`
@@ -184,6 +212,9 @@ export async function houseStatus(db: Queryable) {
     live: !!club.rows[0]?.live,
     dj: club.rows[0]?.dj_name || null,
     title: club.rows[0]?.title || '',
+    streamUrl: club.rows[0]?.stream_url || '',
+    providerUrl: club.rows[0]?.provider_url || '',
+    liveSince: iso(club.rows[0]?.started_at),
     listenerCount: listeners.rows[0]?.n || 0,
     nextEvent: event.rows[0] ? eventFromRow(event.rows[0]) : null,
     serverNow: new Date().toISOString()
@@ -201,8 +232,8 @@ export function registerPublicRoutes(router: Router): void {
     version: '21.0',
     time: new Date().toISOString(),
     runtime: config.serverless ? 'function' : 'server',
-    realtime: 'poll',
-    storage: storageEnabled() ? 'bucket' : 'disk',
+    realtime: realtimeEnabled() ? 'push' : 'poll',
+    storage: mediaProvider(),
     database: dbKind()
   }));
 
@@ -255,6 +286,11 @@ export function registerPublicRoutes(router: Router): void {
   router.get('/api/public-map-blips', async ({db}) => {
     const {rows} = await db.query('select * from public.map_blips where active order by created_at desc');
     return {blips: rows.map(blipFromRow)};
+  });
+
+  router.get('/api/public/gallery', async ({db}) => {
+    const {rows} = await db.query('select * from public.gallery_items where active order by sort_order, created_at limit 120');
+    return {items: rows.map(galleryPublic)};
   });
 
   /* ---------------- reviews ---------------- */
@@ -356,7 +392,68 @@ export function registerPublicRoutes(router: Router): void {
     const token = String(query.get('token') || '').trim().slice(0, 200);
     if (!token) return {reservations: []};
     const {rows} = await db.query('select * from public.reservations where visitor_hash = $1 order by at desc limit 20', [visitorFingerprint(req, token)]);
-    return {reservations: rows.map(reservationPublic)};
+    const ids = rows.map((row) => row.id);
+    const messages = ids.length ? (await db.query('select * from public.reservation_messages where reservation_id = any($1) order by at asc', [ids])).rows : [];
+    return {
+      reservations: rows.map((row) => {
+        const thread = messages.filter((message) => message.reservation_id === row.id);
+        return {
+          ...reservationPublic(row),
+          messages: thread.map(messageOf),
+          unread: thread.filter((message) => message.author === 'staff' && !message.read_by_guest).length
+        };
+      })
+    };
+  });
+
+  /**
+   * The thread on a booking. The guest writes with their visitor token; a
+   * manager or owner who is signed in answers for the house. One route, so
+   * neither side can shadow the other.
+   */
+  router.post('/api/reservations/:id/messages', async ({db, req, params, user}) => {
+    const body = await readJson(req);
+    const text = String(body.text || '').trim().slice(0, 600);
+    if (!text) throw bad('Az üzenet nem lehet üres.');
+    const reservation = (await db.query('select * from public.reservations where id = $1', [params.id])).rows[0];
+    if (!reservation) throw notFound('A foglalás nem található.');
+    if (user && roleAtLeast(user.role, 'manager')) {
+      const {rows} = await db.query(
+        `insert into public.reservation_messages (reservation_id, author, author_name, text, read_by_staff) values ($1, 'staff', $2, $3, true) returning *`,
+        [params.id, user.nickname || user.name, text]
+      );
+      await db.query('update public.reservations set updated_at = now() where id = $1', [params.id]);
+      await audit(db, user, 'RESERVATION_MESSAGE', `${reservation.code} · ${text.slice(0, 120)}`);
+      await broadcast('reservations', 'message', {reservationId: params.id});
+      return created({message: messageOf(rows[0])});
+    }
+    const token = String(body.visitorToken || '').trim().slice(0, 200);
+    if (!token || reservation.visitor_hash !== visitorFingerprint(req, token)) throw forbidden('Csak a saját foglalásodhoz írhatsz.');
+    if (['cancelled', 'noshow', 'declined'].includes(reservation.status)) throw conflict('Ez a foglalás már lezárult.');
+    await rateLimit(db, `reservation-message:${clientIp(req)}`, 20, 60 * 60 * 1000);
+    const {rows} = await db.query(
+      `insert into public.reservation_messages (reservation_id, author, author_name, text, read_by_guest) values ($1, 'guest', $2, $3, true) returning *`,
+      [params.id, reservation.name, text]
+    );
+    await db.query('update public.reservations set updated_at = now() where id = $1', [params.id]);
+    await notifyManagers(db, 'Üzenet egy foglaláshoz', `${reservation.name} · ${reservation.code}: ${text.slice(0, 100)}`, {reservationId: reservation.id});
+    await broadcast('reservations', 'message', {reservationId: params.id});
+    return created({message: messageOf(rows[0])});
+  });
+
+  /** Marks the other side's lines as read: the guest's for staff, the house's for the guest. */
+  router.post('/api/reservations/:id/read', async ({db, req, params, user}) => {
+    const reservation = (await db.query('select visitor_hash from public.reservations where id = $1', [params.id])).rows[0];
+    if (!reservation) throw notFound('A foglalás nem található.');
+    if (user) {
+      await db.query(`update public.reservation_messages set read_by_staff = true where reservation_id = $1 and author = 'guest' and not read_by_staff`, [params.id]);
+      return {ok: true};
+    }
+    const body = await readJson(req).catch(() => ({}) as Record<string, unknown>);
+    const token = String(body.visitorToken || '').trim().slice(0, 200);
+    if (!token || reservation.visitor_hash !== visitorFingerprint(req, token)) throw forbidden('Csak a saját foglalásodat láthatod.');
+    await db.query(`update public.reservation_messages set read_by_guest = true where reservation_id = $1 and author = 'staff' and not read_by_guest`, [params.id]);
+    return {ok: true};
   });
 
   router.post('/api/reservations', async ({db, req}) => {
@@ -385,6 +482,7 @@ export function registerPublicRoutes(router: Router): void {
       `${reservation.name} · ${reservation.guests} fő · ${new Date(reservation.starts_at).toLocaleString('hu-HU')} · ${reservation.code}`,
       {reservationId: reservation.id}
     );
+    await broadcast('reservations', 'new', {reservationId: reservation.id});
     return created({reservation: reservationPublic(reservation)});
   });
 
@@ -403,6 +501,7 @@ export function registerPublicRoutes(router: Router): void {
       manager ? manager.name : 'Vendég'
     ]);
     if (manager) await audit(db, manager, 'RESERVATION_CANCEL', `${reservation.code} · ${reservation.name}`);
+    await broadcast('reservations', 'update', {reservationId: params.id});
     return {ok: true, reservation: reservationPublic(updated.rows[0])};
   });
 

@@ -8,39 +8,52 @@ import {Skeleton} from '../components/ui/Skeleton';
 import {LeaderCard} from '../components/about/LeaderCard';
 import {useLiveData} from '../hooks/useLiveData';
 import {MEMBERSHIP} from '../lib/content';
-import type {PublicHouse} from '../types';
+import {backgroundImage} from '../lib/media';
+import type {HousePerson, PublicHouse} from '../types';
+
+/** The four rows of the tree, top down. */
+const TIERS: {tier: HousePerson['tier']; label: string; glyph: string}[] = [
+  {tier: 'owner', label: 'TULAJDONOS', glyph: '主'},
+  {tier: 'co-owner', label: 'TÁRSTULAJDONOS', glyph: '共'},
+  {tier: 'manager', label: 'MANAGER', glyph: '長'},
+  {tier: 'staff', label: 'A CSAPAT', glyph: '員'}
+];
+
+/** The line that joins one row of the tree to the next. */
+const Joint: React.FC<{count: number}> = ({count}) => (
+  <div className="relative h-16 w-full max-w-4xl" aria-hidden="true">
+    <span className="absolute left-1/2 top-0 h-7 w-px -translate-x-1/2 bg-[rgba(213,31,60,0.5)]"/>
+    {count > 1 ? (
+      <>
+        <span className="absolute left-[18%] right-[18%] top-7 h-px bg-[rgba(213,31,60,0.28)]"/>
+        <span className="absolute left-[18%] top-7 h-9 w-px bg-gradient-to-b from-[rgba(213,31,60,0.28)] to-transparent"/>
+        <span className="absolute right-[18%] top-7 h-9 w-px bg-gradient-to-b from-[rgba(213,31,60,0.28)] to-transparent"/>
+      </>
+    ) : (
+      <span className="absolute left-1/2 top-7 h-9 w-px -translate-x-1/2 bg-gradient-to-b from-[rgba(213,31,60,0.4)] to-transparent"/>
+    )}
+  </div>
+);
 
 export const AboutPage: React.FC = () => {
-  const {data, loading} = useLiveData<PublicHouse>('/api/public/house', {intervalMs: 0});
+  const {data, loading} = useLiveData<PublicHouse>('/api/public/house', {intervalMs: 120000, topics: ['content']});
 
-  const {owners, managers} = useMemo(() => {
+  const rows = useMemo(() => {
     const people = data?.people || [];
-    return {
-      owners: people.filter((person) => person.tier === 'owner' || person.tier === 'co-owner'),
-      managers: people.filter((person) => person.tier === 'manager' || person.tier === 'staff')
-    };
+    return TIERS.map((row) => ({...row, people: people.filter((person) => person.tier === row.tier)})).filter((row) => row.people.length > 0);
   }, [data]);
 
   return (
     <main>
-      <PageHero
-        kicker="RED MOON / 05"
-        overline="THE"
-        title="PEOPLE"
-        lead="A hely mögött álló emberek és a Red Moon története."
-      />
+      <PageHero kicker="RED MOON / 05" overline="THE" title="PEOPLE" lead="A hely mögött álló emberek és a Red Moon története."/>
 
       {/* A történetünk */}
       <section className="rm-section">
         <div className="grid grid-cols-1 items-center gap-[9vw] lg:grid-cols-2">
           <Reveal>
-            <div className="relative min-h-[470px] overflow-hidden border border-[color:var(--rm-line)] bg-[url('/assets/red-moon-cinematic-v27.webp')] bg-cover bg-center lg:min-h-[570px]">
-              <span className="pointer-events-none absolute right-8 top-4 font-heading text-[120px] leading-none text-[rgba(213,31,60,0.35)]">
-                月
-              </span>
-              <span className="absolute bottom-6 left-6 text-[8px] tracking-[0.25em] text-[#ddd]">
-                SEE CITY · EST. RED MOON
-              </span>
+            <div style={backgroundImage('/assets/red-moon-cinematic-v27.webp')} className="relative min-h-[470px] overflow-hidden border border-[color:var(--rm-line)] bg-cover bg-center lg:min-h-[570px]">
+              <span className="pointer-events-none absolute right-8 top-4 font-heading text-[120px] leading-none text-[rgba(213,31,60,0.35)]">月</span>
+              <span className="absolute bottom-6 left-6 text-[8px] tracking-[0.25em] text-[#ddd]">SEE CITY · EST. RED MOON</span>
             </div>
           </Reveal>
 
@@ -54,13 +67,10 @@ export const AboutPage: React.FC = () => {
               </NeonHeading>
 
               <p className="mb-4 leading-[1.95] text-[#9e9795]">
-                A Red Moon Pub azért született, hogy SeeCity éjszakájának legyen egy kifinomult helye, ahol a minőség, a
-                hangulat és a vendégélmény kerül középpontba.
+                A Red Moon Pub azért született, hogy SeeCity éjszakájának legyen egy kifinomult helye, ahol a minőség, a hangulat és a vendégélmény kerül
+                középpontba.
               </p>
-              <p className="leading-[1.95] text-[#9e9795]">
-                Az ázsiai inspiráció nálunk nem díszlet: a részletekben, az ízekben, a fényekben és a teljes atmoszférában
-                jelenik meg.
-              </p>
+              <p className="leading-[1.95] text-[#9e9795]">Az ázsiai inspiráció nálunk nem díszlet: a részletekben, az ízekben, a fényekben és a teljes atmoszférában jelenik meg.</p>
 
               <div className="rm-rule my-9"/>
 
@@ -137,8 +147,7 @@ export const AboutPage: React.FC = () => {
                 Mi történik, amikor <em>lemegy a nap?</em>
               </NeonHeading>
               <p className="relative z-[1] mt-5 max-w-lg text-[11px] leading-[1.8] text-[#8d8584]">
-                Eventek, új italok, különleges esték és a Red Moon pillanatai egy helyen. A Journal a hely történetét
-                gyűjti össze — napról napra.
+                Eventek, új italok, különleges esték és a Red Moon pillanatai egy helyen. A Journal a hely történetét gyűjti össze — napról napra.
               </p>
               <div className="relative z-[1] mt-9">
                 <BtnLink to="/events" variant="red">
@@ -194,7 +203,7 @@ export const AboutPage: React.FC = () => {
                 <em>családfa.</em>
               </>
             }
-            aside="A Red Moon mögött álló emberek és a ház vezetői — egy közös történet részei."
+            aside="Négy szint, fentről lefelé: a tulajdonos, a társtulajdonosok, a managerek és a csapat."
           />
 
           {loading && (
@@ -205,42 +214,26 @@ export const AboutPage: React.FC = () => {
 
           {!loading && (
             <div className="flex flex-col items-center">
-              {owners.map((person, index) => (
-                <React.Fragment key={person.id}>
-                  {index > 0 && (
-                    <div className="flex h-16 flex-col items-center justify-center" aria-hidden="true">
-                      <span className="h-10 w-px bg-gradient-to-b from-[rgba(213,31,60,0.6)] to-transparent"/>
-                      <span className="text-xs text-[rgba(213,31,60,0.7)]">↓</span>
-                    </div>
-                  )}
-                  <Reveal delay={index * 100} className="flex w-full max-w-sm justify-center">
-                    <LeaderCard person={person}/>
-                  </Reveal>
-                </React.Fragment>
-              ))}
-
-              {managers.length > 0 && (
-                <>
-                  <div className="relative h-16 w-full max-w-3xl" aria-hidden="true">
-                    <span className="absolute left-1/2 top-0 h-7 w-px -translate-x-1/2 bg-[rgba(213,31,60,0.4)]"/>
-                    <span className="absolute left-1/4 right-1/4 top-7 h-px bg-[rgba(213,31,60,0.25)]"/>
-                    <span className="absolute left-1/4 top-7 h-9 w-px bg-gradient-to-b from-[rgba(213,31,60,0.25)] to-transparent"/>
-                    <span className="absolute right-1/4 top-7 h-9 w-px bg-gradient-to-b from-[rgba(213,31,60,0.25)] to-transparent"/>
+              {rows.map((row, rowIndex) => (
+                <React.Fragment key={row.tier}>
+                  {rowIndex > 0 && <Joint count={row.people.length}/>}
+                  <div className="mb-4 flex items-center gap-3 text-[8px] tracking-[0.3em] text-[#6f6968]">
+                    <span className="font-heading text-[16px] text-[rgba(227,40,78,0.7)]" aria-hidden="true">
+                      {row.glyph}
+                    </span>
+                    {row.label}
                   </div>
-
-                  <div className="grid w-full grid-cols-1 justify-items-center gap-3.5 md:grid-cols-2">
-                    {managers.map((person, index) => (
+                  <div className={`grid w-full justify-items-center gap-3.5 ${row.people.length === 1 ? 'max-w-sm grid-cols-1' : row.people.length === 2 ? 'max-w-3xl grid-cols-1 md:grid-cols-2' : 'max-w-5xl grid-cols-1 md:grid-cols-2 xl:grid-cols-3'}`}>
+                    {row.people.map((person, index) => (
                       <Reveal key={person.id} delay={index * 100} className="flex w-full max-w-sm justify-center">
                         <LeaderCard person={person}/>
                       </Reveal>
                     ))}
                   </div>
-                </>
-              )}
+                </React.Fragment>
+              ))}
 
-              {!owners.length && !managers.length && (
-                <p className="text-[11px] text-[#8d8584]">A családfa hamarosan.</p>
-              )}
+              {!rows.length && <p className="text-[11px] text-[#8d8584]">A családfa hamarosan.</p>}
             </div>
           )}
         </div>

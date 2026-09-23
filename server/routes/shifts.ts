@@ -10,6 +10,7 @@ import {z} from 'zod';
 import {audit, loadAccount, requireRole, requireUser, roleAtLeast} from '../auth.ts';
 import {bad, conflict, created, forbidden, iso, notFound, parse, readJson, type Router} from '../http.ts';
 import {saleFromRow} from './staff.ts';
+import {broadcast} from '../realtime.ts';
 import type {Queryable, Row, SessionUser} from '../types.ts';
 
 const openBody = z.object({
@@ -195,6 +196,7 @@ export function registerShiftRoutes(router: Router): void {
     });
     const shift = (await loadShift(db, id))!;
     await audit(db, me, 'SHIFT_OPEN', `Műszak nyitva · kezdő kassza ${Math.round(body.openingCash)} Ft · ${shift.members.join(', ')}`);
+    await broadcast('house', 'shift', {open: true});
     return created({shift});
   });
 
@@ -277,6 +279,7 @@ export function registerShiftRoutes(router: Router): void {
       }
     });
     await audit(db, me, 'SHIFT_CLOSE', `Műszak zárva · bevétel ${revenue} Ft · záró kassza ${Math.round(body.closingCash)} Ft${house.pub_open ? ' · a ház bezárt' : ''}`);
+    await broadcast('house', 'shift', {open: false});
     return {shift: await loadShift(db, shift.id), transfer: closure.transfer, pubClosed: !!house.pub_open};
   });
 
@@ -322,6 +325,7 @@ export function registerShiftRoutes(router: Router): void {
       [me.id, me.name, note]
     );
     await audit(db, me, 'PUB_OPEN', `A ház kinyitott · műszak ${shift.id}${note ? ' · ' + note : ''}`);
+    await broadcast('house', 'door', {open: true});
     return {ok: true, open: true};
   });
 
@@ -331,6 +335,7 @@ export function registerShiftRoutes(router: Router): void {
     if (!house.pub_open) throw conflict('A ház már zárva van.');
     await db.query(`update public.house set pub_open = false, pub_closed_at = now(), pub_note = '' where id = 1`);
     await audit(db, me, 'PUB_CLOSE', 'A ház bezárt');
+    await broadcast('house', 'door', {open: false});
     return {ok: true, open: false};
   });
 }

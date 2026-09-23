@@ -1,35 +1,46 @@
 import {useCallback, useEffect, useRef, useState} from 'react';
 import {apiGet} from '../lib/api';
+import {liveBus, type Topic} from '../lib/live';
+import {isRealtimeConnected, onRealtimeStatus, realtimeAvailable, subscribe} from '../lib/realtime';
 
 interface Options {
   /** Background refresh interval in ms. Set to 0 to fetch only once. */
   intervalMs?: number;
   /** When false, nothing is requested. Use for endpoints the viewer may not call. */
   enabled?: boolean;
+  /** Realtime topics that mean this data changed. Pushes trigger an immediate refetch. */
+  topics?: Topic[];
+  /** Refetch after any successful write made from this browser. On by default. */
+  refetchOnMutation?: boolean;
 }
 
-interface LiveData<T> {
+export interface LiveData<T> {
   data: T | null;
   error: string | null;
   loading: boolean;
   refresh: () => void;
+  /** Rewrites the local copy at once, for optimistic updates. The next fetch replaces it. */
+  mutate: (updater: (current: T | null) => T | null) => void;
 }
 
+/** While a realtime socket is delivering pushes, polling is only a safety net. */
+const RELAXED_FACTOR = 4;
+
 /**
- * Fetches a public endpoint and keeps it fresh.
+ * Fetches an endpoint and keeps it fresh.
  *
- * The legacy scripts hammered the API on a fixed `setInterval` (menu.js polled
- * every 2 seconds, forever, even on a hidden tab) and re-rendered the DOM on
- * every tick. Here polling is slow by default, pauses while the tab is hidden,
- * resumes with an immediate refresh on focus, and state is only replaced when
- * the payload actually changed — so React never re-renders for nothing.
+ * Three things refresh it: a slow poll (paused on a hidden tab, resumed with
+ * an immediate load on focus), a realtime push on one of its topics, and any
+ * successful mutation this browser made. State is only replaced when the
+ * payload actually changed, so React never re-renders for nothing.
  */
-export function useLiveData<T>(url: string, {intervalMs = 60000, enabled = true}: Options = {}): LiveData<T> {
+export function useLiveData<T>(url: string, {intervalMs = 60000, enabled = true, topics, refetchOnMutation = true}: Options = {}): LiveData<T> {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const signatureRef = useRef<string>('');
   const abortRef = useRef<AbortController | null>(null);
+  const topicKey = (topics || []).join(',');
 
   const load = useCallback(async () => {
     if (!enabled) return;
@@ -54,6 +65,14 @@ export function useLiveData<T>(url: string, {intervalMs = 60000, enabled = true}
     }
   }, [url, enabled]);
 
+  const mutate = useCallback((updater: (current: T | null) => T | null) => {
+    setData((current) => {
+      const next = updater(current);
+      signatureRef.current = JSON.stringify(next);
+      return next;
+    });
+  }, []);
+
   useEffect(() => {
     if (!enabled) {
       setLoading(false);
@@ -64,12 +83,18 @@ export function useLiveData<T>(url: string, {intervalMs = 60000, enabled = true}
     signatureRef.current = '';
     load();
 
-    if (!intervalMs) return () => abortRef.current?.abort();
-
     let timer: number | undefined;
+    let debounce: number | undefined;
+    const soon = () => {
+      window.clearTimeout(debounce);
+      debounce = window.setTimeout(load, 120);
+    };
+
     const start = () => {
       window.clearInterval(timer);
-      timer = window.setInterval(load, intervalMs);
+      if (!intervalMs) return;
+      const relaxed = realtimeAvailable && topicKey && isRealtimeConnected();
+      timer = window.setInterval(load, relaxed ? intervalMs * RELAXED_FACTOR : intervalMs);
     };
     const onVisibility = () => {
       if (document.hidden) {
@@ -84,13 +109,44 @@ export function useLiveData<T>(url: string, {intervalMs = 60000, enabled = true}
     document.addEventListener('visibilitychange', onVisibility);
     window.addEventListener('focus', load);
 
+    const wanted = new Set(topicKey ? (topicKey.split(',') as Topic[]) : []);
+    const unsubscribeTopics = [...wanted].map((topic) => subscribe(topic));
+    const offStatus = wanted.size ? onRealtimeStatus(() => start()) : () => {};
+    const offBus = liveBus.on((event) => {
+      if (event.topic === 'mutation') {
+        if (refetchOnMutation && (intervalMs > 0 || wanted.size)) soon();
+        return;
+      }
+      if (wanted.has(event.topic)) soon();
+    });
+
     return () => {
       window.clearInterval(timer);
+      window.clearTimeout(debounce);
       document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('focus', load);
+      for (const off of unsubscribeTopics) off();
+      offStatus();
+      offBus();
       abortRef.current?.abort();
     };
-  }, [load, intervalMs, enabled]);
+  }, [load, intervalMs, enabled, topicKey, refetchOnMutation]);
 
-  return {data, error, loading, refresh: load};
+  return {data, error, loading, refresh: load, mutate};
+}
+
+/** Runs `handler` for every push on `topic` while mounted. */
+export function useLiveEvent(topic: Topic, handler: (event: string, payload: Record<string, unknown>) => void): void {
+  const handlerRef = useRef(handler);
+  handlerRef.current = handler;
+  useEffect(() => {
+    const off = subscribe(topic);
+    const offBus = liveBus.on((event) => {
+      if (event.topic === topic) handlerRef.current(event.event, event.payload);
+    });
+    return () => {
+      off();
+      offBus();
+    };
+  }, [topic]);
 }

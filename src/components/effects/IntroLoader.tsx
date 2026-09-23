@@ -1,6 +1,7 @@
 import React, {useEffect, useState} from 'react';
 import {useLocation} from 'react-router-dom';
 import {useAudioStore} from '../../stores/useAudioStore';
+import {assetUrl} from '../../lib/api';
 
 const SEEN_KEY = 'rm-intro-seen';
 
@@ -69,7 +70,7 @@ export const IntroLoader: React.FC = () => {
 
       <div className="rm-loader-scene">
         <div className="rm-loader-moon">
-          <img src="/assets/red-moon-logo.png" alt="Red Moon Pub"/>
+          <img src={assetUrl('/assets/red-moon-logo.png')} alt="Red Moon Pub"/>
         </div>
 
         <div className="rm-loader-kicker">SEE CITY · AFTER DARK</div>

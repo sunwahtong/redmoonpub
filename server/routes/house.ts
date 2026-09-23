@@ -7,7 +7,9 @@ import crypto from 'node:crypto';
 import {z} from 'zod';
 import {audit, requireRole, requireUser} from '../auth.ts';
 import {bad, created, dayKey, iso, notFound, parse, readJson, type Router} from '../http.ts';
-import {blipFromRow, eventFromRow} from './public.ts';
+import {acceptImage, destroyMedia} from '../media.ts';
+import {broadcast} from '../realtime.ts';
+import {blipFromRow, eventFromRow, galleryPublic} from './public.ts';
 import type {Ctx, Queryable, Row, SessionUser} from '../types.ts';
 
 const BLIP_KINDS = ['hq', 'bar', 'parking', 'meeting', 'danger', 'info', 'event', 'custom'] as const;
@@ -21,6 +23,7 @@ const eventBody = z.object({
   endsAt: z.string().trim().nullable().optional(),
   tag: z.string().trim().max(40).default(''),
   coverImage: z.string().trim().max(600).default(''),
+  coverPublicId: z.string().trim().max(200).default(''),
   entryFee: z.coerce.number().int().min(0).max(10_000_000).nullable().optional(),
   dressCode: z.string().trim().max(120).default(''),
   featured: z.boolean().default(false),
@@ -34,7 +37,6 @@ const houseBody = z.object({
   phone: z.string().trim().max(40).optional(),
   registration: z.string().trim().max(40).optional(),
   ownerUserId: z.string().nullable().optional(),
-  hourlyWage: z.coerce.number().int().min(0).max(10_000_000).optional(),
   transferAccount: z.string().trim().max(60).optional(),
   transferName: z.string().trim().max(80).optional()
 });
@@ -48,6 +50,21 @@ const personBody = z.object({
   sortOrder: z.coerce.number().int().min(0).max(1000).default(0),
   active: z.boolean().default(true)
 });
+
+const galleryBody = z.object({
+  title: z.string().trim().max(80).default(''),
+  caption: z.string().trim().max(200).default(''),
+  tag: z.enum(['ter', 'este', 'jel']).default('este'),
+  imageUrl: z.string().trim().min(1, 'Kép kötelező.').max(600),
+  publicId: z.string().trim().max(200).default(''),
+  width: z.coerce.number().int().min(0).max(20000).default(0),
+  height: z.coerce.number().int().min(0).max(20000).default(0),
+  active: z.boolean().default(true)
+});
+
+const galleryPatch = galleryBody.partial();
+
+const orderBody = z.array(z.object({id: z.string().min(1), sortOrder: z.coerce.number().int().min(0).max(10000), tier: z.enum(['owner', 'co-owner', 'manager', 'staff']).optional()})).max(200);
 
 const blipCreate = z.object({
   x: z.coerce.number().finite(),
@@ -82,19 +99,21 @@ export function registerHouseRoutes(router: Router): void {
     const startsAt = parseDate(body.startsAt, 'kezdési idő');
     const endsAt = body.endsAt ? parseDate(body.endsAt, 'befejezési idő') : null;
     if (endsAt && endsAt <= startsAt) throw bad('A befejezés a kezdés után legyen.');
+    acceptImage(body.coverImage, body.coverPublicId, 'event');
+    const coverPublicId = body.coverImage ? body.coverPublicId : '';
     if (body.featured) await db.query('update public.events set featured = false where featured');
-    const values = [body.title, body.subtitle, body.description, body.place || 'Red Moon Pub', startsAt, endsAt, body.tag, body.coverImage, body.entryFee ?? null, body.dressCode, body.featured, body.active];
+    const values = [body.title, body.subtitle, body.description, body.place || 'Red Moon Pub', startsAt, endsAt, body.tag, body.coverImage, coverPublicId, body.entryFee ?? null, body.dressCode, body.featured, body.active];
     if (id) {
       const {rows} = await db.query(
         `update public.events set title = $2, subtitle = $3, description = $4, place = $5, starts_at = $6, ends_at = $7, tag = $8,
-           cover_image = $9, entry_fee = $10, dress_code = $11, featured = $12, active = $13 where id = $1 returning *`,
+           cover_image = $9, cover_public_id = $10, entry_fee = $11, dress_code = $12, featured = $13, active = $14 where id = $1 returning *`,
         [id, ...values]
       );
       return rows[0];
     }
     const {rows} = await db.query(
-      `insert into public.events (title, subtitle, description, place, starts_at, ends_at, tag, cover_image, entry_fee, dress_code, featured, active, created_by, created_by_name)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) returning *`,
+      `insert into public.events (title, subtitle, description, place, starts_at, ends_at, tag, cover_image, cover_public_id, entry_fee, dress_code, featured, active, created_by, created_by_name)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) returning *`,
       [...values, user.id, user.name]
     );
     return rows[0];
@@ -105,6 +124,7 @@ export function registerHouseRoutes(router: Router): void {
     const body = parse(eventBody, await readJson(req));
     const row = await upsertEvent(db, me, body);
     await audit(db, me, 'EVENT_CREATE', `${row.title} · ${row.place} · ${new Date(row.starts_at).toLocaleString('hu-HU')}`);
+    await broadcast('events', 'change', {eventId: row.id});
     return created({event: eventFromRow(row)});
   };
   router.post('/api/events', createEvent);
@@ -115,17 +135,29 @@ export function registerHouseRoutes(router: Router): void {
     const existing = (await db.query('select * from public.events where id = $1', [params.id])).rows[0];
     if (!existing) throw notFound('Rendezvény nem található');
     const raw = await readJson(req);
-    const merged = parse(eventBody, {...eventFromRow(existing), ...raw, startsAt: raw.startsAt ?? iso(existing.starts_at), endsAt: raw.endsAt === undefined ? iso(existing.ends_at) : raw.endsAt});
+    const merged = parse(eventBody, {
+      ...eventFromRow(existing),
+      ...raw,
+      // A new picture brings its own id; a typed /assets path has none.
+      coverPublicId: raw.coverImage !== undefined ? raw.coverPublicId || '' : existing.cover_public_id || '',
+      startsAt: raw.startsAt ?? iso(existing.starts_at),
+      endsAt: raw.endsAt === undefined ? iso(existing.ends_at) : raw.endsAt
+    });
     const row = await upsertEvent(db, me, merged, params.id);
+    // The replaced cover leaves the store with the reference.
+    if (existing.cover_public_id && existing.cover_public_id !== row.cover_public_id) await destroyMedia(existing.cover_public_id, 'image');
     await audit(db, me, 'EVENT_UPDATE', row.title);
+    await broadcast('events', 'change', {eventId: row.id});
     return {event: eventFromRow(row)};
   });
 
   router.delete('/api/events/:id', async ({db, user, params}) => {
     const me = requireRole({user}, 'owner');
-    const {rows} = await db.query<{title: string}>('delete from public.events where id = $1 returning title', [params.id]);
+    const {rows} = await db.query<{title: string; cover_public_id: string}>('delete from public.events where id = $1 returning title, cover_public_id', [params.id]);
     if (!rows[0]) throw notFound('Rendezvény nem található');
+    await destroyMedia(rows[0].cover_public_id, 'image');
     await audit(db, me, 'EVENT_DELETE', rows[0].title);
+    await broadcast('events', 'change', {eventId: params.id});
     return {ok: true};
   });
 
@@ -165,6 +197,7 @@ export function registerHouseRoutes(router: Router): void {
       }
     });
     await audit(db, me, 'SIGNATURE_DRINKS_UPDATE', cleaned.length ? cleaned.map((item, index) => `${index + 1}. ${item.name}${item.description ? ' · ' + item.description : ''}`).join(' | ') : 'A Signature Drinks lista kiürítve');
+    await broadcast('content', 'drinks');
     return {drinks: await signatureDrinks(db)};
   });
 
@@ -176,7 +209,6 @@ export function registerHouseRoutes(router: Router): void {
     phone: row.phone,
     registration: row.registration,
     ownerUserId: row.owner_user_id,
-    hourlyWage: row.hourly_wage,
     transferAccount: row.transfer_account,
     transferName: row.transfer_name,
     pubOpen: !!row.pub_open,
@@ -214,11 +246,11 @@ export function registerHouseRoutes(router: Router): void {
     if (body.phone !== undefined) set('phone', body.phone);
     if (body.registration !== undefined) set('registration', body.registration);
     if (body.ownerUserId !== undefined) set('owner_user_id', body.ownerUserId || null);
-    if (body.hourlyWage !== undefined) set('hourly_wage', body.hourlyWage);
     if (body.transferAccount !== undefined) set('transfer_account', body.transferAccount);
     if (body.transferName !== undefined) set('transfer_name', body.transferName);
     if (fields.length) await db.query(`update public.house set ${fields.join(', ')} where id = 1`, values);
     await audit(db, me, 'HOUSE_UPDATE', Object.keys(body).join(', '));
+    await broadcast('content', 'house');
     const house = (await db.query('select * from public.house where id = 1')).rows[0];
     return {house: houseOf(house)};
   });
@@ -236,6 +268,7 @@ export function registerHouseRoutes(router: Router): void {
       body.active
     ]);
     await audit(db, me, 'HOUSE_PERSON_CREATE', body.name);
+    await broadcast('content', 'people');
     return created({person: personOf(rows[0])});
   });
 
@@ -256,6 +289,7 @@ export function registerHouseRoutes(router: Router): void {
       body.active
     ]);
     await audit(db, me, 'HOUSE_PERSON_UPDATE', body.name);
+    await broadcast('content', 'people');
     return {person: personOf(rows[0])};
   });
 
@@ -264,7 +298,94 @@ export function registerHouseRoutes(router: Router): void {
     const {rows} = await db.query<{name: string}>('delete from public.house_people where id = $1 returning name', [params.id]);
     if (!rows[0]) throw notFound('A személy nem található');
     await audit(db, me, 'HOUSE_PERSON_DELETE', rows[0].name);
+    await broadcast('content', 'people');
     return {ok: true};
+  });
+
+  /** Drag-and-drop result: every person's tier and position in one go. */
+  router.put('/api/house/people/order', async ({db, req, user}) => {
+    const me = requireRole({user}, 'owner');
+    const body = parse(orderBody, await readJson(req));
+    await db.tx(async (tx) => {
+      for (const entry of body) {
+        await tx.query('update public.house_people set sort_order = $2, tier = coalesce($3, tier) where id = $1', [entry.id, entry.sortOrder, entry.tier || null]);
+      }
+    });
+    await audit(db, me, 'HOUSE_PEOPLE_REORDER', `${body.length} személy`);
+    await broadcast('content', 'people');
+    const people = (await db.query('select * from public.house_people order by sort_order, name')).rows;
+    return {people: people.map(personOf)};
+  });
+
+  /* ---------------- gallery ---------------- */
+
+  router.get('/api/gallery', async ({db, user}) => {
+    requireRole({user}, 'owner');
+    const {rows} = await db.query('select * from public.gallery_items order by sort_order, created_at');
+    return {items: rows.map(galleryPublic)};
+  });
+
+  router.post('/api/gallery', async ({db, req, user}) => {
+    const me = requireRole({user}, 'owner');
+    const body = parse(galleryBody, await readJson(req));
+    acceptImage(body.imageUrl, body.publicId, 'gallery');
+    const order = (await db.query<{n: number}>('select coalesce(max(sort_order), -1)::int + 1 as n from public.gallery_items')).rows[0].n;
+    const {rows} = await db.query(
+      `insert into public.gallery_items (title, caption, tag, image_url, public_id, width, height, sort_order, active, created_by, created_by_name)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) returning *`,
+      [body.title, body.caption, body.tag, body.imageUrl, body.publicId, body.width, body.height, order, body.active, me.id, me.name]
+    );
+    await audit(db, me, 'GALLERY_ADD', body.title || body.imageUrl);
+    await broadcast('content', 'gallery');
+    return created({item: galleryPublic(rows[0])});
+  });
+
+  router.patch('/api/gallery/:id', async ({db, req, user, params}) => {
+    const me = requireRole({user}, 'owner');
+    const existing = (await db.query('select * from public.gallery_items where id = $1', [params.id])).rows[0];
+    if (!existing) throw notFound('A kép nem található');
+    const body = parse(galleryPatch, await readJson(req));
+    if (body.imageUrl) acceptImage(body.imageUrl, body.publicId ?? existing.public_id, 'gallery');
+    const {rows} = await db.query(
+      `update public.gallery_items set title = $2, caption = $3, tag = $4, image_url = $5, public_id = $6, width = $7, height = $8, active = $9 where id = $1 returning *`,
+      [
+        params.id,
+        body.title ?? existing.title,
+        body.caption ?? existing.caption,
+        body.tag ?? existing.tag,
+        body.imageUrl ?? existing.image_url,
+        body.publicId ?? existing.public_id,
+        body.width ?? existing.width,
+        body.height ?? existing.height,
+        body.active ?? existing.active
+      ]
+    );
+    if (body.imageUrl && body.imageUrl !== existing.image_url) await destroyMedia(existing.public_id, 'image');
+    await audit(db, me, 'GALLERY_UPDATE', rows[0].title || rows[0].id);
+    await broadcast('content', 'gallery');
+    return {item: galleryPublic(rows[0])};
+  });
+
+  router.delete('/api/gallery/:id', async ({db, user, params}) => {
+    const me = requireRole({user}, 'owner');
+    const {rows} = await db.query('delete from public.gallery_items where id = $1 returning *', [params.id]);
+    if (!rows[0]) throw notFound('A kép nem található');
+    await destroyMedia(rows[0].public_id, 'image');
+    await audit(db, me, 'GALLERY_DELETE', rows[0].title || rows[0].id);
+    await broadcast('content', 'gallery');
+    return {ok: true};
+  });
+
+  router.put('/api/gallery/order', async ({db, req, user}) => {
+    const me = requireRole({user}, 'owner');
+    const body = parse(orderBody, await readJson(req));
+    await db.tx(async (tx) => {
+      for (const entry of body) await tx.query('update public.gallery_items set sort_order = $2 where id = $1', [entry.id, entry.sortOrder]);
+    });
+    await audit(db, me, 'GALLERY_REORDER', `${body.length} kép`);
+    await broadcast('content', 'gallery');
+    const {rows} = await db.query('select * from public.gallery_items order by sort_order, created_at');
+    return {items: rows.map(galleryPublic)};
   });
 
   /* ---------------- map markers ---------------- */
@@ -468,7 +589,6 @@ interface DayBucket {
 }
 
 export async function personalAnalytics(db: Queryable, userId: string) {
-  const house = (await db.query('select hourly_wage from public.house where id = 1')).rows[0];
   const shifts = (
     await db.query(
       `select s.*, m.joined_at, m.left_at from public.shift_members m join public.shifts s on s.id = m.shift_id
@@ -517,8 +637,6 @@ export async function personalAnalytics(db: Queryable, userId: string) {
       sales: new Set(sales.map((sale) => sale.transaction_id)).size,
       items: sales.reduce((sum, sale) => sum + (Number(sale.qty) || 0), 0),
       revenue,
-      wage: Math.round(hours * (house?.hourly_wage || 0)),
-      hourlyWage: house?.hourly_wage || 0,
       orders: orders.length,
       orderEstimated: estimated,
       orderActual: actual,

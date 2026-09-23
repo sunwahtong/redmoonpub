@@ -7,111 +7,66 @@ import {Magnetic} from '../components/ui/Magnetic';
 import {Reveal} from '../components/ui/Reveal';
 import {SplitReveal} from '../components/ui/SplitReveal';
 import {CountUp} from '../components/ui/CountUp';
+import {Skeleton} from '../components/ui/Skeleton';
 import {Embers} from '../components/effects/Embers';
-import {Lightbox, type LightboxItem} from '../components/ui/Lightbox';
+import {Lightbox} from '../components/ui/Lightbox';
+import {useLiveData} from '../hooks/useLiveData';
 import {useParallax} from '../hooks/useParallax';
+import {assetUrl} from '../lib/api';
+import {backgroundImage} from '../lib/media';
+import type {GalleryItem, GalleryTag} from '../types';
 
-type ShotTag = 'ter' | 'este' | 'jel';
-
-interface Shot extends LightboxItem {
-  no: string;
-  tag: ShotTag;
-  /** Extra grid span classes — the archive reads as a magazine spread. */
-  span?: string;
-}
-
-const TAG_LABEL: Record<ShotTag, string> = {
+const TAG_LABEL: Record<GalleryTag, string> = {
   ter: 'A TÉR',
   este: 'AZ ESTE',
   jel: 'A JEL'
 };
 
+const TAGS = Object.keys(TAG_LABEL) as GalleryTag[];
+
 /**
- * The legacy gallery faked six photos with CSS gradients. These are the real
- * assets that ship with the project; the grid still keeps the 2×3 rhythm.
+ * How much room a picture takes in the grid, from its own proportions:
+ * wide pictures span two columns, tall ones two rows, and the first
+ * picture of the set gets the big square so the wall opens with a lead.
  */
-const SHOTS: Shot[] = [
-  {
-    no: '01',
-    tag: 'ter',
-    title: 'A BÁR',
-    caption: 'Vörös fények, sötét fa, és az este első pohara.',
-    src: '/assets/red-moon-cinematic-v27.webp',
-    span: 'md:col-span-2 md:row-span-2'
-  },
-  {
-    no: '02',
-    tag: 'este',
-    title: 'THE CROWD',
-    caption: 'Amikor a zene átveszi az irányítást.',
-    src: '/assets/gallery/red-moon-dj-crowd.webp'
-  },
-  {
-    no: '03',
-    tag: 'jel',
-    title: 'RED MOON',
-    caption: 'A jel, ami alatt minden este kezdődik.',
-    src: '/assets/red-moon-logo.png'
-  },
-  {
-    no: '04',
-    tag: 'este',
-    title: 'AFTER DARK',
-    caption: 'SeeCity naplemente után.',
-    src: '/assets/red-moon-cinematic-v27',
-    span: 'md:col-span-2'
-  },
-  {
-    no: '05',
-    tag: 'ter',
-    title: 'SEE CITY',
-    caption: 'A hely a térképen — a Red Moon koordinátái.',
-    src: '/assets/red-moon-map-v8.png'
-  },
-  {
-    no: '06',
-    tag: 'jel',
-    title: 'NEON NIGHT',
-    caption: 'Fekete és vörös. Neonfények. Zene.',
-    src: '/assets/red-moon-cinematic.png'
-  }
-];
+export function spanOf(item: {width: number; height: number}, index: number): string {
+  if (index === 0) return 'is-big';
+  if (!item.width || !item.height) return '';
+  const ratio = item.width / item.height;
+  if (ratio >= 1.6) return 'is-wide';
+  if (ratio <= 0.72) return 'is-tall';
+  return '';
+}
 
-const TAGS = Object.keys(TAG_LABEL) as ShotTag[];
-
+/**
+ * The gallery, as the owner curates it in the console. The wall lays itself
+ * out from the number of pictures and their proportions; nothing is
+ * hard-coded any more.
+ */
 export const GalleryPage: React.FC = () => {
   const backdropRef = useParallax<HTMLDivElement>(75);
-  const [filter, setFilter] = useState<ShotTag | 'all'>('all');
+  const {data, loading} = useLiveData<{items: GalleryItem[]}>('/api/public/gallery', {intervalMs: 120000, topics: ['content']});
+  const [filter, setFilter] = useState<GalleryTag | 'all'>('all');
   const [active, setActive] = useState<number | null>(null);
 
-  const visible = useMemo(
-    () => (filter === 'all' ? SHOTS : SHOTS.filter((shot) => shot.tag === filter)),
-    [filter]
-  );
+  const items = useMemo(() => data?.items || [], [data]);
+  const visible = useMemo(() => (filter === 'all' ? items : items.filter((item) => item.tag === filter)), [items, filter]);
 
   const counts = useMemo(() => {
-    const result: Record<string, number> = {all: SHOTS.length};
-    for (const tag of TAGS) result[tag] = SHOTS.filter((shot) => shot.tag === tag).length;
+    const result: Record<string, number> = {all: items.length};
+    for (const tag of TAGS) result[tag] = items.filter((item) => item.tag === tag).length;
     return result;
-  }, []);
+  }, [items]);
+
+  const lightboxItems = useMemo(() => visible.map((item) => ({src: assetUrl(item.src), title: item.title, caption: item.caption})), [visible]);
 
   return (
     <main>
       {/* HERO */}
       <section className="relative flex min-h-[560px] items-end overflow-hidden border-b border-[color:var(--rm-line)] px-[8vw] pb-16 pt-[170px]">
-        <div
-          ref={backdropRef}
-          className="pointer-events-none absolute inset-x-0 -top-24 bottom-[-90px] bg-[url('/assets/red-moon-cinematic-v27.webp')] bg-cover bg-center opacity-[0.34]"
-          aria-hidden="true"
-        />
-        <div
-          className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,rgba(5,3,4,0.96),rgba(5,3,4,0.45))]"
-          aria-hidden="true"
-        />
-        <div
-          className="pointer-events-none absolute inset-x-0 bottom-0 h-40 bg-[linear-gradient(0deg,var(--rm-bg),transparent)]"
-          aria-hidden="true"
-        />
+        <div ref={backdropRef} style={backgroundImage(items[0]?.src || '/assets/red-moon-cinematic-v27.webp')} className="pointer-events-none absolute inset-x-0 -top-24 bottom-[-90px] bg-cover bg-center opacity-[0.34]" aria-hidden="true"/>
+        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,rgba(5,3,4,0.96),rgba(5,3,4,0.45))]" aria-hidden="true"/>
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-40 bg-[linear-gradient(0deg,var(--rm-bg),transparent)]" aria-hidden="true"/>
         <Embers density={34}/>
 
         <div className="relative z-[2]">
@@ -123,14 +78,12 @@ export const GalleryPage: React.FC = () => {
               <SplitReveal text="archive." delay={190}/>
             </em>
           </h1>
-          <p className="max-w-[540px] text-sm leading-[1.9] text-[#aaa]">
-            A Red Moon pillanatai — tegnap, ma és a következő este.
-          </p>
+          <p className="max-w-[540px] text-sm leading-[1.9] text-[#aaa]">A Red Moon pillanatai — tegnap, ma és a következő este.</p>
 
           <div className="mt-9 flex flex-wrap items-end gap-x-12 gap-y-6">
             <div>
               <strong className="block font-heading text-[38px] leading-none text-white">
-                <CountUp to={SHOTS.length}/>
+                <CountUp to={items.length}/>
               </strong>
               <span className="mt-2 block text-[8px] tracking-[0.22em] text-[#777]">FELVÉTEL</span>
             </div>
@@ -168,71 +121,43 @@ export const GalleryPage: React.FC = () => {
                   setActive(null);
                 }}
                 aria-pressed={isActive}
-                className={`border px-4 py-2.5 text-[9px] font-bold tracking-[0.2em] transition-all ${
-                  isActive
-                    ? 'border-[color:var(--rm-red)] bg-[rgba(213,31,60,0.14)] text-white shadow-[0_0_22px_rgba(213,31,60,0.22)]'
-                    : 'border-[color:var(--rm-line)] text-[#8f8887] hover:border-white/25 hover:text-white'
-                }`}
+                className={`rm-chip${isActive ? ' is-active' : ''}`}
               >
                 {tag === 'all' ? 'MIND' : TAG_LABEL[tag]}
-                <span className="ml-2 text-[8px] text-[#6d5d64]">{counts[tag]}</span>
+                <span className="rm-chip-count">{counts[tag]}</span>
               </button>
             );
           })}
         </div>
 
-        <div className="grid auto-rows-[230px] grid-cols-1 gap-3 md:grid-cols-4">
-          {visible.map((shot, index) => (
-            <Reveal
-              key={shot.no}
-              delay={index * 70}
-              /* Spans only apply to the full set: once filtered, a two-column
-                 tile next to a single survivor leaves a hole in the grid. */
-              className={`h-full ${filter === 'all' ? shot.span || '' : ''}`}
-            >
-              <button
-                type="button"
-                onClick={() => setActive(index)}
-                className="group relative h-full w-full overflow-hidden border border-[color:var(--rm-line)] bg-[#09090b] text-left transition-all duration-500 hover:border-[rgba(213,31,60,0.55)] hover:shadow-[0_24px_60px_rgba(0,0,0,0.6)]"
-              >
-                <img
-                  src={shot.src}
-                  alt={shot.title}
-                  loading="lazy"
-                  decoding="async"
-                  className="absolute inset-0 h-full w-full object-cover opacity-65 transition-all duration-[900ms] ease-out group-hover:scale-[1.07] group-hover:opacity-100"
-                />
-                <div
-                  className="absolute inset-0 bg-gradient-to-t from-black/92 via-black/25 to-transparent"
-                  aria-hidden="true"
-                />
+        {loading && (
+          <div className="rm-gallery-grid">
+            <Skeleton className="h-full" count={6}/>
+          </div>
+        )}
 
-                {/* Ruby wash that arrives with the hover, so the still warms up
-                    rather than only brightening. */}
-                <div
-                  className="absolute inset-0 bg-[radial-gradient(circle_at_50%_120%,rgba(227,40,78,0.3),transparent_65%)] opacity-0 transition-opacity duration-700 group-hover:opacity-100"
-                  aria-hidden="true"
-                />
+        {!loading && !visible.length && <p className="text-[11px] text-[#8d8584]">A gyűjtemény hamarosan bővül.</p>}
 
-                <span className="absolute left-5 top-5 border border-white/15 bg-black/50 px-2.5 py-1 text-[7px] font-bold tracking-[0.2em] text-[#ddd] backdrop-blur-sm">
-                  {TAG_LABEL[shot.tag]}
-                </span>
+        <div className="rm-gallery-grid">
+          {visible.map((item, index) => (
+            <Reveal key={item.id} delay={Math.min(index, 8) * 60} className={`rm-gallery-item h-full ${filter === 'all' ? spanOf(item, index) : ''}`}>
+              <button type="button" onClick={() => setActive(index)} className="rm-gallery-tile group">
+                <img src={assetUrl(item.src)} alt={item.title} loading="lazy" decoding="async"/>
+                <div className="absolute inset-0 bg-gradient-to-t from-black/92 via-black/25 to-transparent" aria-hidden="true"/>
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_120%,rgba(227,40,78,0.3),transparent_65%)] opacity-0 transition-opacity duration-700 group-hover:opacity-100" aria-hidden="true"/>
+
+                <span className="absolute left-5 top-5 border border-white/15 bg-black/50 px-2.5 py-1 text-[7px] font-bold tracking-[0.2em] text-[#ddd] backdrop-blur-sm">{TAG_LABEL[item.tag]}</span>
 
                 <div className="absolute inset-x-0 bottom-0 p-5">
                   <div className="flex items-end justify-between gap-3">
                     <span className="text-[8px] font-bold tracking-[0.2em] text-[#ddd]">
-                      {shot.no} · {shot.title}
+                      {String(index + 1).padStart(2, '0')} · {item.title}
                     </span>
-                    <Expand
-                      size={15}
-                      className="shrink-0 text-rm-red opacity-0 transition-opacity duration-300 group-hover:opacity-100"
-                    />
+                    <Expand size={15} className="shrink-0 text-rm-red opacity-0 transition-opacity duration-300 group-hover:opacity-100"/>
                   </div>
-
-                  {/* The caption stays out of the way until asked for. */}
-                  <p className="mt-0 max-h-0 overflow-hidden text-[10px] leading-[1.7] text-[#c9c2c1] opacity-0 transition-all duration-500 group-hover:mt-2.5 group-hover:max-h-24 group-hover:opacity-100">
-                    {shot.caption}
-                  </p>
+                  {item.caption && (
+                    <p className="mt-0 max-h-0 overflow-hidden text-[10px] leading-[1.7] text-[#c9c2c1] opacity-0 transition-all duration-500 group-hover:mt-2.5 group-hover:max-h-24 group-hover:opacity-100">{item.caption}</p>
+                  )}
                 </div>
               </button>
             </Reveal>
@@ -261,8 +186,7 @@ export const GalleryPage: React.FC = () => {
                 Ma este a <em>Red Moonban.</em>
               </NeonHeading>
               <p className="relative z-[1] mt-4 max-w-lg text-[11px] leading-[1.8] text-[#8d8584]">
-                Pillanatok a Red Moonból: fények, társaság, zene és azok az esték, amelyekhez jó visszatérni. Az
-                archívum minden rendezvény után bővül.
+                Pillanatok a Red Moonból: fények, társaság, zene és azok az esték, amelyekhez jó visszatérni. Az archívum minden rendezvény után bővül.
               </p>
               <div className="relative z-[1] mt-8">
                 <BtnLink to="/events" variant="red">
@@ -276,9 +200,7 @@ export const GalleryPage: React.FC = () => {
               <NeonHeading as="h3" className="mt-3">
                 Neonéjszakák.
               </NeonHeading>
-              <p className="mt-4 text-[11px] leading-[1.8] text-[#8d8584]">
-                Fekete és vörös. Neonfények. Zene. SeeCity naplemente után.
-              </p>
+              <p className="mt-4 text-[11px] leading-[1.8] text-[#8d8584]">Fekete és vörös. Neonfények. Zene. SeeCity naplemente után.</p>
               <div className="mt-8">
                 <BtnLink to="/club">RED MOON CLUB ↗</BtnLink>
               </div>
@@ -287,7 +209,7 @@ export const GalleryPage: React.FC = () => {
         </div>
       </section>
 
-      <Lightbox items={visible} index={active} onClose={() => setActive(null)} onNavigate={setActive}/>
+      <Lightbox items={lightboxItems} index={active} onClose={() => setActive(null)} onNavigate={setActive}/>
     </main>
   );
 };

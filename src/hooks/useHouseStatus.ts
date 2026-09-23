@@ -11,18 +11,27 @@ export interface HouseStatus {
   /** A shift is running — the precondition for opening the door. */
   shiftOpen: boolean;
   live: boolean;
+  /** The DJ's nickname while the booth is live. */
   dj: string | null;
   title: string;
+  /** A direct audio stream the site can play while live, if the DJ set one. */
+  streamUrl: string;
+  /** The station page (gocast.fm) for listening outside the site. */
+  providerUrl: string;
+  liveSince: string | null;
   listenerCount: number;
   nextEvent: RedMoonEvent | null;
   serverNow: string;
 }
 
 /**
- * One poll for everything the public chrome needs: the door, the booth and
- * the next evening. Shared by the navbar chip, the status pill, the tonight
- * bar and the home hero so they never disagree with each other.
+ * One feed for everything the public chrome needs: the door, the booth and
+ * the next evening. Shared by the navbar chip, the status pill, the live
+ * popup, the tonight bar and the home hero so they never disagree.
+ *
+ * Refreshes on a realtime push the moment the door or the booth changes, and
+ * polls as a fallback.
  */
-export function useHouseStatus(intervalMs = 20000) {
-  return useLiveData<HouseStatus>('/api/public/status', {intervalMs});
+export function useHouseStatus(intervalMs = 12000) {
+  return useLiveData<HouseStatus>('/api/public/status', {intervalMs, topics: ['house']});
 }

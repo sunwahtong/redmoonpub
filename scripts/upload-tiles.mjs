@@ -10,7 +10,7 @@
  * Run once, from a machine that has the tile pack:
  *
  *   SUPABASE_URL=https://xxxx.supabase.co \
- *   SUPABASE_SERVICE_ROLE_KEY=... \
+ *   SUPABASE_SECRET_KEY=sb_secret_... \
  *   npm run tiles:upload
  *
  * It is safe to re-run: existing objects are skipped unless --force is passed,
@@ -38,7 +38,7 @@ const value = (name, fallback) => {
 };
 
 const SUPABASE_URL = String(process.env.SUPABASE_URL || '').replace(/\/+$/, '');
-const SERVICE_KEY = String(process.env.SUPABASE_SERVICE_ROLE_KEY || '');
+const SERVICE_KEY = String(process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '');
 const BUCKET = value('bucket', process.env.SUPABASE_TILE_BUCKET || 'map-tiles');
 const FORCE = flag('force');
 const DRY_RUN = flag('dry-run');
@@ -60,7 +60,7 @@ function fail(message) {
 }
 
 if (!SUPABASE_URL || !SERVICE_KEY) {
-  fail('Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY before running this script.');
+  fail('Set SUPABASE_URL and SUPABASE_SECRET_KEY before running this script.');
 }
 if (!fs.existsSync(TILE_ROOT)) {
   fail(`Tile pack not found at ${TILE_ROOT}`);

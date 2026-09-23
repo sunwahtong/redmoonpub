@@ -1,22 +1,29 @@
-import React, {useCallback, useEffect, useMemo, useState} from 'react';
-import {CalendarClock, Check, Phone, Users, X} from 'lucide-react';
+import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import {CalendarClock, Check, MessageSquare, Phone, Send, Users, X} from 'lucide-react';
 import {NeonHeading} from '../components/ui/NeonHeading';
 import {Btn} from '../components/ui/Btn';
 import {Magnetic} from '../components/ui/Magnetic';
 import {SplitReveal} from '../components/ui/SplitReveal';
 import {Reveal} from '../components/ui/Reveal';
 import {Embers} from '../components/effects/Embers';
-import {apiGet, apiSend, formatDate, formatTime, getVisitorToken} from '../lib/api';
+import {apiGet, apiSend, formatAgo, formatDate, formatTime, getVisitorToken} from '../lib/api';
+import {useLiveEvent} from '../hooks/useLiveData';
 import {playSfx} from '../lib/sfx';
 import {dialog} from '../stores/useDialogStore';
+import {toast} from '../stores/useToastStore';
 import {
+  canMessage,
   isLive,
   OCCASION_GLYPH,
   OCCASION_LABEL,
+  PIPELINE,
+  pipelineIndex,
   STATUS_CLASS,
+  STATUS_HINT,
   STATUS_LABEL,
   TIER_LABEL,
   type Reservation,
+  type ReservationMessage,
   type ReservationOccasion,
   type ReservationTier
 } from '../lib/reservations';
@@ -42,6 +49,106 @@ function defaultWhen(): string {
   date.setHours(21, 0, 0, 0);
   return toLocalInputValue(date);
 }
+
+/** One of the guest's bookings: where it stands, and the line to the house. */
+const BookingCard: React.FC<{reservation: Reservation; token: string; onCancel: () => void; onChanged: () => void}> = ({reservation, token, onCancel, onChanged}) => {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState('');
+  const [sending, setSending] = useState(false);
+  const listRef = useRef<HTMLDivElement>(null);
+  const messages = reservation.messages || [];
+  const index = pipelineIndex(reservation.status);
+  const bad = ['declined', 'noshow', 'cancelled'].includes(reservation.status);
+
+  useEffect(() => {
+    if (!open) return;
+    const element = listRef.current;
+    if (element) element.scrollTop = element.scrollHeight;
+    if (reservation.unread) apiSend(`/api/reservations/${reservation.id}/read`, 'POST', {visitorToken: token}).then(onChanged).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, messages.length]);
+
+  const send = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const line = text.trim();
+    if (!line || sending) return;
+    setSending(true);
+    try {
+      await apiSend<{message: ReservationMessage}>(`/api/reservations/${reservation.id}/messages`, 'POST', {visitorToken: token, text: line});
+      setText('');
+      playSfx('chat_message');
+      onChanged();
+    } catch (err) {
+      playSfx('error');
+      toast.error('Nem ment el', (err as Error).message);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="border border-white/[0.07] bg-black/40 p-4">
+      <div className="flex items-center justify-between gap-2">
+        <strong className="font-heading text-[15px] text-white">{reservation.code}</strong>
+        <span className={`border px-2 py-1 text-[8px] tracking-[0.18em] ${STATUS_CLASS[reservation.status]}`}>{STATUS_LABEL[reservation.status].toUpperCase()}</span>
+      </div>
+      <p className="mt-2 text-[10px] text-[#8d8584]">
+        {formatDate(reservation.when)} · {formatTime(reservation.when)} · {reservation.guests} fő
+      </p>
+      <p className="mt-2 text-[10px] leading-[1.7] text-[#c9c2c1]">{STATUS_HINT[reservation.status]}</p>
+
+      <div className="rm-pipeline mt-3">
+        {PIPELINE.map((stage, position) => (
+          <span key={stage.id} className={`rm-pipeline-step${position < index ? ' is-done' : ''}${position === index ? (bad ? ' is-bad' : ' is-current') : ''}`}>
+            {stage.label}
+          </span>
+        ))}
+      </div>
+
+      {reservation.staffNote && (
+        <p className="mt-3 border-l border-[color:var(--rm-line-red)] pl-2.5 text-[10px] leading-[1.7] text-[#c9c2c1]">{reservation.staffNote}</p>
+      )}
+
+      <div className="mt-3 flex flex-wrap items-center gap-3">
+        <button type="button" onClick={() => setOpen((value) => !value)} className="inline-flex items-center gap-1.5 text-[9px] tracking-[0.18em] text-[#c9c2c1] hover:text-white">
+          <MessageSquare size={10}/> {messages.length ? `${messages.length} ÜZENET` : 'ÜZENET A HÁZNAK'}
+          {!!reservation.unread && <span className="rm-unread">{reservation.unread}</span>}
+        </button>
+        {isLive(reservation.status) && (
+          <button type="button" onClick={onCancel} className="text-[9px] tracking-[0.18em] text-[#777] underline-offset-4 transition-colors hover:text-[color:var(--rm-red)] hover:underline">
+            LEMONDÁS
+          </button>
+        )}
+      </div>
+
+      {open && (
+        <div className="mt-3 border-t border-white/[0.06] pt-3">
+          <div ref={listRef} className="rm-thread">
+            {!messages.length && <p className="text-[10px] text-[#6f6968]">Írj, ha kérdésed van: allergia, ülésrend, meglepetés. A ház itt válaszol.</p>}
+            {messages.map((message) => (
+              <div key={message.id} className={`rm-thread-msg${message.author === 'guest' ? ' is-mine' : ''}`}>
+                {message.text}
+                <small>
+                  {message.author === 'guest' ? 'Te' : message.authorName || 'Red Moon'} · {formatAgo(message.at)}
+                </small>
+              </div>
+            ))}
+          </div>
+          {canMessage(reservation.status) ? (
+            <form onSubmit={send} className="mt-3 flex gap-2">
+              <input value={text} onChange={(event) => setText(event.target.value.slice(0, 600))} placeholder="Üzenet a háznak…" className="rm-input !py-2.5 !text-[11px]"/>
+              <Btn type="submit" variant="red" disabled={sending || !text.trim()} className="!px-3">
+                <Send size={12}/>
+              </Btn>
+            </form>
+          ) : (
+            <p className="mt-3 text-[9px] tracking-[0.15em] text-[#5f5959]">EZ A FOGLALÁS LEZÁRULT.</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
 
 export const ReservationsPage: React.FC = () => {
   const [step, setStep] = useState(0);
@@ -73,7 +180,14 @@ export const ReservationsPage: React.FC = () => {
 
   useEffect(() => {
     loadMine();
+    const timer = window.setInterval(() => {
+      if (!document.hidden) loadMine();
+    }, 20000);
+    return () => window.clearInterval(timer);
   }, [loadMine]);
+
+  // A decision or a reply from the house lands here without a reload.
+  useLiveEvent('reservations', () => loadMine());
 
   const minWhen = useMemo(() => toLocalInputValue(new Date(Date.now() + 45 * 60000)), []);
   const maxWhen = useMemo(() => toLocalInputValue(new Date(Date.now() + 60 * 86400000)), []);
@@ -182,7 +296,7 @@ export const ReservationsPage: React.FC = () => {
                 </NeonHeading>
 
                 <p className="mt-5 max-w-md text-[12px] leading-[1.9] text-[#9e9795]">
-                  A foglalásod elbírálás alatt van. Amint egy üzletvezető visszaigazolja, az állapota itt változik meg.
+                  Megkaptuk. Előbb ránézünk, aztán döntünk — minden lépést látsz a foglalásaidnál, és ha kérdésed van, ott írhatsz nekünk.
                 </p>
 
                 <div className="mt-8 w-full max-w-sm border border-[color:var(--rm-line)] bg-black/40">
@@ -474,33 +588,7 @@ export const ReservationsPage: React.FC = () => {
                 ) : (
                   <div className="mt-4 flex flex-col gap-2.5">
                     {mine.map((reservation) => (
-                      <div key={reservation.id} className="border border-white/[0.07] bg-black/40 p-4">
-                        <div className="flex items-center justify-between gap-2">
-                          <strong className="font-heading text-[15px] text-white">{reservation.code}</strong>
-                          <span
-                            className={`border px-2 py-1 text-[8px] tracking-[0.18em] ${STATUS_CLASS[reservation.status]}`}
-                          >
-                            {STATUS_LABEL[reservation.status].toUpperCase()}
-                          </span>
-                        </div>
-                        <p className="mt-2 text-[10px] text-[#8d8584]">
-                          {formatDate(reservation.when)} · {formatTime(reservation.when)} · {reservation.guests} fő
-                        </p>
-                        {reservation.staffNote && (
-                          <p className="mt-2 border-l border-[color:var(--rm-line-red)] pl-2.5 text-[10px] leading-[1.7] text-[#c9c2c1]">
-                            {reservation.staffNote}
-                          </p>
-                        )}
-                        {isLive(reservation.status) && (
-                          <button
-                            type="button"
-                            onClick={() => cancel(reservation)}
-                            className="mt-3 text-[9px] tracking-[0.18em] text-[#777] underline-offset-4 transition-colors hover:text-[color:var(--rm-red)] hover:underline"
-                          >
-                            LEMONDÁS
-                          </button>
-                        )}
-                      </div>
+                      <BookingCard key={reservation.id} reservation={reservation} token={token} onCancel={() => cancel(reservation)} onChanged={loadMine}/>
                     ))}
                   </div>
                 )}
@@ -514,9 +602,10 @@ export const ReservationsPage: React.FC = () => {
                 <ul className="relative mt-4 flex flex-col gap-3 text-[10px] leading-[1.7] text-[#8d8584]">
                   {[
                     'Az asztalt a foglalás után harminc percig tartjuk.',
-                    'Tizenkét fő fölött az üzletvezető visszahív egyeztetni.',
+                    'Tizenkét fő fölött a manager visszahív egyeztetni.',
                     'A Red Moon tagság elsőbbséget ad telt estéken.',
-                    'Lemondani bármikor lehet, itt a foglalásaidnál.'
+                    'Lemondani bármikor lehet, itt a foglalásaidnál.',
+                    'Kérdésed van? A foglalásodnál üzenhetsz a háznak.'
                   ].map((rule) => (
                     <li key={rule} className="flex gap-2.5">
                       <span className="mt-[6px] h-1 w-1 shrink-0 bg-[color:var(--rm-red)]" aria-hidden="true"/>

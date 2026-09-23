@@ -1,10 +1,10 @@
 import React, {useMemo, useState} from 'react';
-import {Ban, Check, KeyRound, LogOut, PenLine, RefreshCw, ShieldCheck, Trash2, UserPlus, X} from 'lucide-react';
+import {Ban, Check, KeyRound, Lock, LogOut, PenLine, RefreshCw, ShieldCheck, Trash2, UserPlus, X} from 'lucide-react';
 import {Btn} from '../../components/ui/Btn';
 import {Select} from '../../components/ui/Select';
 import {Avatar, Badge, Chips, Field, inputClass, PageHeader, Panel, SearchField} from '../../components/ui/console';
 import {useLiveData} from '../../hooks/useLiveData';
-import {apiSend, formatDate, formatTime} from '../../lib/api';
+import {apiSend, assetUrl, formatDate, formatTime} from '../../lib/api';
 import {playSfx} from '../../lib/sfx';
 import {toast} from '../../stores/useToastStore';
 import {dialog} from '../../stores/useDialogStore';
@@ -17,7 +17,7 @@ const ROLES: Role[] = ['staff', 'manager', 'owner'];
 
 const ROLE_LABEL: Record<Role, string> = {
   staff: 'STAFF',
-  manager: 'ÜZLETVEZETŐ',
+  manager: 'MANAGER',
   owner: 'TULAJDONOS'
 };
 
@@ -254,7 +254,7 @@ export const UsersPage: React.FC = () => {
                           <input value={draft.nickname} onChange={(event) => setDraft({...draft, nickname: event.target.value})} className={inputClass}/>
                         </Field>
                         <Field label="TITULUS (DOKUMENTUMOKON)">
-                          <input value={draft.title} onChange={(event) => setDraft({...draft, title: event.target.value})} placeholder="pl. Üzletvezető" className={inputClass}/>
+                          <input value={draft.title} onChange={(event) => setDraft({...draft, title: event.target.value})} placeholder="pl. Manager" className={inputClass}/>
                         </Field>
                         <Field label="JOGOSULTSÁG">
                           <Select value={draft.role} options={ROLE_OPTIONS} onChange={(value) => setDraft({...draft, role: value})} disabled={user.id === me?.id}/>
@@ -311,9 +311,15 @@ export const UsersPage: React.FC = () => {
                         </span>
                       </div>
 
-                      {user.hasSignature && user.signatureSvg && (
-                        <div className="hidden w-28 md:block">
-                          <div className="rm-signature-card !p-1" dangerouslySetInnerHTML={{__html: user.signatureSvg}}/>
+                      {user.hasSignature && user.signatureUrl && (
+                        <div className="hidden w-28 md:block" title={user.signatureLocked ? 'Végleges: dokumentumon szerepel' : user.signatureKind === 'generated' ? 'Generált aláírás' : user.signatureKind === 'drawn' ? 'Saját kezű aláírás' : 'Feltöltött aláírás'}>
+                          <div className="rm-signature-card !p-1">
+                            <img src={assetUrl(user.signatureUrl)} alt=""/>
+                          </div>
+                          <span className="mt-1 flex items-center justify-center gap-1 text-[7px] tracking-[0.2em] text-[#6f6968]">
+                            {user.signatureLocked ? <Lock size={8}/> : null}
+                            {user.signatureLocked ? 'VÉGLEGES' : user.signatureKind === 'generated' ? 'GENERÁLT' : user.signatureKind === 'drawn' ? 'RAJZOLT' : 'FELTÖLTÖTT'}
+                          </span>
                         </div>
                       )}
 
@@ -324,8 +330,8 @@ export const UsersPage: React.FC = () => {
                         <button type="button" onClick={() => resetPassword(user)} aria-label="Jelszó visszaállítása" title="Új jelszó" className="p-1.5 text-[#777] transition-colors hover:text-white">
                           <KeyRound size={13}/>
                         </button>
-                        {user.role !== 'staff' && (
-                          <button type="button" onClick={() => regenerateSignature(user)} aria-label="Új aláírás" title="Új aláírás" className="p-1.5 text-[#777] transition-colors hover:text-white">
+                        {user.role !== 'staff' && !user.signatureLocked && (
+                          <button type="button" onClick={() => regenerateSignature(user)} aria-label="Új aláírás" title="Új generált aláírás" className="p-1.5 text-[#777] transition-colors hover:text-white">
                             <RefreshCw size={13}/>
                           </button>
                         )}
@@ -381,7 +387,7 @@ export const UsersPage: React.FC = () => {
 
             <p className="mt-2 flex items-start gap-2 text-[9px] leading-[1.6] text-[#777]">
               <ShieldCheck size={11} className="mt-0.5 shrink-0 text-[color:var(--rm-red)]"/>
-              Üzletvezetői vagy tulajdonosi fiók a létrehozáskor automatikusan aláírást kap, amit a dokumentumok viselnek.
+              Manager vagy tulajdonosi fiók a létrehozáskor generált aláírást kap, és az első belépéskor választhat sajátot. Az első kiállított dokumentum után az aláírás végleges.
               A DJ pultot a „DJ” beosztás nyitja meg; a tulajdonosnak mindenhez van joga.
             </p>
           </form>

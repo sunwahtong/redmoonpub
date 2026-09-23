@@ -9,6 +9,7 @@ import crypto from 'node:crypto';
 import {z} from 'zod';
 import {audit, capabilitiesOf, notify, notifyManagers, requireRole, requireUser, roleAtLeast} from '../auth.ts';
 import {bad, conflict, created, forbidden, iso, notFound, parse, readJson, shortCode, type Router} from '../http.ts';
+import {acceptImage, destroyMedia} from '../media.ts';
 import type {Queryable, Row} from '../types.ts';
 
 export const SECTIONS = ['beer', 'wine', 'spirits', 'nonalcoholic', 'accessories', 'other'] as const;
@@ -20,7 +21,8 @@ const productCreate = z.object({
   price: z.coerce.number().min(0).max(100_000_000).default(0),
   stock: z.coerce.number().int().min(0).max(1_000_000).default(0),
   minStock: z.coerce.number().int().min(0).max(1_000_000).default(0),
-  image: z.string().trim().max(400).default(''),
+  image: z.string().trim().max(600).default(''),
+  imagePublicId: z.string().trim().max(200).default(''),
   subtitle: z.string().trim().max(180).default(''),
   description: z.string().trim().max(600).default('')
 });
@@ -31,7 +33,8 @@ const productPatch = z.object({
   price: z.coerce.number().min(0).max(100_000_000).optional(),
   minStock: z.coerce.number().int().min(0).max(1_000_000).optional(),
   active: z.boolean().optional(),
-  image: z.string().trim().max(400).optional(),
+  image: z.string().trim().max(600).optional(),
+  imagePublicId: z.string().trim().max(200).optional(),
   subtitle: z.string().trim().max(180).optional(),
   description: z.string().trim().max(600).optional(),
   sortOrder: z.coerce.number().int().min(0).max(10000).optional()
@@ -83,6 +86,7 @@ export const productFromRow = (row: Row) => ({
   stock: row.stock,
   minStock: row.min_stock,
   image: row.image || '',
+  imagePublicId: row.image_public_id || '',
   subtitle: row.subtitle || '',
   description: row.description || '',
   active: row.active !== false,
@@ -167,12 +171,13 @@ export function registerInventoryRoutes(router: Router): void {
   router.post('/api/products', async ({db, req, user}) => {
     const me = requireRole({user}, 'manager');
     const body = parse(productCreate, await readJson(req));
+    acceptImage(body.image, body.imagePublicId, 'product');
     const id = `p_${crypto.randomBytes(6).toString('hex')}`;
     const order = (await db.query<{n: number}>('select coalesce(max(sort_order), 0)::int + 1 as n from public.products')).rows[0].n;
     const {rows} = await db.query(
-      `insert into public.products (id, name, category, section, price, stock, min_stock, image, subtitle, description, sort_order)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) returning *`,
-      [id, body.name, body.category, body.section, Math.round(body.price), body.stock, body.minStock, body.image, body.subtitle, body.description, order]
+      `insert into public.products (id, name, category, section, price, stock, min_stock, image, image_public_id, subtitle, description, sort_order)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) returning *`,
+      [id, body.name, body.category, body.section, Math.round(body.price), body.stock, body.minStock, body.image, body.image ? body.imagePublicId : '', body.subtitle, body.description, order]
     );
     await audit(db, me, 'PRODUCT_CREATE', body.name);
     return created({product: productFromRow(rows[0])});
@@ -197,12 +202,19 @@ export function registerInventoryRoutes(router: Router): void {
     if (body.price !== undefined) set('price', Math.round(body.price));
     if (body.minStock !== undefined) set('min_stock', body.minStock);
     if (body.active !== undefined) set('active', body.active);
-    if (body.image !== undefined) set('image', body.image);
+    const imagePublicId = body.image ? body.imagePublicId || '' : '';
+    if (body.image !== undefined) {
+      acceptImage(body.image, imagePublicId, 'product');
+      set('image', body.image);
+      set('image_public_id', imagePublicId);
+    }
     if (body.subtitle !== undefined) set('subtitle', body.subtitle);
     if (body.description !== undefined) set('description', body.description);
     if (body.sortOrder !== undefined) set('sort_order', body.sortOrder);
     if (!fields.length) return {product: productFromRow(existing)};
     const {rows} = await db.query(`update public.products set ${fields.join(', ')} where id = $1 returning *`, values);
+    // The replaced picture leaves the store with the reference.
+    if (body.image !== undefined && existing.image_public_id && existing.image_public_id !== imagePublicId) await destroyMedia(existing.image_public_id, 'image');
     await audit(db, me, 'PRODUCT_UPDATE', `${rows[0].name}${body.price !== undefined ? ` · ár ${existing.price} → ${rows[0].price}` : ''}${body.active !== undefined ? (body.active ? ' · aktív' : ' · inaktív') : ''}`);
     return {product: productFromRow(rows[0])};
   });

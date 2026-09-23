@@ -6,12 +6,13 @@ import {Btn, BtnLink} from '../components/ui/Btn';
 import {Field, inputClass} from '../components/ui/console';
 import {useAuthStore, roleAtLeast} from '../stores/useAuthStore';
 import {apiSend} from '../lib/api';
+import {backgroundImage} from '../lib/media';
 import {playSfx} from '../lib/sfx';
 import {JOB_LABEL, type StaffJob} from '../lib/orders';
 
 const ROLE_LABEL: Record<string, string> = {
   staff: 'STAFF',
-  manager: 'ÜZLETVEZETŐ',
+  manager: 'MANAGER',
   owner: 'TULAJDONOS'
 };
 
@@ -109,7 +110,7 @@ export const StaffLoginPage: React.FC = () => {
   return (
     <main className="relative flex min-h-screen items-center overflow-hidden px-[var(--rm-gutter)] pt-[68px]">
       <div
-        className="pointer-events-none absolute inset-0 bg-[url('/assets/red-moon-cinematic-v27.webp')] bg-cover bg-center opacity-25"
+        style={backgroundImage('/assets/red-moon-cinematic-v27.webp')} className="pointer-events-none absolute inset-0 bg-cover bg-center opacity-25"
         aria-hidden="true"
       />
       <div
@@ -194,7 +195,7 @@ export const StaffLoginPage: React.FC = () => {
 
               <p className="mt-6 text-[11px] leading-[1.8] text-[#8d8584]">
                 {roleAtLeast(user.role, 'manager')
-                  ? 'Üzletvezetőként nyithatod a házat, kezeled a foglalásokat és jelölőket helyezhetsz a térképre.'
+                  ? 'Managerként nyithatod a házat, kezeled a foglalásokat és jelölőket helyezhetsz a térképre.'
                   : 'A konzolban a műszakod, a kassza és a beszerzések várnak.'}
               </p>
 

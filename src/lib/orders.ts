@@ -113,7 +113,7 @@ export const JOB_LABEL: Record<StaffJob, string> = {
   biztonsag: 'Biztonság',
   hostess: 'Hostess',
   dj: 'DJ',
-  uzletvezeto: 'Üzletvezető'
+  uzletvezeto: 'Manager'
 };
 
 export const JOB_GLYPH: Record<StaffJob, string> = {

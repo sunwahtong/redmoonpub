@@ -1,5 +1,5 @@
 import React, {useMemo, useState} from 'react';
-import {CalendarDays, MessageSquare, Phone, Search, User} from 'lucide-react';
+import {CalendarDays, Phone, Search, User} from 'lucide-react';
 import {NeonHeading} from '../../components/ui/NeonHeading';
 import {Btn} from '../../components/ui/Btn';
 import {Skeleton} from '../../components/ui/Skeleton';
@@ -38,7 +38,8 @@ const ACTION_LABEL: Record<CareerStatus, string> = {
 
 export const ApplicationsPage: React.FC = () => {
   const {data, loading, refresh} = useLiveData<{applications: Application[]}>('/api/applications', {
-    intervalMs: 25000
+    intervalMs: 25000,
+    topics: ['reservations']
   });
 
   const [filter, setFilter] = useState<Filter>('open');
@@ -186,12 +187,6 @@ export const ApplicationsPage: React.FC = () => {
                       <Phone size={12} className="text-[color:var(--rm-red)]"/>
                       {application.phone || '—'}
                     </span>
-                    {application.radio && (
-                      <span className="inline-flex items-center gap-2">
-                        <MessageSquare size={12} className="text-[color:var(--rm-red)]"/>
-                        {application.radio}
-                      </span>
-                    )}
                     <span className="inline-flex items-center gap-2">
                       <CalendarDays size={12} className="text-[color:var(--rm-red)]"/>
                       {formatDate(application.at)} · {formatTime(application.at)}

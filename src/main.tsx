@@ -1,6 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import {App} from './App';
+import {installMediaVariables} from './lib/media';
 
 // Tailwind first, then the Red Moon layer — so the brand styles always win
 // over utility defaults without needing !important.
@@ -13,6 +14,9 @@ import './styles/loader.css';
 import './styles/chrome.css';
 import './styles/premium.css';
 import './styles/console.css';
+import './styles/club.css';
+
+installMediaVariables();
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

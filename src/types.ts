@@ -31,6 +31,8 @@ export interface RedMoonEvent {
   /** Short badge, e.g. "LIVE DJ" or "TEMATIKUS EST". */
   tag?: string;
   coverImage?: string;
+  /** The media store's id of an uploaded cover, empty for a site path. */
+  coverPublicId?: string;
   /** Entry fee in Ft; null or 0 means free. */
   entryFee?: number | null;
   dressCode?: string;
@@ -63,4 +65,19 @@ export interface HousePerson {
 export interface PublicHouse {
   house: {name: string; address: string; phone: string; registration: string};
   people: HousePerson[];
+}
+
+export type GalleryTag = 'ter' | 'este' | 'jel';
+
+export interface GalleryItem {
+  id: string;
+  title: string;
+  caption: string;
+  tag: GalleryTag;
+  src: string;
+  width: number;
+  height: number;
+  sortOrder: number;
+  active: boolean;
+  createdAt: string | null;
 }

@@ -12,8 +12,12 @@ export interface Person {
   idNumber: string;
   phone: string;
   title: string;
-  /** Stored signature, ready to embed. */
+  /** Where the stored signature lives (media store URL). */
+  signatureUrl?: string | null;
+  /** Resolved before rendering (see `resolveSignatures`): the SVG text of a drawn or generated signature… */
   signatureSvg?: string | null;
+  /** …or the data URL of an uploaded one. */
+  signatureImage?: string | null;
 }
 
 export interface Business {
@@ -21,7 +25,6 @@ export interface Business {
   address: string;
   phone: string;
   registration: string;
-  hourlyWage?: number;
 }
 
 export const HOUSE_FALLBACK: Business = {
@@ -34,6 +37,6 @@ export const HOUSE_FALLBACK: Business = {
 /** Rank titles as they should be printed, keyed by permission role. */
 export const ROLE_TITLE: Record<string, string> = {
   owner: 'Tulajdonos',
-  manager: 'Üzletvezető',
+  manager: 'Manager',
   staff: 'Alkalmazott'
 };

@@ -8,11 +8,19 @@ import {audit, loadAccount, notifyOwners, requireRole, requireUser, roleAtLeast}
 import {bad, conflict, created, forbidden, formatPhone, iso, notFound, parse, readJson, type Router} from '../http.ts';
 import {openShift} from './shifts.ts';
 import {saleFromRow} from './staff.ts';
+import {broadcast} from '../realtime.ts';
 import type {Account, Queryable, Row, SessionUser} from '../types.ts';
 
 const saleBody = z.object({
   items: z.array(z.object({productId: z.string().min(1), qty: z.coerce.number().int().min(1).max(999)})).min(1, 'A kosár üres.').max(60),
   paymentMethod: z.enum(['cash', 'transfer']).default('cash')
+});
+
+const issuedBody = z.object({
+  kind: z.string().trim().min(1).max(40),
+  reference: z.string().trim().min(1).max(80),
+  countersigned: z.boolean().default(true),
+  storedDocumentId: z.string().trim().max(80).optional()
 });
 
 const invoiceBody = z.object({
@@ -67,8 +75,8 @@ const lineItems = (sales: Row[]) => JSON.stringify(sales.map((sale) => ({product
 export function registerSalesRoutes(router: Router): void {
   router.get('/api/sales', async ({db, user}) => {
     requireUser({user});
-    const {rows} = await db.query('select * from public.sales order by at desc limit 500');
-    return {sales: rows.map(saleFromRow)};
+    const {rows} = await db.query('select s.*, p.section from public.sales s left join public.products p on p.id = s.product_id order by s.at desc limit 500');
+    return {sales: rows.map((row) => ({...saleFromRow(row), section: row.section || 'other'}))};
   });
 
   router.post('/api/sales', async ({db, req, user}) => {
@@ -124,6 +132,7 @@ export function registerSalesRoutes(router: Router): void {
     });
 
     await audit(db, me, 'SALE', `${result.sales.map((sale) => `${sale.product_name} × ${sale.qty}`).join(' + ')} · ${result.total} Ft · ${body.paymentMethod} · műszak ${shift.id}`);
+    await broadcast('content', 'sale', {shiftId: shift.id});
     return created({
       sales: result.sales.map(saleFromRow),
       total: result.total,
@@ -269,13 +278,42 @@ export function registerSalesRoutes(router: Router): void {
             role: account.role,
             idNumber: account.idNumber || '',
             phone: formatPhone(account.phone || ''),
-            signatureSvg: account.signatureSvg || null
+            signatureUrl: account.signatureUrl || null
           }
         : null;
     return {
-      house: {name: house.name, address: house.address, phone: house.phone, registration: house.registration, hourlyWage: house.hourly_wage},
-      issuer: person(issuer, issuer.role === 'owner' ? 'Tulajdonos' : 'Üzletvezető'),
+      house: {name: house.name, address: house.address, phone: house.phone, registration: house.registration},
+      issuer: person(issuer, issuer.role === 'owner' ? 'Tulajdonos' : 'Manager'),
       owner: person(owner, 'Tulajdonos')
     };
+  });
+
+  /**
+   * The browser reports every PDF it produced. The record is the house's
+   * register of issued documents, and the moment a signature becomes final:
+   * whoever signed can no longer change theirs.
+   */
+  router.post('/api/documents/issued', async ({db, req, user}) => {
+    const me = requireRole({user}, 'manager');
+    const body = parse(issuedBody, await readJson(req));
+    const house = (await db.query('select owner_user_id from public.house where id = 1')).rows[0];
+    let owner = house?.owner_user_id ? await loadAccount(db, house.owner_user_id) : null;
+    if (!owner) {
+      const {rows} = await db.query<{id: string}>(`select id from public.staff_accounts where role = 'owner' and active order by created_at asc limit 1`);
+      owner = rows[0] ? await loadAccount(db, rows[0].id) : null;
+    }
+    const countersigner = body.countersigned && owner ? owner : null;
+    await db.query(
+      `insert into public.issued_documents (kind, reference, issuer_id, issuer_name, countersigner_id, countersigner_name, stored_document_id)
+       values ($1, $2, $3, $4, $5, $6, $7)`,
+      [body.kind, body.reference, me.id, me.name, countersigner?.id || null, countersigner?.name || '', body.storedDocumentId || null]
+    );
+    const lock = [me.id, ...(countersigner ? [countersigner.id] : [])];
+    const {rowCount} = await db.query(
+      `update public.staff_accounts set signature_locked_at = now(), signature_decided = true where id = any($1) and signature_locked_at is null and signature_url <> ''`,
+      [lock]
+    );
+    await audit(db, me, 'DOCUMENT_ISSUED', `${body.kind} · ${body.reference}${countersigner ? ` · ellenjegyzi ${countersigner.name}` : ''}`);
+    return {ok: true, newlyLocked: rowCount};
   });
 }

@@ -1,3 +1,4 @@
+import {assetUrl} from './api';
 import type {Business, Person} from './house';
 
 /**
@@ -21,7 +22,7 @@ export type DocumentKind =
 export const DOCUMENT_LABEL: Record<DocumentKind, string> = {
   transactions: 'Tranzakciós kimutatás',
   'shift-report': 'Műszakzárási jegyzőkönyv',
-  payroll: 'Bérelszámolási ív',
+  payroll: 'Munkaidő-kimutatás',
   'order-audit': 'Beszerzési audit',
   inventory: 'Készletjegyzék',
   receipt: 'Nyugta',
@@ -31,7 +32,7 @@ export const DOCUMENT_LABEL: Record<DocumentKind, string> = {
 export const DOCUMENT_DESCRIPTION: Record<DocumentKind, string> = {
   transactions: 'Tételes eladási lista a választott időszakra, fizetési mód szerinti bontással.',
   'shift-report': 'Egy műszak nyitó és záró kasszája, bevétele és a műszakban dolgozók.',
-  payroll: 'Ledolgozott órák és a kifizetendő bér dolgozónként, a választott időszakra.',
+  payroll: 'Ledolgozott órák, műszakok és hozott bevétel dolgozónként, a választott időszakra.',
   'order-audit': 'Beszerzések becsült és tényleges értéke, az eltérésekkel és a felelősökkel.',
   inventory: 'Aktuális készlet, minimumszint és becsült kifutási idő tételenként.',
   receipt: 'A kasszában rögzített eladás nyugtája.',
@@ -41,7 +42,7 @@ export const DOCUMENT_DESCRIPTION: Record<DocumentKind, string> = {
 const PREFIX: Record<DocumentKind, string> = {
   transactions: 'TRX',
   'shift-report': 'MSZ',
-  payroll: 'BER',
+  payroll: 'MID',
   'order-audit': 'BSZ',
   inventory: 'KSZ',
   receipt: 'REC',
@@ -92,6 +93,33 @@ export interface DocumentContext {
   owner: Person | null;
 }
 
+/**
+ * Fetches each signer's stored signature so a document can embed it: SVG
+ * text for a drawn or generated one, a data URL for an uploaded picture. A
+ * signature that cannot be fetched simply leaves its line empty.
+ */
+export async function resolveSignatures(context: DocumentContext): Promise<DocumentContext> {
+  const load = async <T extends Person | null>(person: T): Promise<T> => {
+    if (!person || !person.signatureUrl || person.signatureSvg || person.signatureImage) return person;
+    try {
+      const response = await fetch(assetUrl(person.signatureUrl));
+      if (!response.ok) return person;
+      if ((response.headers.get('content-type') || '').includes('svg')) return {...person, signatureSvg: await response.text()};
+      const blob = await response.blob();
+      const image = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(blob);
+      });
+      return {...person, signatureImage: image};
+    } catch {
+      return person;
+    }
+  };
+  return {...context, issuer: await load(context.issuer), owner: await load(context.owner)};
+}
+
 /** Serial number for an issued copy, so two copies are distinguishable. */
 export function serial(kind: DocumentKind, registration: string): string {
   const now = new Date();
@@ -139,7 +167,7 @@ export function renderDocumentHtml(payload: DocumentPayload, context: DocumentCo
   const signatureBlock = (person: Person | null, fallbackTitle: string) =>
     person
       ? `<div class="sig-block">
-      <div class="sig">${person.signatureSvg || '<div class="sig-empty">— aláírás nélkül —</div>'}</div>
+      <div class="sig">${person.signatureSvg || (person.signatureImage ? `<img src="${person.signatureImage}" alt=""/>` : '<div class="sig-empty">— aláírás nélkül —</div>')}</div>
       <div class="sig-line">
         <div class="sig-name">${escapeHtml(person.name)}</div>
         <div class="sig-meta">${escapeHtml(person.title || fallbackTitle)}${person.idNumber ? ` · Azonosító: ${escapeHtml(person.idNumber)}` : ''}</div>
@@ -183,7 +211,7 @@ export function renderDocumentHtml(payload: DocumentPayload, context: DocumentCo
   .notes ul { margin: 6px 0 0; padding-left: 16px; }
   .signatures { margin-top: 30px; display: flex; justify-content: space-between; gap: 40px; }
   .sig-block { flex: 1; max-width: 78mm; }
-  .sig svg { display: block; width: 100%; height: auto; max-height: 70px; }
+  .sig svg, .sig img { display: block; width: 100%; height: auto; max-height: 70px; object-fit: contain; object-position: left bottom; }
   .sig-empty { height: 60px; display: flex; align-items: flex-end; font-size: 9px; color: #8a8a94; }
   .sig-line { border-top: 1px solid #16161d; padding-top: 6px; margin-top: -4px; }
   .sig-name { font-size: 11.5px; font-weight: 600; }
@@ -224,7 +252,7 @@ export function renderDocumentHtml(payload: DocumentPayload, context: DocumentCo
   ${notes ? `<div class="notes"><b>Megjegyzések</b><ul>${notes}</ul></div>` : ''}
 
   <div class="signatures">
-    ${signatureBlock(issuer, issuer.role === 'owner' ? 'Tulajdonos' : 'Üzletvezető')}
+    ${signatureBlock(issuer, issuer.role === 'owner' ? 'Tulajdonos' : 'Manager')}
     ${payload.countersign === false ? '' : signatureBlock(owner, 'Tulajdonos')}
   </div>
 

@@ -13,6 +13,7 @@ import {Embers} from '../components/effects/Embers';
 import {DrinkCard} from '../components/menu/DrinkCard';
 import {useLiveData} from '../hooks/useLiveData';
 import {useParallax} from '../hooks/useParallax';
+import {backgroundImage} from '../lib/media';
 import {assetUrl, formatHuf} from '../lib/api';
 import {SECTION_ORDER, SECTION_LABELS} from '../lib/sections';
 import type {DrinkSection, PublicProduct, SignatureDrink} from '../types';
@@ -72,7 +73,7 @@ export const MenuPage: React.FC = () => {
       <section className="relative flex min-h-[560px] items-end overflow-hidden border-b border-[color:var(--rm-line)] px-[8vw] pb-16 pt-[170px]">
         <div
           ref={backdropRef}
-          className="pointer-events-none absolute inset-x-0 -top-24 bottom-[-90px] bg-[url('/assets/red-moon-cinematic-v27.webp')] bg-cover bg-center opacity-40"
+          style={backgroundImage('/assets/red-moon-cinematic-v27.webp')} className="pointer-events-none absolute inset-x-0 -top-24 bottom-[-90px] bg-cover bg-center opacity-40"
           aria-hidden="true"
         />
         <div

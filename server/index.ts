@@ -17,6 +17,7 @@ import {fileURLToPath} from 'node:url';
 import {config} from './config.ts';
 import {getDb} from './db.ts';
 import {seed} from './seed.ts';
+import {migrateInlineMedia} from './mediaMigrate.ts';
 import {authenticate} from './auth.ts';
 import {assertSameOrigin, createRouter, HttpError, json} from './http.ts';
 import {registerPublicRoutes} from './routes/public.ts';
@@ -28,6 +29,7 @@ import {registerInventoryRoutes} from './routes/inventory.ts';
 import {registerGuestRoutes} from './routes/guests.ts';
 import {registerHouseRoutes} from './routes/house.ts';
 import {registerClubRoutes} from './routes/club.ts';
+import {registerMediaRoutes} from './routes/media.ts';
 import type {Ctx, Db, Request} from './types.ts';
 
 const router = createRouter();
@@ -40,6 +42,7 @@ registerInventoryRoutes(router);
 registerGuestRoutes(router);
 registerHouseRoutes(router);
 registerClubRoutes(router);
+registerMediaRoutes(router);
 
 let seeded: Promise<void> | null = null;
 
@@ -47,7 +50,9 @@ let seeded: Promise<void> | null = null;
 export async function ready(): Promise<Db> {
   const db = await getDb();
   if (!seeded) {
-    seeded = seed(db).catch((error) => {
+    seeded = seed(db)
+      .then(() => migrateInlineMedia(db))
+      .catch((error) => {
       seeded = null;
       throw error;
     });

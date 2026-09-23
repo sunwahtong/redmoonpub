@@ -24,7 +24,7 @@ export const Reveal: React.FC<Props> = ({children, delay = 0, className = '', st
     const node = ref.current;
     if (!node) return;
 
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches || !('IntersectionObserver' in window)) {
       setVisible(true);
       return;
     }

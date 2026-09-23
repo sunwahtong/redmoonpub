@@ -135,43 +135,126 @@
 /* ---------------------------------------------------------------- */
 
 .rm-btn {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
     display: inline-flex;
     align-items: center;
-    gap: 18px;
-    padding: 15px 19px;
-    border: 1px solid var(--rm-line);
+    gap: 10px;
+    padding: 14px 20px;
+    border: 1px solid rgba(255, 255, 255, 0.16);
     border-radius: var(--rm-radius);
-    background: transparent;
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.015)),
+        rgba(9, 9, 11, 0.6);
     color: #fff;
     font-size: 9px;
-    font-weight: 600;
+    font-weight: 700;
     letter-spacing: 0.2em;
     text-decoration: none;
     cursor: pointer;
-    transition: 0.35s;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.08),
+        0 1px 0 rgba(0, 0, 0, 0.6),
+        0 0 0 0 rgba(227, 40, 78, 0);
+    transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1), border-color 0.3s ease, box-shadow 0.3s ease, background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Ruby ticks in the corners: the house mark on every control. */
+.rm-btn::after {
+    content: "";
+    position: absolute;
+    inset: 3px;
+    pointer-events: none;
+    background:
+        linear-gradient(var(--rm-red-neon), var(--rm-red-neon)) top left / 6px 1px no-repeat,
+        linear-gradient(var(--rm-red-neon), var(--rm-red-neon)) top left / 1px 6px no-repeat,
+        linear-gradient(var(--rm-red-neon), var(--rm-red-neon)) bottom right / 6px 1px no-repeat,
+        linear-gradient(var(--rm-red-neon), var(--rm-red-neon)) bottom right / 1px 6px no-repeat;
+    opacity: 0.45;
+    transition: opacity 0.3s ease;
+}
+
+/* A sheen that crosses on hover, like light on lacquer. */
+.rm-btn::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background: linear-gradient(110deg, transparent 35%, rgba(255, 255, 255, 0.16) 50%, transparent 65%);
+    transform: translateX(-130%);
+    transition: transform 0.7s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 .rm-btn:hover {
-    transform: translateY(-3px);
-    border-color: rgba(213, 31, 60, 0.8);
-    box-shadow: 0 15px 45px rgba(213, 31, 60, 0.15);
+    transform: translateY(-2px);
+    border-color: rgba(255, 70, 104, 0.85);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.1),
+        0 14px 34px rgba(213, 31, 60, 0.22),
+        0 0 0 1px rgba(227, 40, 78, 0.18);
+}
+
+.rm-btn:hover::before { transform: translateX(130%); }
+.rm-btn:hover::after { opacity: 1; }
+
+.rm-btn:active { transform: translateY(0); }
+
+.rm-btn:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(227, 40, 78, 0.35);
 }
 
 .rm-btn:disabled {
-    opacity: 0.5;
+    opacity: 0.45;
     cursor: not-allowed;
     transform: none;
+    box-shadow: none;
 }
+
+.rm-btn:disabled::before { display: none; }
+
+.rm-btn svg { flex: 0 0 auto; }
 
 .rm-btn.is-red {
-    background: var(--rm-red);
-    border-color: var(--rm-red);
+    border-color: rgba(255, 90, 120, 0.7);
+    background: linear-gradient(180deg, #ff3f66 0%, #d81a44 55%, #b5122f 100%);
+    color: #fff;
+    text-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.3),
+        0 10px 28px rgba(213, 31, 60, 0.35),
+        0 0 0 1px rgba(255, 60, 95, 0.25);
 }
 
+.rm-btn.is-red::after { opacity: 0; }
+
 .rm-btn.is-red:hover {
-    background: var(--rm-red-neon);
-    border-color: var(--rm-red-neon);
-    box-shadow: 0 15px 45px rgba(213, 31, 60, 0.3);
+    border-color: #ff7a96;
+    background: linear-gradient(180deg, #ff5578 0%, #e8204c 55%, #c21536 100%);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.35),
+        0 18px 44px rgba(213, 31, 60, 0.5),
+        0 0 30px rgba(255, 43, 79, 0.35);
+}
+
+/* Quiet: an outline that only warms on hover. For secondary actions in rows. */
+.rm-btn.is-ghost {
+    border-color: rgba(213, 31, 60, 0.5);
+    background: transparent;
+    color: var(--rm-red-bright);
+    box-shadow: none;
+}
+
+.rm-btn.is-ghost::after { opacity: 0; }
+
+.rm-btn.is-ghost:hover,
+.rm-btn.is-ghost.is-active {
+    border-color: var(--rm-red);
+    background: rgba(213, 31, 60, 0.12);
+    color: #fff;
+    box-shadow: 0 10px 30px rgba(213, 31, 60, 0.18);
 }
 
 /* ---------------------------------------------------------------- */
@@ -228,7 +311,7 @@
     overflow: hidden;
     background:
         linear-gradient(90deg, rgba(5, 5, 6, 0.96), rgba(5, 5, 6, 0.5)),
-        url('/assets/red-moon-cinematic-v27.webp') center/cover;
+        var(--rm-img-cinematic, url('/assets/red-moon-cinematic-v27.webp')) center/cover;
 }
 
 .rm-page-hero::after {

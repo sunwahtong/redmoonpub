@@ -1,5 +1,5 @@
 import React, {useEffect, useMemo, useState} from 'react';
-import {Check, GripVertical, Plus, Trash2, X} from 'lucide-react';
+import {ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, GripVertical, Plus, Trash2, X} from 'lucide-react';
 import {Btn} from '../../components/ui/Btn';
 import {Select} from '../../components/ui/Select';
 import {Badge, Field, inputClass, PageHeader, Panel} from '../../components/ui/console';
@@ -21,7 +21,7 @@ interface Product {
   category: string;
 }
 
-interface Pick {
+interface DrinkPick {
   productId: string;
   name?: string;
   image?: string;
@@ -35,10 +35,11 @@ interface HouseSettings {
   phone: string;
   registration: string;
   ownerUserId: string | null;
-  hourlyWage: number;
   transferAccount: string;
   transferName: string;
 }
+
+type Tier = 'owner' | 'co-owner' | 'manager' | 'staff';
 
 interface Person {
   id: string;
@@ -46,44 +47,191 @@ interface Person {
   title: string;
   note: string;
   monogram: string;
-  tier: 'owner' | 'co-owner' | 'manager' | 'staff';
+  tier: Tier;
   sortOrder: number;
   active: boolean;
 }
 
-const TIER_OPTIONS = [
-  {value: 'owner' as const, label: 'Tulajdonos', glyph: '主'},
-  {value: 'co-owner' as const, label: 'Társtulajdonos', glyph: '共'},
-  {value: 'manager' as const, label: 'Üzletvezető', glyph: '長'},
-  {value: 'staff' as const, label: 'Csapat', glyph: '員'}
+const TIERS: {value: Tier; label: string; glyph: string; hint: string}[] = [
+  {value: 'owner', label: 'Tulajdonos', glyph: '主', hint: 'A ház feje. Legfelül, egyedül vagy ketten.'},
+  {value: 'co-owner', label: 'Társtulajdonos', glyph: '共', hint: 'A tulajdonos mellett, a második sorban.'},
+  {value: 'manager', label: 'Manager', glyph: '長', hint: 'A műszakok vezetői.'},
+  {value: 'staff', label: 'Csapat', glyph: '員', hint: 'Akik az estét csinálják.'}
 ];
+
+const TIER_OPTIONS = TIERS.map((tier) => ({value: tier.value, label: tier.label, glyph: tier.glyph}));
 
 const SLOT_GLYPH = ['一', '二', '三'];
 
+const monogramOf = (person: Pick<Person, 'name' | 'monogram'>) => person.monogram || person.name.slice(0, 2).toUpperCase();
+
+/* ------------------------------------------------------------------ */
+/* The family tree board                                               */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Four lanes, one per tier. A card can be dragged into another lane or
+ * before another card; the arrows do the same for touch and keyboards.
+ * Every move is saved at once and reflected on the public page.
+ */
+const TierBoard: React.FC<{
+  people: Person[];
+  selectedId: string | null;
+  onSelect: (id: string | null) => void;
+  onMove: (next: Person[]) => void;
+}> = ({people, selectedId, onSelect, onMove}) => {
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [overLane, setOverLane] = useState<Tier | null>(null);
+
+  const lanes = useMemo(() => {
+    const byTier: Record<Tier, Person[]> = {owner: [], 'co-owner': [], manager: [], staff: []};
+    for (const person of [...people].sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name, 'hu'))) byTier[person.tier].push(person);
+    return byTier;
+  }, [people]);
+
+  /** Rebuilds the list with `id` placed in `tier` at `index`, renumbering everything. */
+  const place = (id: string, tier: Tier, index: number) => {
+    const moving = people.find((person) => person.id === id);
+    if (!moving) return;
+    const next: Person[] = [];
+    let order = 0;
+    for (const lane of TIERS) {
+      const cards = lanes[lane.value].filter((person) => person.id !== id);
+      if (lane.value === tier) cards.splice(Math.max(0, Math.min(index, cards.length)), 0, {...moving, tier});
+      for (const card of cards) next.push({...card, tier: lane.value, sortOrder: order++});
+    }
+    onMove(next);
+  };
+
+  const shift = (person: Person, delta: number) => {
+    const cards = lanes[person.tier];
+    const index = cards.findIndex((entry) => entry.id === person.id);
+    place(person.id, person.tier, index + delta);
+  };
+
+  const changeTier = (person: Person, delta: number) => {
+    const position = TIERS.findIndex((tier) => tier.value === person.tier);
+    const target = TIERS[Math.max(0, Math.min(TIERS.length - 1, position + delta))];
+    if (target.value === person.tier) return;
+    place(person.id, target.value, lanes[target.value].length);
+  };
+
+  return (
+    <div className="rm-tierboard">
+      {TIERS.map((tier) => (
+        <div
+          key={tier.value}
+          className={`rm-tierlane${overLane === tier.value ? ' is-over' : ''}`}
+          onDragOver={(event) => {
+            event.preventDefault();
+            if (overLane !== tier.value) setOverLane(tier.value);
+          }}
+          onDragLeave={() => setOverLane(null)}
+          onDrop={(event) => {
+            event.preventDefault();
+            const id = dragId || event.dataTransfer.getData('text/plain');
+            setOverLane(null);
+            setDragId(null);
+            if (id) place(id, tier.value, lanes[tier.value].length);
+          }}
+        >
+          <div className="rm-tierlane-head">
+            <span className="rm-tierlane-glyph" aria-hidden="true">
+              {tier.glyph}
+            </span>
+            <div>
+              <strong className="block text-[10px] tracking-[0.2em] text-white">{tier.label.toUpperCase()}</strong>
+              <span className="text-[9px] text-[#6f6968]">{tier.hint}</span>
+            </div>
+            <span className="ml-auto text-[9px] text-[#5f5959]">{lanes[tier.value].length}</span>
+          </div>
+          <div className="rm-tierlane-cards">
+            {lanes[tier.value].map((person, index) => (
+              <div
+                key={person.id}
+                draggable
+                onDragStart={(event) => {
+                  setDragId(person.id);
+                  event.dataTransfer.setData('text/plain', person.id);
+                  event.dataTransfer.effectAllowed = 'move';
+                }}
+                onDragEnd={() => {
+                  setDragId(null);
+                  setOverLane(null);
+                }}
+                onDragOver={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                }}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  const id = dragId || event.dataTransfer.getData('text/plain');
+                  setOverLane(null);
+                  setDragId(null);
+                  if (id && id !== person.id) place(id, tier.value, index);
+                }}
+                onClick={() => onSelect(selectedId === person.id ? null : person.id)}
+                className={`rm-tiercard${dragId === person.id ? ' is-dragging' : ''}${selectedId === person.id ? ' is-selected' : ''}${person.active ? '' : ' is-hidden'}`}
+                title="Húzd másik sorba vagy hely elé; kattints a szerkesztéshez"
+              >
+                <GripVertical size={12} className="text-[#5f5959]"/>
+                <span className="rm-tiercard-mono">{monogramOf(person)}</span>
+                <span className="min-w-0">
+                  <span className="block truncate text-[11px] text-white">{person.name}</span>
+                  <span className="block truncate text-[8px] tracking-[0.12em] text-[#8d8584]">{person.title || '—'}</span>
+                </span>
+                <span className="ml-1 flex items-center gap-0.5" onClick={(event) => event.stopPropagation()}>
+                  <button type="button" className="rm-tiercard-move" onClick={() => shift(person, -1)} aria-label="Előrébb" disabled={index === 0}>
+                    <ArrowLeft size={11}/>
+                  </button>
+                  <button type="button" className="rm-tiercard-move" onClick={() => shift(person, 1)} aria-label="Hátrébb" disabled={index === lanes[tier.value].length - 1}>
+                    <ArrowRight size={11}/>
+                  </button>
+                  <button type="button" className="rm-tiercard-move" onClick={() => changeTier(person, -1)} aria-label="Feljebb egy szinttel" disabled={tier.value === 'owner'}>
+                    <ArrowUp size={11}/>
+                  </button>
+                  <button type="button" className="rm-tiercard-move" onClick={() => changeTier(person, 1)} aria-label="Lejjebb egy szinttel" disabled={tier.value === 'staff'}>
+                    <ArrowDown size={11}/>
+                  </button>
+                </span>
+              </div>
+            ))}
+            {!lanes[tier.value].length && <span className="self-center text-[9px] tracking-[0.15em] text-[#4f4a4a]">HÚZZ IDE VALAKIT</span>}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+/* ------------------------------------------------------------------ */
+/* Page                                                                */
+/* ------------------------------------------------------------------ */
+
 export const ShowcasePage: React.FC = () => {
   const {data: productData} = useLiveData<{products: Product[]}>('/api/products', {intervalMs: 0});
-  const {data: pickData, refresh: refreshPicks} = useLiveData<{drinks: Pick[]}>('/api/signature-drinks', {intervalMs: 0});
-  const {data: houseData, refresh: refreshHouse} = useLiveData<{house: HouseSettings; people: Person[]}>('/api/house', {intervalMs: 0});
+  const {data: pickData, refresh: refreshPicks} = useLiveData<{drinks: DrinkPick[]}>('/api/signature-drinks', {intervalMs: 0});
+  const {data: houseData, refresh: refreshHouse, mutate: mutateHouse} = useLiveData<{house: HouseSettings; people: Person[]}>('/api/house', {intervalMs: 0, refetchOnMutation: false});
   const {data: userData} = useLiveData<{users: AuthUser[]}>('/api/users', {intervalMs: 0});
 
-  const products = useMemo(
-    () => (productData?.products || []).filter((product) => product.active && product.category === 'drink'),
-    [productData]
-  );
+  const products = useMemo(() => (productData?.products || []).filter((product) => product.active && product.category === 'drink'), [productData]);
 
   const [slots, setSlots] = useState<{productId: string; description: string}[]>([]);
   const [house, setHouse] = useState<HouseSettings | null>(null);
   const [people, setPeople] = useState<Person[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [newPerson, setNewPerson] = useState<Omit<Person, 'id'> | null>(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     if (!pickData) return;
-    const next = [0, 1, 2].map((index) => {
-      const pick = pickData.drinks.find((entry) => entry.slot === index + 1);
-      return {productId: pick?.productId || '', description: pick?.description || ''};
-    });
-    setSlots(next);
+    setSlots(
+      [0, 1, 2].map((index) => {
+        const pick = pickData.drinks.find((entry) => entry.slot === index + 1);
+        return {productId: pick?.productId || '', description: pick?.description || ''};
+      })
+    );
   }, [pickData]);
 
   useEffect(() => {
@@ -129,17 +277,20 @@ export const ShowcasePage: React.FC = () => {
     }, `${person.name} mentve.`);
 
   const removePerson = async (person: Person) => {
-    const sure = await dialog.confirm({
-      title: `Leveszed: ${person.name}?`,
-      message: 'A családfáról és a főoldalról is eltűnik.',
-      confirmLabel: 'LEVÉTEL',
-      tone: 'danger'
-    });
+    const sure = await dialog.confirm({title: `Leveszed: ${person.name}?`, message: 'A családfáról és a főoldalról is eltűnik.', confirmLabel: 'LEVÉTEL', tone: 'danger'});
     if (!sure) return;
-    run(async () => {
+    // Gone from the board at once; the server confirms.
+    setPeople((current) => current.filter((entry) => entry.id !== person.id));
+    setSelectedId(null);
+    try {
       await apiSend(`/api/house/people/${person.id}`, 'DELETE');
+      toast.success(`${person.name} levéve.`);
+      playSfx('delete');
+    } catch (err) {
+      toast.error('Nem sikerült', (err as Error).message);
+      playSfx('error');
       refreshHouse();
-    }, `${person.name} levéve.`);
+    }
   };
 
   const createPerson = () => {
@@ -151,15 +302,26 @@ export const ShowcasePage: React.FC = () => {
     }, 'Felkerült a családfára.');
   };
 
-  const productOptions = products.map((product) => ({
-    value: product.id,
-    label: product.name,
-    description: `${sectionLabel(product.section)} · ${formatHuf(product.price)}`
-  }));
+  /** A drag or an arrow: the board updates now, the order is saved right after. */
+  const moved = async (next: Person[]) => {
+    setPeople(next);
+    mutateHouse((current) => (current ? {...current, people: next} : current));
+    try {
+      await apiSend('/api/house/people/order', 'PUT', next.map((person) => ({id: person.id, tier: person.tier, sortOrder: person.sortOrder})));
+      playSfx('ui_click');
+    } catch (err) {
+      toast.error('A sorrend nem mentődött', (err as Error).message);
+      refreshHouse();
+    }
+  };
+
+  const selected = people.find((person) => person.id === selectedId) || null;
+
+  const productOptions = products.map((product) => ({value: product.id, label: product.name, description: `${sectionLabel(product.section)} · ${formatHuf(product.price)}`}));
 
   const ownerOptions = (userData?.users || [])
     .filter((user) => user.role === 'owner' && user.active)
-    .map((user) => ({value: user.id, label: user.name, description: user.hasSignature ? 'van aláírása' : 'nincs aláírása'}));
+    .map((user) => ({value: user.id, label: user.name, description: user.hasSignature ? (user.signatureLocked ? 'végleges aláírás' : 'van aláírása') : 'nincs aláírása'}));
 
   return (
     <main>
@@ -171,7 +333,7 @@ export const ShowcasePage: React.FC = () => {
               Amit a város <em>lát.</em>
             </>
           }
-          lead="A főoldal három kiemelt itala, a családfa a Rólunk oldalon, és a ház adatai, amelyek minden bizonylatra rákerülnek."
+          lead="A főoldal három kiemelt itala, a családfa négy szintje a Rólunk oldalon, és a ház adatai, amelyek minden bizonylatra rákerülnek."
         />
 
         {/* ------------------------------------------------ SIGNATURE DRINKS */}
@@ -186,8 +348,7 @@ export const ShowcasePage: React.FC = () => {
           }
         >
           <p className="mb-6 max-w-xl text-[11px] leading-[1.8] text-[#8d8584]">
-            Ez a három ital jelenik meg a főoldalon és az itallap alján, kiemelve. Válassz italt, és írj hozzá egy mondatot —
-            ez a mondat kerül a kártyára.
+            Ez a három ital jelenik meg a főoldalon és az itallap alján, kiemelve. Válassz italt, és írj hozzá egy mondatot — ez a mondat kerül a kártyára.
           </p>
           <div className="grid grid-cols-1 gap-3.5 md:grid-cols-3">
             {slots.map((slot, index) => {
@@ -205,12 +366,7 @@ export const ShowcasePage: React.FC = () => {
                       <span className="font-heading text-4xl text-[rgba(213,31,60,0.5)]">月</span>
                     )}
                   </div>
-                  <Select
-                    value={slot.productId}
-                    options={productOptions}
-                    placeholder="Válassz italt…"
-                    onChange={(value) => setSlots((current) => current.map((entry, position) => (position === index ? {...entry, productId: value} : entry)))}
-                  />
+                  <Select value={slot.productId} options={productOptions} placeholder="Válassz italt…" onChange={(value) => setSlots((current) => current.map((entry, position) => (position === index ? {...entry, productId: value} : entry)))}/>
                   <textarea
                     value={slot.description}
                     onChange={(event) => setSlots((current) => current.map((entry, position) => (position === index ? {...entry, description: event.target.value.slice(0, 260)} : entry)))}
@@ -219,11 +375,7 @@ export const ShowcasePage: React.FC = () => {
                     className={`${inputClass} mt-3`}
                   />
                   {slot.productId && (
-                    <button
-                      type="button"
-                      onClick={() => setSlots((current) => current.map((entry, position) => (position === index ? {productId: '', description: ''} : entry)))}
-                      className="mt-3 text-[9px] tracking-[0.18em] text-[#777] hover:text-[color:var(--rm-red)]"
-                    >
+                    <button type="button" onClick={() => setSlots((current) => current.map((entry, position) => (position === index ? {productId: '', description: ''} : entry)))} className="mt-3 text-[9px] tracking-[0.18em] text-[#777] hover:text-[color:var(--rm-red)]">
                       ÜRÍTÉS
                     </button>
                   )}
@@ -247,13 +399,16 @@ export const ShowcasePage: React.FC = () => {
           }
         >
           <p className="mb-5 max-w-xl text-[11px] leading-[1.8] text-[#8d8584]">
-            A Rólunk oldal családfája és a főoldal „A tulajdonosok” szakasza innen olvas. A tulajdonosi szintek felülre kerülnek,
-            az üzletvezetők alájuk. A monogram a kör közepén jelenik meg.
+            Négy szint, fentről lefelé: tulajdonos, társtulajdonos, manager, csapat. Húzd a kártyákat másik sorba vagy egymás elé — a Rólunk oldal
+            családfája azonnal követi. Kattints egy kártyára a szerkesztéshez.
           </p>
 
           {newPerson && (
             <div className="mb-4 border border-[color:var(--rm-line-red)] bg-black/30 p-4">
-              <PersonFields person={newPerson} onChange={(next) => setNewPerson(next)}/>
+              <span className="rm-label">ÚJ SZEMÉLY</span>
+              <div className="mt-3">
+                <PersonFields person={newPerson} onChange={(next) => setNewPerson(next)}/>
+              </div>
               <div className="mt-3 flex gap-2">
                 <Btn variant="red" onClick={createPerson} disabled={busy || !newPerson.name.trim()}>
                   <Check size={12}/> FELVÉTEL
@@ -265,30 +420,31 @@ export const ShowcasePage: React.FC = () => {
             </div>
           )}
 
-          <div className="flex flex-col gap-2.5">
-            {people.map((person, index) => (
-              <div key={person.id} className={`border border-white/[0.06] bg-black/20 p-4 ${person.active ? '' : 'opacity-60'}`}>
-                <div className="mb-3 flex items-center justify-between gap-3">
-                  <span className="flex items-center gap-2 text-[9px] tracking-[0.2em] text-[#777]">
-                    <GripVertical size={12}/> {String(index + 1).padStart(2, '0')}
-                    <Badge tone={person.tier === 'owner' || person.tier === 'co-owner' ? 'red' : 'muted'}>
-                      {TIER_OPTIONS.find((option) => option.value === person.tier)?.label}
-                    </Badge>
-                    {!person.active && <Badge tone="warn">REJTETT</Badge>}
-                  </span>
-                  <div className="flex items-center gap-1">
-                    <Btn variant="red" className="!px-3 !py-2 !text-[8px]" onClick={() => savePerson(person)} disabled={busy}>
-                      MENTÉS
-                    </Btn>
-                    <button type="button" onClick={() => removePerson(person)} aria-label="Levétel" className="p-1.5 text-[#777] hover:text-[color:var(--rm-red)]">
-                      <Trash2 size={13}/>
-                    </button>
-                  </div>
+          <TierBoard people={people} selectedId={selectedId} onSelect={setSelectedId} onMove={moved}/>
+
+          {selected && (
+            <div className="mt-4 border border-[color:var(--rm-line-red)] bg-black/30 p-4">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <span className="flex items-center gap-2 text-[9px] tracking-[0.2em] text-[#777]">
+                  SZERKESZTÉS
+                  <Badge tone={selected.tier === 'owner' || selected.tier === 'co-owner' ? 'red' : 'muted'}>{TIERS.find((tier) => tier.value === selected.tier)?.label}</Badge>
+                  {!selected.active && <Badge tone="warn">REJTETT</Badge>}
+                </span>
+                <div className="flex items-center gap-1">
+                  <Btn variant="red" className="!px-3 !py-2 !text-[8px]" onClick={() => savePerson(selected)} disabled={busy}>
+                    MENTÉS
+                  </Btn>
+                  <button type="button" onClick={() => removePerson(selected)} aria-label="Levétel" className="p-1.5 text-[#777] hover:text-[color:var(--rm-red)]">
+                    <Trash2 size={13}/>
+                  </button>
+                  <button type="button" onClick={() => setSelectedId(null)} aria-label="Bezárás" className="p-1.5 text-[#777] hover:text-white">
+                    <X size={13}/>
+                  </button>
                 </div>
-                <PersonFields person={person} onChange={(next) => setPeople((current) => current.map((entry) => (entry.id === person.id ? {...entry, ...next} : entry)))}/>
               </div>
-            ))}
-          </div>
+              <PersonFields person={selected} onChange={(next) => setPeople((current) => current.map((entry) => (entry.id === selected.id ? {...entry, ...next} : entry)))}/>
+            </div>
+          )}
         </Panel>
 
         {/* ------------------------------------------------ HOUSE */}
@@ -315,9 +471,6 @@ export const ShowcasePage: React.FC = () => {
               </Field>
               <Field label="NYILVÁNTARTÁSI SZÁM">
                 <input value={house.registration} onChange={(event) => setHouse({...house, registration: event.target.value})} className={inputClass}/>
-              </Field>
-              <Field label="ÓRABÉR (FT)" hint="A bérelszámolás és a profil becsült bére ezzel számol.">
-                <input type="number" min={0} value={house.hourlyWage} onChange={(event) => setHouse({...house, hourlyWage: Number(event.target.value) || 0})} className={inputClass}/>
               </Field>
               <Field label="ELLENJEGYZŐ TULAJDONOS" hint="Az ő aláírása kerül minden kimutatás jobb oldalára.">
                 <Select value={house.ownerUserId || ''} options={ownerOptions} placeholder="Válassz tulajdonost…" onChange={(value) => setHouse({...house, ownerUserId: value})}/>
@@ -358,10 +511,6 @@ const PersonFields: React.FC<{person: Omit<Person, 'id'>; onChange: (next: Omit<
     <label className="flex items-center gap-3 text-[10px] text-[#c9c2c1] xl:col-span-4">
       <button type="button" role="switch" aria-checked={person.active} onClick={() => onChange({...person, active: !person.active})} className="rm-switch"/>
       Látható a nyilvános oldalon
-      <span className="ml-auto flex items-center gap-2 text-[#777]">
-        SORREND
-        <input type="number" min={0} value={person.sortOrder} onChange={(event) => onChange({...person, sortOrder: Number(event.target.value) || 0})} className="rm-input !w-16 !py-1.5 text-center"/>
-      </span>
     </label>
   </div>
 );

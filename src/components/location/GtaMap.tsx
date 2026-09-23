@@ -386,10 +386,10 @@ export const GtaMap: React.FC = () => {
         ) : (
           <div className="p-4 text-[9px] leading-[1.7] text-[#777]">
             {user ? (
-              'Jelölő elhelyezéséhez üzletvezetői jog kell.'
+              'Jelölő elhelyezéséhez manager jog kell.'
             ) : (
               <>
-                Jelölőt üzletvezető helyezhet el.{' '}
+                Jelölőt manager helyezhet el.{' '}
                 <Link to="/staff-login" className="text-[color:var(--rm-red)] hover:text-white">
                   Staff belépés ↗
                 </Link>
