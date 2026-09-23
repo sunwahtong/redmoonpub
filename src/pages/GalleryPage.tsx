@@ -1,4 +1,4 @@
-import React, {useMemo, useState} from 'react';
+import React, {useEffect, useMemo, useRef, useState} from 'react';
 import {Expand} from 'lucide-react';
 import {SectionHead} from '../components/ui/SectionHead';
 import {NeonHeading} from '../components/ui/NeonHeading';
@@ -14,6 +14,7 @@ import {useLiveData} from '../hooks/useLiveData';
 import {useParallax} from '../hooks/useParallax';
 import {assetUrl} from '../lib/api';
 import {backgroundImage} from '../lib/media';
+import {columnsFor, layoutGallery} from '../lib/galleryLayout';
 import type {GalleryItem, GalleryTag} from '../types';
 
 const TAG_LABEL: Record<GalleryTag, string> = {
@@ -23,20 +24,6 @@ const TAG_LABEL: Record<GalleryTag, string> = {
 };
 
 const TAGS = Object.keys(TAG_LABEL) as GalleryTag[];
-
-/**
- * How much room a picture takes in the grid, from its own proportions:
- * wide pictures span two columns, tall ones two rows, and the first
- * picture of the set gets the big square so the wall opens with a lead.
- */
-export function spanOf(item: {width: number; height: number}, index: number): string {
-  if (index === 0) return 'is-big';
-  if (!item.width || !item.height) return '';
-  const ratio = item.width / item.height;
-  if (ratio >= 1.6) return 'is-wide';
-  if (ratio <= 0.72) return 'is-tall';
-  return '';
-}
 
 /**
  * The gallery, as the owner curates it in the console. The wall lays itself
@@ -59,6 +46,20 @@ export const GalleryPage: React.FC = () => {
   }, [items]);
 
   const lightboxItems = useMemo(() => visible.map((item) => ({src: assetUrl(item.src), title: item.title, caption: item.caption})), [visible]);
+
+  // The wall packs itself for the width it has (see lib/galleryLayout).
+  const wallRef = useRef<HTMLDivElement>(null);
+  const [cols, setCols] = useState(4);
+  useEffect(() => {
+    const node = wallRef.current;
+    if (!node) return;
+    const measure = () => setCols(columnsFor(node.clientWidth));
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+  const placements = useMemo(() => layoutGallery(visible, cols), [visible, cols]);
 
   return (
     <main>
@@ -138,9 +139,14 @@ export const GalleryPage: React.FC = () => {
 
         {!loading && !visible.length && <p className="text-[11px] text-[#8d8584]">A gyűjtemény hamarosan bővül.</p>}
 
-        <div className="rm-gallery-grid">
+        <div ref={wallRef} className="rm-gallery-grid" style={{gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`}}>
           {visible.map((item, index) => (
-            <Reveal key={item.id} delay={Math.min(index, 8) * 60} className={`rm-gallery-item h-full ${filter === 'all' ? spanOf(item, index) : ''}`}>
+            <Reveal
+              key={item.id}
+              delay={Math.min(index, 8) * 60}
+              className="rm-gallery-item h-full"
+              style={{gridColumn: `${placements[index].col + 1} / span ${placements[index].w}`, gridRow: `${placements[index].row + 1} / span ${placements[index].h}`}}
+            >
               <button type="button" onClick={() => setActive(index)} className="rm-gallery-tile group">
                 <img src={assetUrl(item.src)} alt={item.title} loading="lazy" decoding="async"/>
                 <div className="absolute inset-0 bg-gradient-to-t from-black/92 via-black/25 to-transparent" aria-hidden="true"/>
