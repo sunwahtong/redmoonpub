@@ -1,11 +1,11 @@
 import React from 'react';
-import {CalendarDays, Clock, MapPin} from 'lucide-react';
+import {CalendarDays, Clock, MapPin, Shirt, Ticket} from 'lucide-react';
 import {NeonHeading} from '../ui/NeonHeading';
 import {BtnLink} from '../ui/Btn';
 import {Magnetic} from '../ui/Magnetic';
 import {CountdownRing} from '../ui/CountdownRing';
 import {useCountdown} from '../../hooks/useCountdown';
-import {formatDate, formatTime, formatWeekday} from '../../lib/api';
+import {assetUrl, formatDate, formatHuf, formatTime, formatWeekday} from '../../lib/api';
 import type {RedMoonEvent} from '../../types';
 
 export type EventPhase = 'upcoming' | 'live' | 'past';
@@ -23,15 +23,36 @@ const PHASE_LABEL: Record<EventPhase, string> = {
   past: 'PAST EVENT'
 };
 
+/** Four boxes: days, hours, minutes, seconds. */
+export const CountdownUnits: React.FC<{startsAt: string; className?: string}> = ({startsAt, className = ''}) => {
+  const countdown = useCountdown(startsAt);
+  if (countdown.elapsed) return null;
+  return (
+    <div className={`rm-countdown ${className}`} aria-label="Visszaszámlálás">
+      {[
+        {label: 'NAP', value: countdown.d},
+        {label: 'ÓRA', value: countdown.h},
+        {label: 'PERC', value: countdown.m},
+        {label: 'MP', value: countdown.s}
+      ].map((unit) => (
+        <div key={unit.label} className="rm-countdown-unit">
+          <b>{unit.value}</b>
+          <span>{unit.label}</span>
+        </div>
+      ))}
+    </div>
+  );
+};
+
 /**
  * Legacy `.rm17-event` (featured banner) and `.v64-event-page-item` (list row):
  * square frame, oversized ghosted day number bleeding off the right edge, and a
- * Cinzel countdown.
+ * Cinzel countdown. A cover image, when set, sits behind the banner.
  */
 export const EventCard: React.FC<Props> = ({event, phase, featured = false}) => {
-  const countdown = useCountdown(phase === 'upcoming' ? event.startsAt : null);
   const start = new Date(event.startsAt);
   const dayNumber = String(start.getDate()).padStart(2, '0');
+  const cover = event.coverImage ? assetUrl(event.coverImage) : '';
 
   return (
     <article
@@ -43,6 +64,14 @@ export const EventCard: React.FC<Props> = ({event, phase, featured = false}) => 
             : 'border-[color:var(--rm-line)] bg-[#09090b] hover:translate-x-1 hover:border-[rgba(213,31,60,0.5)]'
       }`}
     >
+      {cover && (
+        <div
+          className="pointer-events-none absolute inset-0 bg-cover bg-center opacity-[0.22]"
+          style={{backgroundImage: `linear-gradient(90deg, rgba(8,8,10,0.98), rgba(8,8,10,0.55)), url(${cover})`}}
+          aria-hidden="true"
+        />
+      )}
+
       {/* The giant ghosted date the legacy banner carried. */}
       {featured && (
         <span
@@ -54,10 +83,15 @@ export const EventCard: React.FC<Props> = ({event, phase, featured = false}) => 
       )}
 
       <div className="relative z-[1] text-left lg:flex-1">
-        <div className="mb-3 flex items-center gap-3">
+        <div className="mb-3 flex flex-wrap items-center gap-3">
           <span className={`text-[8px] font-bold tracking-[0.25em] ${phase === 'past' ? 'text-[#777]' : 'text-[color:var(--rm-red)]'}`}>
             {PHASE_LABEL[phase]}
           </span>
+          {event.tag && (
+            <span className="border border-[color:var(--rm-line-red)] px-2.5 py-1 text-[8px] font-bold tracking-[0.2em] text-white">
+              {event.tag}
+            </span>
+          )}
           {phase === 'live' && (
             <span className="flex items-center gap-1.5 border border-[rgba(213,31,60,0.5)] bg-[rgba(213,31,60,0.15)] px-2.5 py-1 text-[8px] font-bold tracking-[0.2em] text-white">
               <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[color:var(--rm-red)]"/>
@@ -69,6 +103,9 @@ export const EventCard: React.FC<Props> = ({event, phase, featured = false}) => 
         <NeonHeading as={featured ? 'h2' : 'h3'} size={featured ? 2 : 3}>
           {event.title}
         </NeonHeading>
+        {event.subtitle && (
+          <p className="mt-3 font-heading text-[15px] tracking-wide text-[color:var(--rm-red-bright)]">{event.subtitle}</p>
+        )}
 
         <p className="mt-5 max-w-xl text-[13px] leading-[1.8] text-[#9e9795]">
           {event.description || 'A Red Moon következő eseménye.'}
@@ -89,6 +126,18 @@ export const EventCard: React.FC<Props> = ({event, phase, featured = false}) => 
             <MapPin size={13} className="text-[color:var(--rm-red)]"/>
             <b className="font-semibold text-white">{event.place || 'Red Moon Pub'}</b>
           </span>
+          {event.entryFee !== undefined && event.entryFee !== null && (
+            <span className="flex items-center gap-2">
+              <Ticket size={13} className="text-[color:var(--rm-red)]"/>
+              <b className="font-semibold text-white">{event.entryFee > 0 ? formatHuf(event.entryFee) : 'Belépő nélkül'}</b>
+            </span>
+          )}
+          {event.dressCode && (
+            <span className="flex items-center gap-2">
+              <Shirt size={13} className="text-[color:var(--rm-red)]"/>
+              <b className="font-semibold text-white">{event.dressCode}</b>
+            </span>
+          )}
         </div>
       </div>
 
@@ -99,19 +148,7 @@ export const EventCard: React.FC<Props> = ({event, phase, featured = false}) => 
               /* The next event gets the ring: one object the eye lands on. */
               <CountdownRing startsAt={event.startsAt}/>
             ) : (
-              <div className="flex items-end gap-3">
-                {[
-                  {label: 'NAP', value: countdown.d},
-                  {label: 'ÓRA', value: countdown.h},
-                  {label: 'PERC', value: countdown.m},
-                  {label: 'MP', value: countdown.s}
-                ].map((unit) => (
-                  <div key={unit.label} className="min-w-[58px] text-center">
-                    <b className="block font-heading text-[26px] leading-none text-white tabular-nums">{unit.value}</b>
-                    <span className="mt-2 block text-[7px] tracking-[0.18em] text-[#777]">{unit.label}</span>
-                  </div>
-                ))}
-              </div>
+              <CountdownUnits startsAt={event.startsAt}/>
             )}
             <small className="text-[8px] tracking-[0.2em] text-[#6d5d64]">HÁTRALÉVŐ IDŐ</small>
             <Magnetic>
@@ -125,7 +162,7 @@ export const EventCard: React.FC<Props> = ({event, phase, featured = false}) => 
             <span className="border border-white/10 px-5 py-3 text-[9px] font-bold tracking-[0.2em] text-[#8f8887]">
               {phase === 'live' ? 'MOST A RED MOONBAN' : 'AZ ESEMÉNY LEZAJLOTT'}
             </span>
-            <BtnLink to="/events">{phase === 'live' ? 'EVENT INFO' : 'ARCHÍV'} ↗</BtnLink>
+            <BtnLink to={phase === 'live' ? '/reservations' : '/events'}>{phase === 'live' ? 'ASZTALT FOGLALOK' : 'ARCHÍV'} ↗</BtnLink>
           </>
         )}
       </div>

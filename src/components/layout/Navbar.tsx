@@ -3,6 +3,7 @@ import {createPortal} from 'react-dom';
 import {Link, NavLink, useLocation} from 'react-router-dom';
 import {ChevronDown, Menu, X} from 'lucide-react';
 import {VolumePanel} from './VolumePanel';
+import {DoorChip} from './StatusPill';
 import {NAV_GROUP, NAV_LINKS, RESERVE_LINK, STAFF_LINK} from '../../lib/navigation';
 import {useAuthStore} from '../../stores/useAuthStore';
 
@@ -56,7 +57,7 @@ export const Navbar: React.FC = () => {
       isActive ? 'text-white drop-shadow-[0_0_10px_rgba(227,40,78,0.9)]' : 'text-[#aaa] hover:text-white'
     }`;
 
-  const consoleTarget = user ? (user.portal === 'dj' ? '/dj' : '/staff') : STAFF_LINK.to;
+  const consoleTarget = user ? '/staff' : STAFF_LINK.to;
 
   return (
     <header className="fixed left-0 top-0 z-50 flex h-[68px] w-full items-center justify-between border-b border-white/[0.06] bg-[#050304]/80 px-6 backdrop-blur-md lg:px-12">
@@ -116,6 +117,10 @@ export const Navbar: React.FC = () => {
           )}
         </div>
 
+        <span className="hidden xl:inline-flex">
+          <DoorChip/>
+        </span>
+
         {/* The one action the header pushes. */}
         <Link
           to={RESERVE_LINK.to}
@@ -132,7 +137,10 @@ export const Navbar: React.FC = () => {
         </Link>
       </nav>
 
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-3">
+        <span className="inline-flex xl:hidden">
+          <DoorChip/>
+        </span>
         <VolumePanel/>
 
         <button
@@ -211,7 +219,7 @@ export const Navbar: React.FC = () => {
                 to={consoleTarget}
                 className="border border-[rgba(213,31,60,0.55)] px-4 py-3.5 text-center text-[10px] font-bold tracking-[0.2em] text-[color:var(--rm-red)]"
               >
-                {user ? (user.portal === 'dj' ? 'DJ PULT ↗' : 'KONZOL ↗') : 'STAFF KONZOL ↗'}
+                {user ? 'KONZOL ↗' : 'STAFF KONZOL ↗'}
               </Link>
             </div>
           </div>

@@ -6,6 +6,7 @@ import {Btn} from '../components/ui/Btn';
 import {useClubStream} from '../hooks/useClubStream';
 import {apiGet, apiSend} from '../lib/api';
 import {playSfx} from '../lib/sfx';
+import {dialog} from '../stores/useDialogStore';
 import {useAuthStore} from '../stores/useAuthStore';
 
 const CLIENT_KEY = 'rm-club-client';
@@ -50,8 +51,8 @@ export const ClubPage: React.FC = () => {
   const [retryAt, setRetryAt] = useState<number | null>(null);
   const chatRef = useRef<HTMLDivElement>(null);
 
-  /** Moderation is DJ-portal only on the server (`authDJ`). */
-  const canModerate = !!user && user.portal === 'dj' && ['dj', 'manager', 'owner'].includes(user.role);
+  /** Moderation follows the DJ capability: the DJ job, managers and owners. */
+  const canModerate = !!user && user.capabilities.dj;
   const approved = status === 'accepted' && !!token;
 
   const refreshStatus = useCallback(async () => {
@@ -151,7 +152,15 @@ export const ClubPage: React.FC = () => {
   };
 
   const banListener = async (listener: {name: string; ip: string | null; browserHash: string | null}) => {
-    const reason = window.prompt(`${listener.name} kitiltása — indok:`, '');
+    const reason = await dialog.prompt({
+      title: `${listener.name} kitiltása`,
+      message: 'Egy órára tiltod a chatből. Az indokot a hallgató is látja.',
+      label: 'INDOK',
+      placeholder: 'pl. sértő üzenetek',
+      confirmLabel: 'KITILTÁS',
+      tone: 'danger',
+      validate: (value) => (value.trim() ? null : 'Indok nélkül nem tiltunk.')
+    });
     if (!reason?.trim()) return;
     try {
       await apiSend('/api/club/ban', 'POST', {

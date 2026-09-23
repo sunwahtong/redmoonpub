@@ -3,6 +3,7 @@ import {Check, Package, Plus, Trash2, Truck, X} from 'lucide-react';
 import {NeonHeading} from '../../components/ui/NeonHeading';
 import {Btn} from '../../components/ui/Btn';
 import {Skeleton} from '../../components/ui/Skeleton';
+import {Select} from '../../components/ui/Select';
 import {useLiveData} from '../../hooks/useLiveData';
 import {apiSend, formatDate, formatHuf, formatTime} from '../../lib/api';
 import {playSfx} from '../../lib/sfx';
@@ -299,26 +300,24 @@ export const OrdersPage: React.FC = () => {
             <div className="mt-4 flex flex-wrap items-end gap-2.5">
               <label className="flex flex-1 flex-col gap-1.5">
                 <span className="text-[8px] tracking-[0.22em] text-[#777]">TÉTEL HOZZÁADÁSA</span>
-                <select
+                <Select
                   value=""
-                  onChange={(event) => {
-                    const id = event.target.value;
+                  placeholder="Válassz terméket…"
+                  searchable
+                  options={products.map((product) => ({
+                    value: product.id,
+                    label: product.name,
+                    description: product.subtitle || undefined,
+                    disabled: lines.some((line) => line.productId === product.id)
+                  }))}
+                  onChange={(id) => {
                     if (!id) return;
                     setLines((current) =>
-                      current.some((line) => line.productId === id)
-                        ? current
-                        : [...current, {productId: id, qty: 6, unitCost: 0}]
+                      current.some((line) => line.productId === id) ? current : [...current, {productId: id, qty: 6, unitCost: 0}]
                     );
                   }}
-                  className="border border-white/10 bg-black/50 px-3 py-2.5 text-[11px] text-white outline-none focus:border-[color:var(--rm-red)]"
-                >
-                  <option value="">Válassz terméket…</option>
-                  {products.map((product) => (
-                    <option key={product.id} value={product.id}>
-                      {product.name}
-                    </option>
-                  ))}
-                </select>
+                  aria-label="Tétel hozzáadása"
+                />
               </label>
 
               <label className="flex flex-col gap-1.5">

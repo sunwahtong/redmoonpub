@@ -1,15 +1,43 @@
+# Dependencies and build output
 node_modules/
 dist/
+tsconfig.tsbuildinfo
 .verify/
+coverage/
+
+# Secrets and local configuration — never committed
 .env
 .env.*
 !.env.example
-*.log
-tsconfig.tsbuildinfo
+.mcp.json
+.claude/settings.local.json
+
+# Local databases and backups
+data/pglite/
+data/*.bak
+data/*.tmp
+
+# Uploaded media served from disk on a VPS (production uses object storage)
+public/assets/dj-music/*
+!public/assets/dj-music/.gitkeep
+
+# Editors and operating systems
 .idea/
 public/.idea/
-LEGACY_PROJECT/
-.vercel/
+.vscode/
+.DS_Store
+Thumbs.db
+*.log
+*.swp
 
-data/*.bak
-.mcp.json
+# Platform caches
+.vercel/
+.supabase/
+supabase/.temp/
+
+# Retired code kept out of the tree
+LEGACY_PROJECT/
+
+# Agent tooling that lands in the checkout
+.agents/
+skills-lock.json

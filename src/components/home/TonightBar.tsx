@@ -1,46 +1,36 @@
-import React, {useMemo} from 'react';
+import React from 'react';
 import {Link} from 'react-router-dom';
 import {CalendarClock, DoorOpen, Radio} from 'lucide-react';
-import {useLiveData} from '../../hooks/useLiveData';
+import {useHouseStatus} from '../../hooks/useHouseStatus';
 import {formatTime, formatWeekday} from '../../lib/api';
-import type {RedMoonEvent} from '../../types';
-
-interface ClubState {
-  state: {live: boolean; dj: string | null; listenerCount: number};
-}
 
 /**
  * "Ma este" — one strip answering the three things a visitor actually wants to
  * know before leaving home: are you open, is there music, and what is next.
- * Every piece degrades to a useful line when its endpoint has nothing to say.
+ * Every piece degrades to a useful line when the house has nothing to say.
  */
 export const TonightBar: React.FC = () => {
-  const {data: status} = useLiveData<{open: boolean}>('/api/public/status', {intervalMs: 30000});
-  const {data: club} = useLiveData<ClubState>('/api/club/state', {intervalMs: 30000});
-  const {data: events} = useLiveData<{events: RedMoonEvent[]}>('/api/public-events', {intervalMs: 60000});
-
-  const nextEvent = useMemo(() => {
-    const now = Date.now();
-    return (events?.events || []).find((event) => new Date(event.startsAt).getTime() >= now) || null;
-  }, [events]);
-
-  const live = club?.state?.live;
+  const {data: status} = useHouseStatus(20000);
+  const nextEvent = status?.nextEvent || null;
+  const live = !!status?.live;
 
   const cells = [
     {
       icon: DoorOpen,
       label: 'A BÁR',
       value: status?.open ? 'MOST NYITVA' : 'MOST ZÁRVA',
-      hint: status?.open ? 'Gyere be, szól a zene.' : 'Naplemente után nyitunk.',
+      hint: status?.open
+        ? `${status.since ? formatTime(status.since) + ' óta' : 'Gyere be'}${status.note ? ' · ' + status.note : ', szól a zene.'}`
+        : 'Naplemente után nyitunk.',
       hot: !!status?.open,
       to: '/location'
     },
     {
       icon: Radio,
       label: 'RED MOON CLUB',
-      value: live ? `ÉLŐ · ${club?.state.dj || 'DJ'}` : 'NINCS ADÁS',
-      hint: live ? `${club?.state.listenerCount ?? 0} hallgató a vonalban.` : 'Nézz vissza később.',
-      hot: !!live,
+      value: live ? `ÉLŐ · ${status?.dj || 'DJ'}` : 'NINCS ADÁS',
+      hint: live ? `${status?.listenerCount ?? 0} hallgató a vonalban.` : 'Nézz vissza később.',
+      hot: live,
       to: '/club'
     },
     {
@@ -48,7 +38,7 @@ export const TonightBar: React.FC = () => {
       label: 'KÖVETKEZŐ ESTE',
       value: nextEvent ? nextEvent.title : 'HAMAROSAN',
       hint: nextEvent
-        ? `${formatWeekday(nextEvent.startsAt)} · ${formatTime(nextEvent.startsAt)}`
+        ? `${formatWeekday(nextEvent.startsAt)} · ${formatTime(nextEvent.startsAt)}${nextEvent.tag ? ' · ' + nextEvent.tag : ''}`
         : 'Az új rendezvény itt jelenik meg.',
       hot: false,
       to: '/events'

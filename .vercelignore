@@ -12,9 +12,10 @@ tsconfig.tsbuildinfo
 # deployment, and it never changes. It is uploaded once to Supabase Storage with
 # `npm run tiles:upload`, and the frontend is pointed at it with
 # VITE_MAP_TILE_BASE. See DEPLOY-VERCEL.md.
-public/assets/map/styleAtlas
-public/assets/map/styleGrid
-public/assets/map/styleSatelite
+# Turned off because off Supabase Storage 5 GB limitation
+# public/assets/map/styleAtlas
+# public/assets/map/styleGrid
+# public/assets/map/styleSatelite
 
 # Unused leftover from an earlier map iteration. red-moon-map-v8.png is kept:
 # the gallery still shows it.

@@ -5,6 +5,7 @@ import {Btn} from '../../components/ui/Btn';
 import {useLiveData} from '../../hooks/useLiveData';
 import {apiSend, formatDate, formatHuf, formatTime} from '../../lib/api';
 import {playSfx} from '../../lib/sfx';
+import {dialog} from '../../stores/useDialogStore';
 import {useAuthStore, roleAtLeast} from '../../stores/useAuthStore';
 
 interface Sale {
@@ -84,7 +85,13 @@ export const SalesPage: React.FC = () => {
   };
 
   const deleteCart = async (cartId: string, label: string) => {
-    if (!window.confirm(`Biztosan törlöd a(z) ${label} kosarat? A készlet visszakerül.`)) return;
+    const sure = await dialog.confirm({
+      title: `Törlöd a(z) ${label} kosarat?`,
+      message: 'Az eladás minden tétele törlődik, a készlet visszakerül a polcra, a nyugta megsemmisül. A számla, ha volt, megmarad.',
+      confirmLabel: 'KOSÁR TÖRLÉSE',
+      tone: 'danger'
+    });
+    if (!sure) return;
     try {
       await apiSend(`/api/sales/cart/${encodeURIComponent(cartId)}`, 'DELETE');
       setNotice(`${label} törölve, a készlet visszaállítva.`);
@@ -195,7 +202,7 @@ export const SalesPage: React.FC = () => {
           {carts.map(({key, lines}) => {
             const first = lines[0];
             const cartTotal = lines.reduce((sum, line) => sum + Number(line.total || 0), 0);
-            const cartLabel = first.cartNumber ? `#${first.cartNumber}` : 'Eladás';
+            const cartLabel = first.cartId ? `#${first.cartId}` : 'Eladás';
             const invoiceId = lines.map((line) => line.documentId).find(Boolean) || null;
             return (
               <div key={key} className="border-b border-white/[0.04] px-6 py-4">

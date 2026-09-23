@@ -12,6 +12,7 @@ import './styles/starfield.css';
 import './styles/loader.css';
 import './styles/chrome.css';
 import './styles/premium.css';
+import './styles/console.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

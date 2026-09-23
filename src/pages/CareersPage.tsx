@@ -11,6 +11,7 @@ import {Embers} from '../components/effects/Embers';
 import {apiGet, apiSend, formatDate, getVisitorToken} from '../lib/api';
 import {useParallax} from '../hooks/useParallax';
 import {playSfx} from '../lib/sfx';
+import {dialog} from '../stores/useDialogStore';
 import {toast} from '../stores/useToastStore';
 import {
   isOpen,
@@ -122,7 +123,13 @@ export const CareersPage: React.FC = () => {
   };
 
   const withdraw = async (application: Application) => {
-    if (!window.confirm(`Visszavonod a(z) ${application.code} jelentkezést?`)) return;
+    const sure = await dialog.confirm({
+      title: 'Visszavonod a jelentkezést?',
+      message: `A(z) ${application.code} jelentkezés lezárul. Később újra jelentkezhetsz.`,
+      confirmLabel: 'VISSZAVONÁS',
+      tone: 'danger'
+    });
+    if (!sure) return;
     try {
       await apiSend(`/api/careers/${encodeURIComponent(application.id)}`, 'DELETE', {visitorToken: token});
       toast.info('Jelentkezés visszavonva');

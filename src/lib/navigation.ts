@@ -116,6 +116,8 @@ export const STAFF_NAV: StaffNavLink[] = [
   {to: '/staff/products', label: 'TERMÉKEK', need: 'manager', group: 'KÉSZLET'},
   {to: '/staff/documents', label: 'BIZONYLATOK', need: 'manager', group: 'KÉSZLET'},
 
+  {to: '/staff/events', label: 'RENDEZVÉNYEK', need: 'owner', group: 'HÁZ'},
+  {to: '/staff/showcase', label: 'KIRAKAT', need: 'owner', group: 'HÁZ'},
   {to: '/staff/reports', label: 'JELENTÉSEK', need: 'owner', group: 'HÁZ'},
   {to: '/staff/users', label: 'FIÓKOK', need: 'owner', group: 'HÁZ'},
   {to: '/staff/audit', label: 'NAPLÓ', need: 'owner', group: 'HÁZ'},

@@ -2,6 +2,7 @@ import React, {useMemo, useState} from 'react';
 import {Check, Eye, EyeOff, PackagePlus, Pencil, Search, X} from 'lucide-react';
 import {NeonHeading} from '../../components/ui/NeonHeading';
 import {Btn} from '../../components/ui/Btn';
+import {Select} from '../../components/ui/Select';
 import {useLiveData} from '../../hooks/useLiveData';
 import {apiSend, formatHuf} from '../../lib/api';
 import {playSfx} from '../../lib/sfx';
@@ -202,17 +203,14 @@ export const ProductsPage: React.FC = () => {
                             placeholder="min. készlet"
                             className={`${field} max-w-[120px]`}
                           />
-                          <select
+                          <Select
                             value={draft.section}
-                            onChange={(event) => setDraft({...draft, section: event.target.value as DrinkSection})}
-                            className={`${field} max-w-[170px]`}
-                          >
-                            {SECTION_ORDER.map((section) => (
-                              <option key={section} value={section}>
-                                {SECTION_LABELS[section]}
-                              </option>
-                            ))}
-                          </select>
+                            options={SECTION_ORDER.map((section) => ({value: section, label: SECTION_LABELS[section]}))}
+                            onChange={(value) => setDraft({...draft, section: value})}
+                            className="max-w-[190px]"
+                            size="sm"
+                            aria-label="Szekció"
+                          />
                         </div>
                         <input
                           value={draft.subtitle}
@@ -282,26 +280,22 @@ export const ProductsPage: React.FC = () => {
               className={field}
             />
 
-            <div className="flex gap-2">
-              <select
+            <div className="grid grid-cols-2 gap-2">
+              <Select
                 value={newCategory}
-                onChange={(event) => setNewCategory(event.target.value as 'drink' | 'food')}
-                className={field}
-              >
-                <option value="drink">Ital</option>
-                <option value="food">Étel</option>
-              </select>
-              <select
+                options={[
+                  {value: 'drink' as const, label: 'Ital', glyph: '酒'},
+                  {value: 'food' as const, label: 'Étel', glyph: '食'}
+                ]}
+                onChange={setNewCategory}
+                aria-label="Kategória"
+              />
+              <Select
                 value={newSection}
-                onChange={(event) => setNewSection(event.target.value as DrinkSection)}
-                className={field}
-              >
-                {SECTION_ORDER.map((section) => (
-                  <option key={section} value={section}>
-                    {SECTION_LABELS[section]}
-                  </option>
-                ))}
-              </select>
+                options={SECTION_ORDER.map((section) => ({value: section, label: SECTION_LABELS[section]}))}
+                onChange={setNewSection}
+                aria-label="Szekció"
+              />
             </div>
 
             <div className="flex gap-2">

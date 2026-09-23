@@ -5,6 +5,7 @@ import {Btn} from '../../components/ui/Btn';
 import {useLiveData} from '../../hooks/useLiveData';
 import {apiSend, formatDate, formatHuf, formatTime} from '../../lib/api';
 import {playSfx} from '../../lib/sfx';
+import {dialog} from '../../stores/useDialogStore';
 import {sectionLabel} from '../../lib/sections';
 import {useAuthStore, roleAtLeast} from '../../stores/useAuthStore';
 
@@ -124,13 +125,17 @@ export const InventoryPage: React.FC = () => {
 
   /** Owner-only: overwrite the counted stock rather than adding to it. */
   const setOpeningStock = async (product: Product) => {
-    const input = window.prompt(`${product.name} — nyitókészlet (jelenleg ${product.stock} db):`, String(product.stock));
+    const input = await dialog.prompt({
+      title: `${product.name} — nyitókészlet`,
+      message: `Jelenleg ${product.stock} db van nyilvántartva. Az itt megadott szám felülírja, nem hozzáadódik.`,
+      label: 'KÉSZLET (DB)',
+      type: 'number',
+      initial: String(product.stock),
+      confirmLabel: 'BEÁLLÍTÁS',
+      validate: (value) => (!Number.isInteger(Number(value)) || Number(value) < 0 ? 'Egész, nem negatív számot adj meg.' : null)
+    });
     if (input === null) return;
     const stock = Math.floor(Number(input));
-    if (!Number.isInteger(stock) || stock < 0) {
-      setMessage({kind: 'error', text: 'Érvénytelen készletérték.'});
-      return;
-    }
 
     try {
       await apiSend('/api/inventory/adjust', 'POST', {productId: product.id, stock});
