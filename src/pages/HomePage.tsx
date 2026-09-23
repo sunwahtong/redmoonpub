@@ -9,6 +9,7 @@ import {TiltCard} from '../components/ui/TiltCard';
 import {CountUp} from '../components/ui/CountUp';
 import {Magnetic} from '../components/ui/Magnetic';
 import {Embers} from '../components/effects/Embers';
+import {Smoke} from '../components/effects/Smoke';
 import {Starfield} from '../components/effects/Starfield';
 import {SignatureTitle} from '../components/hero/SignatureTitle';
 import {TonightBar} from '../components/home/TonightBar';
@@ -108,6 +109,7 @@ export const HomePage: React.FC = () => {
       <section className="rm-hero">
         <div className="rm-hero-media" aria-hidden="true"/>
         <div className="rm-hero-fog" aria-hidden="true"/>
+        <Smoke density={5} className="rm-hero-smoke"/>
         <div className="rm-hero-grid" aria-hidden="true"/>
         <Starfield/>
 
