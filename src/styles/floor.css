@@ -1,63 +1,139 @@
 /**
  * The floor plan — the room drawn from data, coloured for one moment.
- * The SVG scales to its box; on a phone it keeps a minimum width and
- * scrolls sideways rather than shrinking the tables past tapping size.
+ *
+ * Everything is SVG inside one zoomable group; the classes below give the
+ * scenery its materials (velvet floor, leather sofas, lacquered counters,
+ * a lit stage) and the tables their states. Animations are CSS only and
+ * cheap: a slow light sweep, breathing rings, marching dashes, staggered
+ * entrances.
  */
 
 .rm-floor {
     position: relative;
-    overflow: auto;
+    overflow: hidden;
     border: 1px solid var(--rm-line);
     background: #07050a;
-    box-shadow: inset 0 0 80px rgba(0, 0, 0, 0.6);
+    box-shadow: inset 0 0 90px rgba(0, 0, 0, 0.65), 0 30px 80px rgba(0, 0, 0, 0.4);
 }
 
 .rm-floor-svg {
     display: block;
     width: 100%;
-    min-width: 560px;
     height: auto;
+    max-height: min(86vh, 1100px);
     font-family: Cinzel, serif;
     user-select: none;
+    cursor: default;
 }
 
-.rm-floor-bg { fill: #08060b; }
-.rm-floor-grid-dot { fill: rgba(255, 255, 255, 0.05); }
-.rm-floor-hatch-line { stroke: rgba(255, 120, 145, 0.35); stroke-width: 2; }
-.rm-floor-checker-cell { fill: rgba(255, 255, 255, 0.025); }
+.rm-floor.is-zoomed .rm-floor-svg { cursor: grab; }
+.rm-floor.is-dragging .rm-floor-svg { cursor: grabbing; }
+.rm-floor-world { transition: transform 0.18s ease-out; }
+.rm-floor.is-dragging .rm-floor-world { transition: none; }
 
-/* Scenery */
-.rm-floor-zone rect { fill: rgba(255, 255, 255, 0.015); stroke: rgba(255, 255, 255, 0.07); stroke-dasharray: 6 6; }
-.rm-floor-zone text { fill: #5f5959; font-size: 10px; font-weight: 700; letter-spacing: 0.28em; }
-.rm-floor-wall { fill: none; stroke: #3b2229; stroke-width: 7; stroke-linejoin: round; stroke-linecap: round; }
-.rm-floor-feature-label { fill: #a09998; font-size: 10px; font-weight: 700; letter-spacing: 0.28em; }
-.rm-floor-bar-top { fill: rgba(255, 255, 255, 0.04); stroke: rgba(255, 90, 118, 0.4); stroke-width: 1; }
-.rm-floor-stool { fill: #2a1218; stroke: rgba(255, 255, 255, 0.2); stroke-width: 1; }
-.rm-floor-stage rect { fill: #1d0a10; stroke: var(--rm-red); stroke-width: 1.5; }
-.rm-floor-stage text { fill: #fff; font-size: 16px; font-weight: 700; letter-spacing: 0.35em; }
-.rm-floor-wave { fill: none; stroke: rgba(255, 43, 79, 0.65); stroke-width: 1.5; animation: rmFloorWave 2.4s ease-in-out infinite; }
-.rm-floor-dance-frame { fill: none; stroke: rgba(255, 255, 255, 0.12); stroke-dasharray: 3 5; }
-.rm-floor-door rect { fill: var(--rm-red); }
-.rm-floor-door path { fill: none; stroke: rgba(227, 40, 78, 0.45); stroke-dasharray: 3 4; }
-.rm-floor-pillar circle { fill: #1a1114; stroke: #3b2229; stroke-width: 2; }
-.rm-floor-pillar-inner { fill: #0d0a0c; stroke: none; }
-.rm-floor-plant circle { fill: #163121; stroke: rgba(99, 231, 169, 0.3); stroke-width: 1; }
-.rm-floor-plant-pot { fill: #2b1a12; stroke: none; }
-.rm-floor-room rect { fill: rgba(255, 255, 255, 0.03); stroke: rgba(255, 255, 255, 0.12); }
-.rm-floor-area rect { fill: none; stroke: rgba(255, 255, 255, 0.12); stroke-dasharray: 4 4; }
+.rm-floor-bg { fill: #09070c; }
+.rm-floor-grid-dot { fill: rgba(255, 255, 255, 0.045); }
+.rm-floor-hatch-line { stroke: rgba(255, 120, 145, 0.4); stroke-width: 2; }
+.rm-floor-checker-cell { fill: rgba(255, 255, 255, 0.03); }
+
+/* ---------------------------------------------------------------- */
+/* Zones and walls                                                   */
+/* ---------------------------------------------------------------- */
+
+.rm-floor-zone rect { fill: rgba(255, 255, 255, 0.012); stroke: rgba(255, 255, 255, 0.06); stroke-dasharray: 7 7; }
+.rm-floor-zone-title { animation: rmFloorFadeIn 0.9s ease both; animation-delay: calc(0.2s + var(--i, 0) * 0.15s); }
+.rm-floor-zone-title text { fill: #7d7472; font-size: 11px; font-weight: 700; letter-spacing: 0.34em; }
+.rm-floor-zone-title line { stroke: var(--rm-red); stroke-width: 1; opacity: 0.7; }
+.rm-floor-wall { fill: none; stroke: #3d2129; stroke-width: 8; stroke-linejoin: round; stroke-linecap: round; }
+
+.rm-floor-feature-label { fill: #a59c9a; font-size: 10px; font-weight: 700; letter-spacing: 0.3em; }
+.rm-floor-feature-caption { fill: #6f6968; font-size: 8px; font-weight: 700; letter-spacing: 0.22em; }
 .rm-floor-text { fill: #6f6968; font-size: 10px; letter-spacing: 0.28em; }
 
-/* Tables */
+/* ---------------------------------------------------------------- */
+/* Scenery                                                           */
+/* ---------------------------------------------------------------- */
+
+/* Sofas: layered strokes read as padded leather. */
+.rm-floor-sofa { animation: rmFloorFadeIn 0.8s ease both; animation-delay: calc(0.25s + var(--i, 0) * 0.03s); }
+.rm-floor-sofa path { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.rm-floor-sofa-shadow { stroke: rgba(0, 0, 0, 0.55); filter: url(#rm-floor-soft); }
+.rm-floor-sofa-body { stroke: url(#rm-floor-leather); }
+.rm-floor-sofa-cushion { stroke: rgba(255, 110, 140, 0.14); }
+.rm-floor-sofa-tuft { stroke: rgba(255, 200, 150, 0.35); stroke-width: 2.4; stroke-dasharray: 0.1 14; }
+.rm-floor-sofa-sheen { stroke: rgba(255, 255, 255, 0.16); stroke-dasharray: 70 1400; animation: rmFloorSheen 9s linear infinite; }
+
+/* Counters: a lacquered top on a dark body, stools kept clear of the edge. */
+.rm-floor-bar { animation: rmFloorFadeIn 0.8s ease both; animation-delay: calc(0.25s + var(--i, 0) * 0.03s); }
+.rm-floor-bar path { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.rm-floor-bar-shadow { stroke: rgba(0, 0, 0, 0.55); filter: url(#rm-floor-soft); }
+.rm-floor-bar-body { stroke: url(#rm-floor-counter); }
+.rm-floor-bar-top { stroke: rgba(255, 255, 255, 0.045); }
+.rm-floor-bar-edge { stroke: rgba(255, 90, 118, 0.45); stroke-width: 1.2; }
+.rm-floor-bar-rect { fill: url(#rm-floor-counter); stroke: rgba(255, 90, 118, 0.4); stroke-width: 1.2; }
+.rm-floor-bar-rect-top { fill: rgba(255, 255, 255, 0.045); }
+.rm-floor-bar-label { fill: #d9cfcc; font-size: 11px; }
+
+.rm-floor-stool circle { fill: #2a1218; stroke: rgba(255, 255, 255, 0.24); stroke-width: 1; }
+.rm-floor-stool .rm-floor-stool-top { fill: rgba(255, 255, 255, 0.08); stroke: none; }
+
+.rm-floor-stage { animation: rmFloorFadeIn 0.8s ease both; animation-delay: calc(0.25s + var(--i, 0) * 0.03s); }
+.rm-floor-stage rect { fill: #1f0a11; stroke: var(--rm-red); stroke-width: 1.5; }
+.rm-floor-stage .rm-floor-stage-deck { fill: rgba(255, 255, 255, 0.035); stroke: none; }
+.rm-floor-stage-halo { animation: rmFloorBreathe 4s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+.rm-floor-stage text { fill: #fff; font-size: 17px; font-weight: 700; letter-spacing: 0.4em; }
+.rm-floor-wave { fill: none; stroke: rgba(255, 43, 79, 0.7); stroke-width: 1.5; animation: rmFloorWave 2.4s ease-in-out infinite; }
+
+.rm-floor-speaker { animation: rmFloorFadeIn 0.8s ease both; animation-delay: calc(0.25s + var(--i, 0) * 0.03s); }
+.rm-floor-speaker circle { fill: #1d0a10; stroke: var(--rm-red); stroke-width: 1.5; }
+.rm-floor-speaker .rm-floor-speaker-cone { fill: #3a0f1a; stroke: rgba(255, 255, 255, 0.25); stroke-width: 1; }
+.rm-floor-speaker-ring { fill: none !important; stroke: rgba(255, 43, 79, 0.5) !important; stroke-width: 1 !important; transform-box: fill-box; transform-origin: center; animation: rmFloorPulse 2.2s ease-out infinite; }
+
+.rm-floor-dance { animation: rmFloorFadeIn 0.8s ease both; animation-delay: calc(0.25s + var(--i, 0) * 0.03s); }
+.rm-floor-dance-floor { fill: #0e0a10; }
+.rm-floor-dance-frame { fill: none; stroke: rgba(255, 90, 118, 0.35); stroke-width: 1.2; stroke-dasharray: 4 6; animation: rmFloorMarch 6s linear infinite; }
+.rm-floor-dance-shine { animation: rmFloorShine 7s ease-in-out infinite alternate; }
+
+.rm-floor-door rect { fill: var(--rm-red); }
+.rm-floor-door path { fill: none; stroke: rgba(227, 40, 78, 0.45); stroke-dasharray: 3 4; }
+
+.rm-floor-stairs line { stroke: rgba(255, 90, 118, 0.7); stroke-width: 2.2; stroke-linecap: round; }
+.rm-floor-stairs-glow { fill: rgba(255, 43, 79, 0.08); stroke: none; animation: rmFloorBreathe 3.6s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+
+.rm-floor-pillar circle, .rm-floor-pillar rect { fill: #1a1114; stroke: #3d2129; stroke-width: 2; }
+.rm-floor-pillar .rm-floor-pillar-inner { fill: #0d0a0c; stroke: none; }
+
+.rm-floor-plant circle { fill: #163121; stroke: rgba(99, 231, 169, 0.3); stroke-width: 1; }
+.rm-floor-plant-pot { fill: #2b1a12; stroke: none; }
+
+.rm-floor-loose-seat rect { fill: #221a1f; stroke: rgba(255, 255, 255, 0.22); stroke-width: 1; }
+
+.rm-floor-room rect { fill: rgba(255, 255, 255, 0.028); stroke: rgba(255, 255, 255, 0.12); }
+.rm-floor-area rect { fill: rgba(255, 255, 255, 0.015); stroke: rgba(255, 255, 255, 0.12); stroke-dasharray: 4 4; }
+
+/* A slow band of light drifting down the room. */
+.rm-floor-sweep { pointer-events: none; animation: rmFloorSweep 11s linear infinite; }
+
+/* ---------------------------------------------------------------- */
+/* Tables                                                            */
+/* ---------------------------------------------------------------- */
+
 .rm-floor-table { outline: none; }
-.rm-floor-table-body { transform-box: fill-box; transform-origin: center; transition: transform 0.2s ease; }
+.rm-floor-table-body { transform-box: fill-box; transform-origin: center; transition: transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1); animation: rmFloorPop 0.55s cubic-bezier(0.2, 0.9, 0.25, 1.1) backwards; animation-delay: calc(0.35s + var(--i, 0) * 0.06s); }
 .rm-floor-table.is-free, .rm-floor-table.is-locked { cursor: pointer; }
 .rm-floor-table.is-taken, .rm-floor-table.is-unfit { cursor: help; }
-.rm-floor-table.is-free:hover .rm-floor-table-body, .rm-floor-table.is-free:focus-visible .rm-floor-table-body { transform: scale(1.07); }
-.rm-floor-body { fill: #1c1519; stroke: rgba(255, 255, 255, 0.38); stroke-width: 1.5; transition: fill 0.2s ease, stroke 0.2s ease; }
-.rm-floor-table.is-free:hover .rm-floor-body, .rm-floor-table.is-free:focus-visible .rm-floor-body { fill: #26191f; stroke: #fff; }
+.rm-floor-table.is-free:hover .rm-floor-table-body, .rm-floor-table.is-free:focus-visible .rm-floor-table-body { transform: scale(1.06); }
+
+.rm-floor-body { stroke: rgba(255, 255, 255, 0.34); stroke-width: 1.4; transition: stroke 0.2s ease, filter 0.2s ease; }
+.rm-floor-rim { fill: none; stroke: rgba(255, 255, 255, 0.07); stroke-width: 1; }
+.rm-floor-table.is-free:hover .rm-floor-body, .rm-floor-table.is-free:focus-visible .rm-floor-body { stroke: #fff; filter: url(#rm-floor-glow); }
+.rm-floor-table.is-lounge .rm-floor-body { stroke: rgba(227, 192, 122, 0.55); }
+.rm-floor-table.is-lounge .rm-floor-rim { stroke: rgba(227, 192, 122, 0.18); }
+
 .rm-floor-seat { fill: #2a2026; stroke: rgba(255, 255, 255, 0.32); stroke-width: 1; transition: fill 0.25s ease, stroke 0.25s ease; }
-.rm-floor-seat.is-filled { fill: var(--rm-red); stroke: #fff; }
+.rm-floor-seat.is-filled { fill: var(--rm-red); stroke: #fff; animation: rmFloorSeatOn 0.4s ease both; animation-delay: calc(var(--n, 0) * 0.07s); }
 .rm-floor-bench { fill: none; stroke: #2b1b21; stroke-width: 14; stroke-linecap: round; }
+
 .rm-floor-table-label { fill: #fff; font-size: 13px; font-weight: 700; letter-spacing: 0.06em; }
 .rm-floor-table-seats { fill: #8d8584; font-size: 7px; letter-spacing: 0.22em; font-family: Inter, system-ui, sans-serif; }
 .rm-floor-table-crown { fill: #e3c07a; font-size: 10px; }
@@ -66,7 +142,8 @@
 .rm-floor-table.is-taken .rm-floor-body { fill: #2a0d14; stroke: rgba(255, 43, 79, 0.6); }
 .rm-floor-table.is-taken .rm-floor-seat { fill: #1a0c10; stroke: rgba(255, 43, 79, 0.35); }
 .rm-floor-table.is-taken .rm-floor-table-label { fill: #ff8fa3; }
-.rm-floor-table.is-unfit { opacity: 0.38; }
+.rm-floor-taken-ring { fill: none; stroke: rgba(255, 43, 79, 0.55); stroke-width: 1; stroke-dasharray: 5 6; animation: rmFloorMarch 3s linear infinite; }
+.rm-floor-table.is-unfit { opacity: 0.36; }
 .rm-floor-table.is-inactive { opacity: 0.22; }
 .rm-floor-table.is-locked .rm-floor-body { stroke: #e3c07a; stroke-dasharray: 4 3; }
 
@@ -84,17 +161,54 @@
     animation: rmFloorPulse 1.8s ease-out infinite;
 }
 
-@keyframes rmFloorPulse {
-    0% { transform: scale(0.92); opacity: 0.9; }
-    100% { transform: scale(1.3); opacity: 0; }
+/* ---------------------------------------------------------------- */
+/* Controls                                                          */
+/* ---------------------------------------------------------------- */
+
+.rm-floor-controls {
+    position: absolute;
+    right: 10px;
+    bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px;
+    border: 1px solid var(--rm-line);
+    background: rgba(9, 9, 11, 0.9);
+    backdrop-filter: blur(8px);
 }
 
-@keyframes rmFloorWave {
-    0%, 100% { opacity: 0.15; }
-    50% { opacity: 1; }
+.rm-floor-controls button {
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    color: #c9c2c1;
+    transition: color 0.2s ease, background-color 0.2s ease;
 }
 
-/* Legend */
+.rm-floor-controls button:hover:not(:disabled) { background: rgba(213, 31, 60, 0.18); color: #fff; }
+.rm-floor-controls button:disabled { opacity: 0.3; cursor: not-allowed; }
+.rm-floor-zoom { min-width: 38px; text-align: center; font-size: 8px; letter-spacing: 0.15em; color: #8d8584; font-family: Inter, system-ui, sans-serif; }
+
+.rm-floor-hint {
+    position: absolute;
+    left: 10px;
+    bottom: 12px;
+    padding: 6px 10px;
+    border: 1px solid var(--rm-line);
+    background: rgba(9, 9, 11, 0.85);
+    font-size: 7px;
+    letter-spacing: 0.22em;
+    color: #777;
+    pointer-events: none;
+    animation: rmFloorFadeIn 0.6s ease both;
+}
+
+/* ---------------------------------------------------------------- */
+/* Legend, editor                                                    */
+/* ---------------------------------------------------------------- */
+
 .rm-floor-legend { display: flex; flex-wrap: wrap; gap: 12px 16px; font-size: 8px; font-weight: 700; letter-spacing: 0.22em; color: #8d8584; }
 .rm-floor-legend span { display: inline-flex; align-items: center; gap: 6px; }
 .rm-floor-legend i { display: inline-block; width: 12px; height: 12px; border-radius: 50%; border: 1px solid rgba(255, 255, 255, 0.38); background: #1c1519; }
@@ -103,25 +217,68 @@
 .rm-floor-legend .is-locked i { border-color: #e3c07a; border-style: dashed; }
 .rm-floor-legend .is-selected i { background: #3a0f1a; border-color: var(--rm-red-bright); box-shadow: 0 0 8px rgba(255, 43, 79, 0.6); }
 
-/* The console's plan editor */
 .rm-floor-editor { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; line-height: 1.55; min-height: 320px; white-space: pre; tab-size: 2; }
 
-@media (prefers-reduced-motion: reduce) {
-    .rm-floor-pulse, .rm-floor-wave { animation: none; }
-    .rm-floor-table-body { transition: none; }
+/* ---------------------------------------------------------------- */
+/* Motion                                                            */
+/* ---------------------------------------------------------------- */
+
+@keyframes rmFloorPulse {
+    0% { transform: scale(0.92); opacity: 0.9; }
+    100% { transform: scale(1.32); opacity: 0; }
 }
 
-/* The house's own scenery: sofas, speakers, stairs, loose chairs, polygon bars */
-.rm-floor-svg { max-height: 82vh; }
-.rm-floor-sofa-outer { fill: none; stroke: #4a1a26; stroke-width: 22; stroke-linecap: round; stroke-linejoin: round; }
-.rm-floor-sofa-inner { fill: none; stroke: rgba(227, 40, 78, 0.72); stroke-width: 10; stroke-linecap: round; stroke-linejoin: round; }
-.rm-floor-speaker circle { fill: #1d0a10; stroke: var(--rm-red); stroke-width: 1.5; }
-.rm-floor-speaker text { fill: #fff; font-size: 16px; font-weight: 700; }
-.rm-floor-speaker-ring { fill: none !important; stroke: rgba(255, 43, 79, 0.5) !important; stroke-width: 1 !important; transform-box: fill-box; transform-origin: center; animation: rmFloorPulse 2.4s ease-out infinite; }
-.rm-floor-stairs line { stroke: rgba(255, 90, 118, 0.6); stroke-width: 2; stroke-linecap: round; }
-.rm-floor-loose-seat { fill: #2a2026; stroke: rgba(255, 255, 255, 0.32); stroke-width: 1; }
-.rm-floor-bar-poly { fill: url(#rm-floor-bar); stroke: rgba(255, 90, 118, 0.45); stroke-width: 1.5; stroke-linejoin: round; }
-.rm-floor-pillar rect { fill: #1a1114; stroke: #3b2229; stroke-width: 2; }
-.rm-floor-pillar rect.rm-floor-pillar-inner { fill: #0d0a0c; stroke: none; }
-.rm-floor-feature-caption { font-size: 8px; letter-spacing: 0.2em; fill: #6f6968; }
-.rm-floor-speaker .rm-floor-feature-caption { fill: #8d8584; }
+@keyframes rmFloorWave {
+    0%, 100% { opacity: 0.12; }
+    50% { opacity: 1; }
+}
+
+@keyframes rmFloorBreathe {
+    0%, 100% { opacity: 0.55; transform: scale(0.96); }
+    50% { opacity: 1; transform: scale(1.04); }
+}
+
+@keyframes rmFloorMarch {
+    to { stroke-dashoffset: -44; }
+}
+
+@keyframes rmFloorSheen {
+    to { stroke-dashoffset: -1470; }
+}
+
+@keyframes rmFloorShine {
+    from { transform: translate(-60px, -30px); opacity: 0.6; }
+    to { transform: translate(60px, 30px); opacity: 1; }
+}
+
+@keyframes rmFloorSweep {
+    from { transform: translateY(0); }
+    to { transform: translateY(var(--sweep, 1800px)); }
+}
+
+@keyframes rmFloorFadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes rmFloorPop {
+    from { opacity: 0; transform: scale(0.7); }
+    to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes rmFloorSeatOn {
+    from { fill: #2a2026; stroke: rgba(255, 255, 255, 0.32); }
+    to { fill: var(--rm-red); stroke: #fff; }
+}
+
+/* On a phone the booking form's padding would leave the room tiny: let it bleed to the form's edge. */
+@media (max-width: 640px) {
+    .rm-floor-bleed { margin-left: -32px; margin-right: -32px; border-left: 0; border-right: 0; }
+    .rm-floor-hint { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .rm-floor-pulse, .rm-floor-wave, .rm-floor-speaker-ring, .rm-floor-sweep, .rm-floor-dance-shine, .rm-floor-dance-frame, .rm-floor-taken-ring, .rm-floor-sofa-sheen, .rm-floor-stage-halo, .rm-floor-stairs-glow { animation: none; }
+    .rm-floor-table-body, .rm-floor-zone-title, .rm-floor-sofa, .rm-floor-bar, .rm-floor-stage, .rm-floor-speaker, .rm-floor-dance, .rm-floor-seat.is-filled { animation: none; }
+    .rm-floor-table-body { transition: none; }
+}

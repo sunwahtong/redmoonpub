@@ -588,7 +588,7 @@ export const ReservationsPage: React.FC = () => {
                               </span>
                               <FloorLegend/>
                             </div>
-                            <FloorMap plan={floor.data.plan} taken={floor.data.taken} at={whenDate} slotMinutes={floor.data.slotMinutes} guests={guests} tier={guestTier} selectedId={tableId} onSelect={pickTable}/>
+                            <FloorMap plan={floor.data.plan} taken={floor.data.taken} at={whenDate} slotMinutes={floor.data.slotMinutes} guests={guests} tier={guestTier} selectedId={tableId} onSelect={pickTable} className="rm-floor-bleed"/>
                             {tableHint && <p className="mt-3 text-[10px] leading-[1.6] text-[color:var(--rm-red)]">{tableHint}</p>}
                             {chosenTable ? (
                               <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 border border-[color:var(--rm-line-red)] bg-[rgba(227,40,78,0.06)] px-5 py-4">

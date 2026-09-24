@@ -37,9 +37,9 @@ export interface FloorFeature {
   h?: number;
   /** Degrees, clockwise, around the centre. */
   rotation?: number;
-  /** Walls and sofas: a polyline of [x, y] points. A bar may be a polygon instead of a rectangle. */
+  /** Walls, sofas and curved bars: a polyline of [x, y] points, drawn smoothed; `w` is the sofa's or counter's thickness. */
   points?: [number, number][];
-  /** Bars: which side the stools sit on ("none" for none). Default: the long side facing the room. */
+  /** Bars: which side the stools sit on ("none" for none). A rectangle names a side; a path bar says left or right of its direction. */
   stoolSide?: TableSide | 'none';
   /** Bars: how many stools; default from the length. */
   stools?: number;
@@ -71,6 +71,8 @@ export interface FloorTable {
   seatStyle?: SeatStyle;
   /** Booths draw a bench around the seated sides; false when the room's sofa is drawn as a feature. */
   bench?: boolean;
+  /** Seats are drawn around the table unless false (a lounge whose sofa is a feature). */
+  drawSeats?: boolean;
   /** House tier needed to book it. */
   minTier?: HouseTier;
   tags?: string[];
@@ -199,11 +201,13 @@ export function normalizeFloorPlan(input: unknown): FloorPlan {
 
     if (LINE_KINDS.includes(kind)) {
       out.points = pointList(feature.points, `${path}.points`, 2);
+      if (kind === 'sofa') out.w = num(feature.w, `${path}.w`, {min: 8, max: 200, fallback: 34});
       return out;
     }
     if (kind === 'bar' && feature.points !== undefined) {
-      // A polygon bar; x/y only say where the label goes.
-      out.points = pointList(feature.points, `${path}.points`, 3);
+      // A curved counter along a path; x/y only say where the label goes.
+      out.points = pointList(feature.points, `${path}.points`, 2);
+      out.w = num(feature.w, `${path}.w`, {min: 8, max: 400, fallback: 60});
       if (feature.x !== undefined) out.x = num(feature.x, `${path}.x`);
       if (feature.y !== undefined) out.y = num(feature.y, `${path}.y`);
     } else {
@@ -282,6 +286,7 @@ export function normalizeFloorPlan(input: unknown): FloorPlan {
       out.seatStyle = seatStyle as SeatStyle;
     }
     if (table.bench === false) out.bench = false;
+    if (table.drawSeats === false) out.drawSeats = false;
     const minTier = str(table.minTier, `${path}.minTier`, {max: 12});
     if (minTier) {
       if (!HOUSE_TIERS.includes(minTier as HouseTier)) throw new PlanError(`${path}.minTier: silver, gold, black vagy royal.`);
@@ -408,72 +413,76 @@ export function tableState(table: FloorTable, at: Date, slotMinutes: number, win
 }
 
 /* ------------------------------------------------------------------ */
-/* The room, traced from the house's blueprint                         */
+/* The house's room — laid out from the blueprint, drawn our way       */
 /* ------------------------------------------------------------------ */
 
-/** The big bar's stools, along its angled front. */
-const MAIN_BAR_STOOLS: [number, number][] = [
-  [881, 108], [862, 150], [851, 190], [846, 225], [843, 263], [848, 300],
-  [858, 345], [866, 385], [872, 420], [886, 462], [912, 505], [937, 538]
-];
+/** Points along a circle arc, screen angles (0° right, 90° down). */
+export function arcPoints(cx: number, cy: number, r: number, fromDeg: number, toDeg: number, steps = 16): [number, number][] {
+  return Array.from({length: steps + 1}, (_, i) => {
+    const angle = ((fromDeg + ((toDeg - fromDeg) * i) / steps) * Math.PI) / 180;
+    return [Math.round(cx + Math.cos(angle) * r), Math.round(cy + Math.sin(angle) * r)] as [number, number];
+  });
+}
+
+/** A lounge: a crescent sofa around a low table; `gap` is the screen angle the opening faces. */
+const lounge = (id: string, label: string, zone: string, x: number, y: number, gap: number, minTier: HouseTier): {sofa: FloorFeature; table: FloorTable} => ({
+  sofa: {id: `${id}-sofa`, kind: 'sofa', points: arcPoints(x, y, 94, gap + 56, gap + 304, 18), w: 30},
+  table: {id, label, zone, shape: 'booth', x, y, w: 118, h: 60, seats: 10, minTier, drawSeats: false, bench: false, tags: ['vip', 'kanapé'], note: 'Prémium kanapé a ház belső körének — a saját asztal körül, legfeljebb tíz főnek.'}
+});
+
+const L1 = lounge('L1', 'LOUNGE 1', 'club', 250, 735, 0, 'gold');
+const L2 = lounge('L2', 'LOUNGE 2', 'club', 250, 965, 0, 'gold');
+const L3 = lounge('L3', 'LOUNGE 3', 'lounge', 520, 1240, 270, 'silver');
+const L4 = lounge('L4', 'LOUNGE 4', 'lounge', 800, 1240, 270, 'silver');
 
 export const DEFAULT_FLOOR_PLAN: FloorPlan = {
   version: 1,
   name: 'Red Moon Pub',
-  width: 1060,
-  height: 1600,
+  width: 1000,
+  height: 1500,
   zones: [
-    {id: 'main', name: 'Nagyterem', x: 52, y: 38, w: 958, h: 562, labelX: 230, labelY: 66},
-    {id: 'club', name: 'Klub & Tánctér', x: 52, y: 600, w: 958, h: 505, labelX: 430, labelY: 640},
-    {id: 'lounge', name: 'Lounge & Kis bár', x: 52, y: 1105, w: 958, h: 455, labelX: 430, labelY: 1132}
+    {id: 'main', name: 'Nagyterem', x: 40, y: 40, w: 920, h: 520, labelX: 215, labelY: 78},
+    {id: 'club', name: 'Klub & Tánctér', x: 40, y: 580, w: 920, h: 500, labelX: 410, labelY: 622},
+    {id: 'lounge', name: 'Lounge & Kis bár', x: 40, y: 1080, w: 920, h: 380, labelX: 410, labelY: 1120}
   ],
   features: [
-    {id: 'walls', kind: 'wall', points: [[52, 38], [1010, 38], [1010, 1560], [52, 1560], [52, 38]]},
-    {id: 'divider-left', kind: 'wall', points: [[52, 600], [410, 600]]},
-    {id: 'divider-right', kind: 'wall', points: [[650, 600], [1010, 600]]},
-    {id: 'stairs', kind: 'stairs', label: 'LÉPCSŐ / ÁTJÁRÓ', x: 530, y: 582, w: 240, h: 36},
-    {id: 'wc-women', kind: 'restroom', label: 'NŐI WC', x: 96, y: 114, w: 88, h: 152},
-    {id: 'wc-men', kind: 'restroom', label: 'FÉRFI WC', x: 96, y: 268, w: 88, h: 154},
-    {id: 'wc-door-women', kind: 'door', label: 'AJTÓ', x: 143, y: 130, w: 26, h: 5, rotation: 90},
-    {id: 'wc-door-men', kind: 'door', label: 'AJTÓ', x: 143, y: 255, w: 26, h: 5, rotation: 90},
-    {id: 'wc-seat-1', kind: 'seat', x: 157, y: 160},
-    {id: 'wc-seat-2', kind: 'seat', x: 157, y: 185},
-    {id: 'wc-seat-3', kind: 'seat', x: 157, y: 210},
-    {id: 'wc-seat-4', kind: 'seat', x: 157, y: 235},
-    {id: 'pillar', kind: 'pillar', label: 'OSZLOP', x: 495, y: 395, w: 100, h: 66},
-    {id: 'pillar-seat-1', kind: 'seat', x: 572, y: 378},
-    {id: 'pillar-seat-2', kind: 'seat', x: 572, y: 410},
-    {id: 'pillar-seats', kind: 'text', label: '2 SZÉK', x: 616, y: 394},
-    {id: 'bar-main', kind: 'bar', label: 'PUN · NAGY PULT', points: [[918, 95], [1005, 95], [1005, 555], [918, 555], [872, 300]], x: 962, y: 325, rotation: 90, stoolSide: 'none'},
-    ...MAIN_BAR_STOOLS.map(([x, y], index) => ({id: `bar-main-stool-${index + 1}`, kind: 'stool' as const, x, y})),
-    {id: 'dance', kind: 'dance', label: 'TÁNCPARKETT', x: 579, y: 845, w: 302, h: 280},
-    {id: 'dj', kind: 'stage', label: 'DJ PULT', x: 876, y: 847, w: 152, h: 90},
-    {id: 'speaker-top', kind: 'speaker', label: 'HANGFAL', x: 876, y: 735, w: 60, h: 60},
-    {id: 'speaker-bottom', kind: 'speaker', label: 'HANGFAL', x: 876, y: 955, w: 60, h: 60},
-    {
-      id: 'sofa-club',
-      kind: 'sofa',
-      points: [[55, 668], [150, 650], [250, 652], [330, 680], [368, 730], [345, 742], [250, 736], [150, 748], [118, 790], [120, 850], [160, 882], [260, 878], [340, 896], [368, 940], [345, 1010], [250, 1018], [150, 1026], [118, 1058], [140, 1084], [250, 1092], [368, 1080]]
-    },
-    {
-      id: 'sofa-lounge',
-      kind: 'sofa',
-      points: [[275, 1348], [300, 1250], [355, 1165], [420, 1200], [470, 1280], [520, 1335], [575, 1300], [620, 1220], [680, 1152], [735, 1190], [762, 1262], [820, 1330], [880, 1348], [930, 1338]]
-    },
-    {id: 'office', kind: 'area', label: 'IRODA', x: 123, y: 1430, w: 143, h: 260},
-    {id: 'office-door', kind: 'door', label: 'AJTÓ', x: 186, y: 1300, w: 22, h: 5},
-    {id: 'bar-small', kind: 'bar', label: 'PUK · KIS PULT', x: 679, y: 1496, w: 502, h: 48, stoolSide: 'top', stools: 7},
-    {id: 'bar-small-stool-side', kind: 'stool', x: 382, y: 1497}
+    {id: 'walls', kind: 'wall', points: [[40, 40], [960, 40], [960, 1460], [40, 1460], [40, 40]]},
+    {id: 'divider-left', kind: 'wall', points: [[40, 580], [440, 580]]},
+    {id: 'divider-right', kind: 'wall', points: [[660, 580], [960, 580]]},
+    {id: 'stairs', kind: 'stairs', label: 'LÉPCSŐ · ÁTJÁRÓ', x: 550, y: 580, w: 200, h: 44},
+    {id: 'wc-women', kind: 'restroom', label: 'NŐI', x: 95, y: 120, w: 110, h: 150},
+    {id: 'wc-men', kind: 'restroom', label: 'FÉRFI', x: 95, y: 285, w: 110, h: 150},
+    {id: 'wc-door-women', kind: 'door', label: '', x: 152, y: 120, w: 22, h: 4, rotation: 90},
+    {id: 'wc-door-men', kind: 'door', label: '', x: 152, y: 285, w: 22, h: 4, rotation: 90},
+    {id: 'wait-1', kind: 'seat', x: 195, y: 100},
+    {id: 'wait-2', kind: 'seat', x: 195, y: 140},
+    {id: 'wait-3', kind: 'seat', x: 195, y: 180},
+    {id: 'wait-4', kind: 'seat', x: 195, y: 220},
+    {id: 'pillar', kind: 'pillar', label: 'OSZLOP', x: 560, y: 410, w: 100, h: 64},
+    {id: 'pillar-seat-1', kind: 'seat', x: 634, y: 393},
+    {id: 'pillar-seat-2', kind: 'seat', x: 634, y: 427},
+    {id: 'bar-main', kind: 'bar', label: 'PUN · NAGY PULT', points: [[918, 90], [890, 200], [876, 310], [890, 420], [918, 530]], w: 66, stools: 12, stoolSide: 'right', x: 924, y: 310, rotation: 90},
+    {id: 'dance', kind: 'dance', label: 'TÁNCPARKETT', x: 560, y: 830, w: 300, h: 270},
+    {id: 'dj', kind: 'stage', label: 'DJ', x: 860, y: 830, w: 150, h: 90},
+    {id: 'speaker-top', kind: 'speaker', label: 'HANGFAL', x: 860, y: 700, w: 56, h: 56},
+    {id: 'speaker-bottom', kind: 'speaker', label: 'HANGFAL', x: 860, y: 960, w: 56, h: 56},
+    L1.sofa,
+    L2.sofa,
+    L3.sofa,
+    L4.sofa,
+    {id: 'office', kind: 'area', label: 'IRODA', x: 125, y: 1330, w: 150, h: 210},
+    {id: 'office-door', kind: 'door', label: '', x: 185, y: 1225, w: 22, h: 4},
+    {id: 'bar-small', kind: 'bar', label: 'PUK · KIS PULT', points: [[430, 1430], [890, 1430]], w: 50, stools: 8, stoolSide: 'left', x: 660, y: 1430}
   ],
   tables: [
-    {id: 'T1', label: '1', zone: 'main', shape: 'rect', x: 288, y: 188, w: 113, h: 165, seats: 8, minGuests: 4, seatCounts: {top: 1, left: 3, right: 3, bottom: 1}, seatStyle: 'armchair', tags: ['fotelek', 'nagy társaság'], note: 'Hét fotel és egy szék — a nagyterem legnagyobb asztala.'},
-    {id: 'T2', label: '2', zone: 'main', shape: 'rect', x: 610, y: 148, w: 100, h: 85, seats: 4, minGuests: 2, seatCounts: {top: 1, right: 1, bottom: 1, left: 1}, seatStyle: 'armchair', tags: ['fotelek'], note: 'Négy fotel a terem közepén.'},
-    {id: 'T3', label: '3', zone: 'main', shape: 'rect', x: 225, y: 394, w: 85, h: 68, seats: 2, seatCounts: {left: 1, right: 1}, seatStyle: 'armchair', tags: ['fotelek', 'kettesben'], note: 'Két fotel.'},
-    {id: 'T4', label: '4', zone: 'main', shape: 'rect', x: 340, y: 478, w: 85, h: 67, seats: 3, seatCounts: {top: 1, right: 1, bottom: 1}, seatStyle: 'armchair', tags: ['fotelek'], note: 'Három fotel.'},
-    {id: 'T5', label: '5', zone: 'main', shape: 'rect', x: 225, y: 521, w: 85, h: 67, seats: 3, seatCounts: {top: 1, left: 1, bottom: 1}, tags: ['vegyes'], note: 'Két szék és egy fotel.'},
-    {id: 'B1', label: 'LOUNGE 1', zone: 'club', shape: 'booth', x: 252, y: 790, w: 118, h: 62, seats: 6, minGuests: 3, minTier: 'gold', seatCounts: {top: 2, left: 2, bottom: 2}, bench: false, tags: ['vip', 'hullámkanapé'], note: 'A hullámkanapé felső öble, a tánctér felé.'},
-    {id: 'B2', label: 'LOUNGE 2', zone: 'club', shape: 'booth', x: 252, y: 965, w: 118, h: 62, seats: 6, minGuests: 3, minTier: 'gold', seatCounts: {top: 2, right: 2, bottom: 2}, bench: false, tags: ['vip', 'hullámkanapé'], note: 'A hullámkanapé alsó öble, a tánctér felé.'},
-    {id: 'B3', label: 'LOUNGE 3', zone: 'lounge', shape: 'booth', x: 521, y: 1233, w: 120, h: 60, seats: 6, minGuests: 3, minTier: 'silver', seatCounts: {left: 1, bottom: 4, right: 1}, bench: false, tags: ['vip', 'lounge'], note: 'A lounge kanapéjának öble, a kis pult előtt.'},
-    {id: 'B4', label: 'LOUNGE 4', zone: 'lounge', shape: 'booth', x: 840, y: 1266, w: 120, h: 60, seats: 6, minGuests: 3, minTier: 'silver', seatCounts: {left: 2, bottom: 3, right: 1}, bench: false, tags: ['vip', 'lounge'], note: 'A lounge kanapéjának jobb oldali öble.'}
+    {id: 'T1', label: '1', zone: 'main', shape: 'rect', x: 330, y: 200, w: 120, h: 170, seats: 8, minGuests: 4, seatCounts: {top: 1, left: 3, right: 3, bottom: 1}, seatStyle: 'armchair', tags: ['fotelek', 'nagy társaság'], note: 'Hét fotel és egy szék — a nagyterem legnagyobb asztala.'},
+    {id: 'T2', label: '2', zone: 'main', shape: 'rect', x: 650, y: 150, w: 100, h: 84, seats: 4, minGuests: 2, seatCounts: {top: 1, right: 1, bottom: 1, left: 1}, seatStyle: 'armchair', tags: ['fotelek'], note: 'Négy fotel a terem közepén.'},
+    {id: 'T3', label: '3', zone: 'main', shape: 'rect', x: 245, y: 420, w: 84, h: 64, seats: 2, seatCounts: {left: 1, right: 1}, seatStyle: 'armchair', tags: ['fotelek', 'kettesben'], note: 'Két fotel, egymással szemben.'},
+    {id: 'T4', label: '4', zone: 'main', shape: 'rect', x: 390, y: 500, w: 84, h: 64, seats: 3, seatCounts: {top: 1, right: 1, bottom: 1}, seatStyle: 'armchair', tags: ['fotelek'], note: 'Három fotel.'},
+    {id: 'T5', label: '5', zone: 'main', shape: 'rect', x: 245, y: 528, w: 84, h: 64, seats: 3, seatCounts: {top: 1, left: 1, bottom: 1}, tags: ['vegyes'], note: 'Két szék és egy fotel.'},
+    L1.table,
+    L2.table,
+    L3.table,
+    L4.table
   ]
 };

@@ -171,7 +171,7 @@ A booking either leaves the table to the house or names one. The form's
 ASZTAL step draws the room from the floor plan (`shared/floorPlan.ts`
 describes it; the owner edits it as JSON at `/staff/showcase`, the built-in
 room is test data): zones, the bar, the stage, walls and doors, and every
-table with its seats. For the chosen evening a table is free, already
+table with its seats; the room zooms (scroll after a tap, pinch, the buttons) and pans by dragging. For the chosen evening a table is free, already
 promised (hatched — a confirmed or seated booking holds it for
 `RESERVATION_SLOT_MINUTES`, 150 minutes, from its start; a request nobody
 has looked at holds nothing), the wrong size for the party, or House-only.
