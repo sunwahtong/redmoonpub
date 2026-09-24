@@ -13,6 +13,7 @@ import {FilmGrain} from './components/effects/FilmGrain';
 import {PointerSpotlight} from './components/effects/PointerSpotlight';
 import {Toaster} from './components/ui/Toaster';
 import {DialogHost} from './components/ui/DialogHost';
+import {TourHost} from './components/staff/Tour';
 import {ErrorBoundary} from './components/ui/ErrorBoundary';
 import {useUiSounds} from './hooks/useUiSounds';
 import {useAuthStore} from './stores/useAuthStore';
@@ -59,6 +60,7 @@ const StaffEventsPage = load(() => import('./pages/staff/EventsPage'), 'StaffEve
 const ShowcasePage = load(() => import('./pages/staff/ShowcasePage'), 'ShowcasePage');
 const StaffGalleryPage = load(() => import('./pages/staff/GalleryPage'), 'StaffGalleryPage');
 const PostsPage = load(() => import('./pages/staff/PostsPage'), 'PostsPage');
+const MembersPage = load(() => import('./pages/staff/MembersPage'), 'MembersPage');
 
 /** Console routes and the lowest rank that may open them. */
 const CONSOLE_ROUTES: {path: string; need?: Role; element: React.ReactNode}[] = [
@@ -72,6 +74,7 @@ const CONSOLE_ROUTES: {path: string; need?: Role; element: React.ReactNode}[] = 
   {path: '/staff/inventory', need: 'manager', element: <InventoryPage/>},
   {path: '/staff/products', need: 'manager', element: <ProductsPage/>},
   {path: '/staff/applications', need: 'manager', element: <ApplicationsPage/>},
+  {path: '/staff/members', need: 'manager', element: <MembersPage/>},
   {path: '/staff/documents', need: 'manager', element: <DocumentsPage/>},
   {path: '/staff/events', need: 'owner', element: <StaffEventsPage/>},
   {path: '/staff/showcase', need: 'owner', element: <ShowcasePage/>},
@@ -113,6 +116,7 @@ export const App: React.FC = () => {
       <PointerSpotlight/>
       <Toaster/>
       <DialogHost/>
+      <TourHost/>
       <div className="flex min-h-screen flex-col">
         <Navbar/>
         <div className="flex-1">

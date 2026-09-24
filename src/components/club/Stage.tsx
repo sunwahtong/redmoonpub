@@ -1,10 +1,10 @@
-import React, {useCallback, useRef, useState} from 'react';
+import React, {useCallback, useEffect, useRef, useState} from 'react';
 import {ExternalLink, Headphones, Loader2, Pause, Play, Radio, Users, Volume2, VolumeX} from 'lucide-react';
 import {clubClientId, type ClubState, type Identity} from '../../hooks/useClub';
 import {useLiveEvent} from '../../hooks/useLiveData';
 import {useElapsed} from '../../hooks/useElapsed';
 import {apiSend, assetUrl} from '../../lib/api';
-import {realtimeAvailable} from '../../lib/realtime';
+import {isRealtimeConnected} from '../../lib/realtime';
 import {playSfx} from '../../lib/sfx';
 import {useAudioStore} from '../../stores/useAudioStore';
 import {trackLine} from './Setlist';
@@ -62,18 +62,51 @@ export const Stage: React.FC<Props> = ({state, identity}) => {
     window.setTimeout(() => setFloats((current) => current.filter((entry) => entry.id !== id)), 2600);
   }, []);
 
+  /* Every reaction has an id; each is shown once whichever way it arrives. */
+  const seen = useRef(new Set<number>());
+  const primed = useRef(false);
+  const remember = (id: number) => {
+    seen.current.add(id);
+    if (seen.current.size > 600) seen.current = new Set([...seen.current].slice(-300));
+  };
+
+  // Pushes: everyone's taps, our own included (the server sends them all).
   useLiveEvent('club', (event, payload) => {
-    if (event === 'reaction' && typeof payload.emoji === 'string') spawn(payload.emoji, String(payload.color || ''));
+    if (event !== 'reaction' || typeof payload.emoji !== 'string') return;
+    const id = Number(payload.id) || 0;
+    if (id) {
+      if (seen.current.has(id)) return;
+      remember(id);
+    }
+    spawn(payload.emoji, String(payload.color || ''));
   });
+
+  // Polled state: whatever no push delivered (no socket yet, a dropped message).
+  useEffect(() => {
+    const recent = state.recentReactions || [];
+    if (!primed.current) {
+      primed.current = true;
+      for (const entry of recent) remember(entry.id);
+      return;
+    }
+    for (const entry of [...recent].reverse()) {
+      if (seen.current.has(entry.id)) continue;
+      remember(entry.id);
+      spawn(entry.emoji, entry.color);
+    }
+  }, [state.recentReactions, spawn]);
 
   const react = async (emoji: string) => {
     if (cooldown) return;
     setCooldown(true);
     window.setTimeout(() => setCooldown(false), 2500);
-    // With pushes the tap comes back from the server like everyone else's; without them, show it here.
-    if (!realtimeAvailable) spawn(emoji, identity.color);
     try {
-      await apiSend('/api/club/react', 'POST', {emoji, clientId: clubClientId(), token: identity.token || undefined});
+      const reply = await apiSend<{id?: number}>('/api/club/react', 'POST', {emoji, clientId: clubClientId(), token: identity.token || undefined});
+      // No socket right now: nothing will push our own tap back, so show it here.
+      if (!isRealtimeConnected() && reply.id && !seen.current.has(reply.id)) {
+        remember(reply.id);
+        spawn(emoji, identity.color);
+      }
       playSfx('ui_click');
     } catch {
       /* the room is cheering faster than the budget allows; the tap still counted */

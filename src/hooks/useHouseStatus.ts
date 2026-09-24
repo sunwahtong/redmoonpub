@@ -1,4 +1,6 @@
+import {useEffect} from 'react';
 import {useLiveData} from './useLiveData';
+import {configureRealtime} from '../lib/realtime';
 import type {RedMoonEvent} from '../types';
 
 export interface HouseStatus {
@@ -35,6 +37,8 @@ export interface HouseStatus {
   /** The DJ's pinned line. */
   notice: string;
   nextEvent: RedMoonEvent | null;
+  /** Where the browser subscribes for pushes, when the build did not carry it. */
+  realtime: {url: string; key: string} | null;
   serverNow: string;
 }
 
@@ -47,5 +51,10 @@ export interface HouseStatus {
  * polls as a fallback.
  */
 export function useHouseStatus(intervalMs = 12000) {
-  return useLiveData<HouseStatus>('/api/public/status', {intervalMs, topics: ['house']});
+  const feed = useLiveData<HouseStatus>('/api/public/status', {intervalMs, topics: ['house']});
+  const realtime = feed.data?.realtime;
+  useEffect(() => {
+    if (realtime) configureRealtime(realtime.url, realtime.key);
+  }, [realtime]);
+  return feed;
 }

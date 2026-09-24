@@ -10,6 +10,9 @@ import {toast} from '../../stores/useToastStore';
 import {dialog} from '../../stores/useDialogStore';
 import {sectionLabel} from '../../lib/sections';
 import type {AuthUser} from '../../stores/useAuthStore';
+import {FloorLegend, FloorMap} from '../../components/floor/FloorMap';
+import {useFloorPlan} from '../../hooks/useFloorPlan';
+import {normalizeFloorPlan, type FloorPlan} from '../../../shared/floorPlan.ts';
 
 interface Product {
   id: string;
@@ -37,6 +40,9 @@ interface HouseSettings {
   ownerUserId: string | null;
   transferAccount: string;
   transferName: string;
+  featuredVideo: string;
+  featuredVideoTitle: string;
+  featuredVideoCaption: string;
 }
 
 type Tier = 'owner' | 'co-owner' | 'manager' | 'staff';
@@ -219,6 +225,79 @@ export const ShowcasePage: React.FC = () => {
 
   const [slots, setSlots] = useState<{productId: string; description: string}[]>([]);
   const [house, setHouse] = useState<HouseSettings | null>(null);
+
+  /* The floor plan: one JSON document, checked here and on the server with the same code. */
+  const floor = useFloorPlan(null);
+  const [planText, setPlanText] = useState('');
+  const [planError, setPlanError] = useState('');
+  const [planPreview, setPlanPreview] = useState<FloorPlan | null>(null);
+  const [planBusy, setPlanBusy] = useState(false);
+  useEffect(() => {
+    if (floor.data && !planText) setPlanText(JSON.stringify(floor.data.plan, null, 2));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [floor.data]);
+
+  const checkPlan = (): FloorPlan | null => {
+    try {
+      const parsed = normalizeFloorPlan(JSON.parse(planText));
+      setPlanPreview(parsed);
+      setPlanError('');
+      return parsed;
+    } catch (err) {
+      setPlanPreview(null);
+      setPlanError(err instanceof SyntaxError ? `Nem érvényes JSON — ${err.message}` : (err as Error).message);
+      playSfx('error');
+      return null;
+    }
+  };
+
+  const savePlan = async () => {
+    const parsed = checkPlan();
+    if (!parsed || planBusy) return;
+    setPlanBusy(true);
+    try {
+      const reply = await apiSend<{plan: FloorPlan}>('/api/house/floor-plan', 'PUT', {plan: parsed});
+      setPlanText(JSON.stringify(reply.plan, null, 2));
+      setPlanPreview(null);
+      toast.success('Alaprajz mentve.', `${reply.plan.tables.length} asztal.`);
+      playSfx('success');
+      floor.refresh();
+    } catch (err) {
+      toast.error('Nem sikerült', (err as Error).message);
+      playSfx('error');
+    } finally {
+      setPlanBusy(false);
+    }
+  };
+
+  const resetPlan = async () => {
+    const sure = await dialog.confirm({
+      title: 'Visszaállítod a beépített termet?',
+      message: 'A mentett alaprajz törlődik, a beépített teszt-terem lép a helyébe. A foglalásokon lévő asztalszámok megmaradnak.',
+      confirmLabel: 'VISSZAÁLLÍTÁS',
+      tone: 'danger'
+    });
+    if (!sure) return;
+    try {
+      const reply = await apiSend<{plan: FloorPlan}>('/api/house/floor-plan', 'DELETE');
+      setPlanText(JSON.stringify(reply.plan, null, 2));
+      setPlanPreview(null);
+      setPlanError('');
+      toast.success('A beépített terem van érvényben.');
+      floor.refresh();
+    } catch (err) {
+      toast.error('Nem sikerült', (err as Error).message);
+    }
+  };
+
+  const copyPlan = async () => {
+    try {
+      await navigator.clipboard.writeText(planText);
+      toast.success('Az alaprajz a vágólapon.');
+    } catch {
+      toast.error('Nem sikerült másolni');
+    }
+  };
   const [people, setPeople] = useState<Person[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [newPerson, setNewPerson] = useState<Omit<Person, 'id'> | null>(null);
@@ -482,8 +561,71 @@ export const ShowcasePage: React.FC = () => {
                 <input value={house.transferName} onChange={(event) => setHouse({...house, transferName: event.target.value})} className={inputClass}/>
               </Field>
             </div>
+
+            <div className="mt-8 border-t border-white/[0.06] pt-6">
+              <span className="rm-label">04 / A HÁZ FILMJE</span>
+              <p className="mt-2 text-[10px] leading-[1.7] text-[#8d8584]">
+                A főoldal tetején, a főcím alatt szól — némán, magától, ahogy a látogató odaér; egy koppintásra megnyílik hanggal. Töltsd fel a videót a YouTube-ra, és illeszd be a linkjét. Üresen hagyva a szakasz el sem jelenik.
+              </p>
+              <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
+                <Field label="YOUTUBE LINK" hint="youtube.com/watch?v=… vagy youtu.be/… — az azonosító elég.">
+                  <input value={house.featuredVideo} onChange={(event) => setHouse({...house, featuredVideo: event.target.value})} placeholder="https://youtu.be/…" className={inputClass}/>
+                </Field>
+                <Field label="CÍM">
+                  <input value={house.featuredVideoTitle} onChange={(event) => setHouse({...house, featuredVideoTitle: event.target.value.slice(0, 120)})} placeholder="pl. Egy este a Red Moonban" className={inputClass}/>
+                </Field>
+                <Field label="EGY SOR ALÁ">
+                  <input value={house.featuredVideoCaption} onChange={(event) => setHouse({...house, featuredVideoCaption: event.target.value.slice(0, 240)})} placeholder="rövid felvezető" className={inputClass}/>
+                </Field>
+              </div>
+              {house.featuredVideo && (
+                <a href={`https://www.youtube.com/watch?v=${house.featuredVideo.length === 11 ? house.featuredVideo : ''}`} target="_blank" rel="noreferrer" className="mt-3 inline-block text-[9px] tracking-[0.2em] text-[#777] hover:text-white">
+                  MEGNÉZEM A YOUTUBE-ON ↗
+                </a>
+              )}
+            </div>
           </form>
         )}
+
+        <Panel
+          className="mt-3.5"
+          label="05 / ALAPRAJZ"
+          title="A terem, ahogy a vendég választ."
+          action={
+            <div className="flex flex-wrap gap-2">
+              <Btn onClick={checkPlan}>ELLENŐRZÉS</Btn>
+              <Btn variant="red" onClick={savePlan} disabled={planBusy}>
+                MENTÉS
+              </Btn>
+              <Btn onClick={copyPlan}>MÁSOLÁS</Btn>
+              <Btn onClick={resetPlan}>BEÉPÍTETT TEREM</Btn>
+            </div>
+          }
+        >
+          <p className="mb-4 max-w-3xl text-[10px] leading-[1.7] text-[#8d8584]">
+            A foglalásnál a vendég ezen a rajzon választ asztalt, és itt látszik, mi van már elígérve. Az alaprajz egy JSON: a terem mérete, a zónák, a díszlet (pult, színpad, ajtó, falak, oszlopok) és az asztalok — alak, hely, székek száma, legkisebb társaság, House szint. Illeszd be, ellenőrizd, mentsd; az előnézet azonnal mutatja. A beépített terem csak teszt.
+          </p>
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+            <textarea
+              value={planText}
+              onChange={(event) => {
+                setPlanText(event.target.value);
+                setPlanPreview(null);
+              }}
+              spellCheck={false}
+              className={`${inputClass} rm-floor-editor`}
+              aria-label="Alaprajz JSON"
+            />
+            <div>
+              {planError && <p className="mb-3 border-l-2 border-[color:var(--rm-red)] pl-3 text-[11px] leading-[1.6] text-[color:var(--rm-red)]">{planError}</p>}
+              {(planPreview || floor.data) && <FloorMap plan={planPreview || floor.data!.plan} taken={[]} at={new Date()} slotMinutes={150}/>}
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                <FloorLegend staff/>
+                <span className="text-[8px] tracking-[0.2em] text-[#777]">{planPreview ? 'ELŐNÉZET · MÉG NINCS MENTVE' : 'A MENTETT TEREM'}</span>
+              </div>
+            </div>
+          </div>
+        </Panel>
       </section>
     </main>
   );

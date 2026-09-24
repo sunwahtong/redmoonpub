@@ -1,7 +1,7 @@
 /** Shared recruitment vocabulary. Mirrors the enums in server/routes/public.ts. */
 
-/** Every position that ever existed, so old applications still have a label. */
-export type CareerPosition = 'bartender' | 'pultos' | 'felszolgalo' | 'dj' | 'biztonsag' | 'hostess' | 'uzletvezeto';
+/** The four posts the house has. */
+export type CareerPosition = 'bartender' | 'dj' | 'biztonsag' | 'uzletvezeto';
 
 export type CareerStatus = 'pending' | 'interview' | 'accepted' | 'rejected' | 'withdrawn';
 
@@ -12,7 +12,8 @@ export interface Application {
   name: string;
   phone: string;
   age: number;
-  position: CareerPosition;
+  /** One of the four posts — or, on an old application, a post that no longer exists. */
+  position: string;
   status: CareerStatus;
   staffNote: string;
   handledAt: string | null;
@@ -65,16 +66,15 @@ export const POSITIONS: PositionInfo[] = [
   }
 ];
 
-/** Labels for every position, including the ones no longer advertised. */
 export const POSITION_LABEL: Record<CareerPosition, string> = {
   bartender: 'BARTENDER',
-  pultos: 'KASSZÁS',
-  felszolgalo: 'FELSZOLGÁLÓ',
   dj: 'DJ',
   biztonsag: 'BIZTONSÁG',
-  hostess: 'HOSTESS',
   uzletvezeto: 'MANAGER'
 };
+
+/** A label for any position, including one an old application still carries. */
+export const positionLabel = (id: string): string => POSITION_LABEL[id as CareerPosition] || String(id || '').toUpperCase();
 
 export const STATUS_LABEL: Record<CareerStatus, string> = {
   pending: 'Elbírálás alatt',

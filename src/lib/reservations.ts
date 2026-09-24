@@ -23,7 +23,13 @@ export interface Reservation {
   phone: string;
   guests: number;
   occasion: ReservationOccasion;
+  /** From the member's card at booking time, never from the form. */
   tier: ReservationTier;
+  memberCode?: string;
+  memberName?: string;
+  /** The table asked for or assigned; empty means the house picks. */
+  tableId?: string;
+  tableLabel?: string;
   note: string;
   status: ReservationStatus;
   staffNote: string;

@@ -1046,3 +1046,315 @@
 .rm-fav:hover { color: #fff; transform: scale(1.08); }
 .rm-fav.is-on { color: var(--rm-red-bright); border-color: rgba(227, 40, 78, 0.6); }
 .rm-fav.is-on svg { fill: currentColor; }
+
+/* ---------------------------------------------------------------- */
+/* The house's film — a muted preview cropped free of YouTube chrome */
+/* ---------------------------------------------------------------- */
+
+.rm-film { position: relative; margin: 28px 0 6px; padding: 0 var(--rm-gutter); }
+
+.rm-film-frame {
+    position: relative;
+    aspect-ratio: 16 / 9;
+    max-height: 78vh;
+    overflow: hidden;
+    border: 1px solid var(--rm-line);
+    background: #050304 center / cover no-repeat;
+    box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55);
+}
+
+.rm-film-frame iframe {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 100%;
+    height: 100%;
+    transform: translate(-50%, -50%) scale(1.36);
+    border: 0;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.9s ease;
+}
+
+.rm-film-frame.is-loaded iframe { opacity: 1; }
+
+.rm-film-shade {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+        linear-gradient(90deg, rgba(5, 3, 4, 0.94) 0%, rgba(5, 3, 4, 0.58) 36%, rgba(5, 3, 4, 0.12) 68%, rgba(5, 3, 4, 0.36) 100%),
+        linear-gradient(0deg, rgba(5, 3, 4, 0.92), transparent 46%),
+        linear-gradient(180deg, rgba(5, 3, 4, 0.5), transparent 26%);
+}
+
+.rm-film-grain {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.018) 0 1px, transparent 1px 3px);
+    mix-blend-mode: overlay;
+}
+
+.rm-film-body {
+    position: absolute;
+    left: clamp(22px, 5vw, 64px);
+    bottom: clamp(22px, 5vw, 56px);
+    max-width: 560px;
+}
+
+.rm-film-title {
+    margin-top: 10px;
+    font-family: Cinzel, serif;
+    font-size: clamp(26px, 4vw, 48px);
+    line-height: 1.05;
+    color: #fff;
+    text-shadow: 0 0 24px rgba(255, 43, 79, 0.35);
+}
+
+.rm-film-caption { margin-top: 10px; max-width: 46ch; font-size: 12px; line-height: 1.8; color: #c9c2c1; }
+
+.rm-film-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin-top: 22px; }
+
+.rm-film-play {
+    display: inline-flex;
+    align-items: center;
+    gap: 14px;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.25em;
+    color: #fff;
+}
+
+.rm-film-play-disc {
+    display: grid;
+    place-items: center;
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    border: 1px solid rgba(255, 43, 79, 0.7);
+    background: rgba(213, 31, 60, 0.92);
+    color: #fff;
+    box-shadow: 0 0 0 8px rgba(213, 31, 60, 0.12), 0 12px 40px rgba(213, 31, 60, 0.45);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.rm-film-play:hover .rm-film-play-disc { transform: scale(1.06); box-shadow: 0 0 0 12px rgba(213, 31, 60, 0.16), 0 16px 48px rgba(213, 31, 60, 0.55); }
+
+.rm-film-mute {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 8px 11px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    background: rgba(0, 0, 0, 0.35);
+    font-size: 7px;
+    font-weight: 700;
+    letter-spacing: 0.25em;
+    color: #c9c2c1;
+    backdrop-filter: blur(8px);
+}
+
+.rm-film-mute:hover { color: #fff; border-color: var(--rm-red); }
+
+.rm-film-corner { position: absolute; width: 26px; height: 26px; border: 0 solid rgba(255, 43, 79, 0.6); pointer-events: none; }
+.rm-film-corner.tl { left: 14px; top: 14px; border-left-width: 1px; border-top-width: 1px; }
+.rm-film-corner.br { right: 14px; bottom: 14px; border-right-width: 1px; border-bottom-width: 1px; }
+
+.rm-film-modal { position: fixed; inset: 0; z-index: 1200; display: grid; place-items: center; padding: 24px; }
+.rm-film-backdrop { position: absolute; inset: 0; background: rgba(3, 2, 3, 0.9); backdrop-filter: blur(10px); }
+
+.rm-film-stage {
+    position: relative;
+    width: min(1180px, 100%);
+    border: 1px solid rgba(255, 43, 79, 0.35);
+    background: #050304;
+    box-shadow: 0 30px 90px rgba(0, 0, 0, 0.7), 0 0 60px rgba(255, 43, 79, 0.12);
+    animation: rmLiveIn 260ms cubic-bezier(0.2, 0.9, 0.25, 1.05) both;
+}
+
+.rm-film-stage-head { display: flex; align-items: center; gap: 14px; padding: 12px 16px; border-bottom: 1px solid var(--rm-line); }
+.rm-film-stage-head .rm-label { white-space: nowrap; }
+.rm-film-close { margin-left: auto; color: #8f8887; }
+.rm-film-close:hover { color: #fff; }
+.rm-film-stage-frame { aspect-ratio: 16 / 9; background: #000; }
+.rm-film-stage-frame iframe { display: block; width: 100%; height: 100%; border: 0; }
+.rm-film-stage-caption { padding: 12px 16px; font-size: 11px; line-height: 1.7; color: #8d8584; }
+
+@media (max-width: 700px) {
+    .rm-film { margin-top: 0; padding: 0; }
+    .rm-film-frame { max-height: none; border-left: 0; border-right: 0; }
+    .rm-film-frame iframe { transform: translate(-50%, -50%) scale(1.75); }
+    .rm-film-body { left: 18px; right: 18px; bottom: 16px; }
+    .rm-film-caption { display: none; }
+    .rm-film-modal { padding: 0; }
+}
+
+/* ---------------------------------------------------------------- */
+/* The House — a member's card, tier counts                          */
+/* ---------------------------------------------------------------- */
+
+.rm-tier-count {
+    border: 1px solid color-mix(in srgb, var(--rm-tier-ink, var(--rm-red)) 45%, transparent);
+    padding: 4px 8px;
+    font-size: 7px;
+    letter-spacing: 0.22em;
+    color: var(--rm-tier-ink, var(--rm-red));
+}
+
+.rm-house-card {
+    --rm-tier-ink: var(--rm-red-bright);
+    position: relative;
+    overflow: hidden;
+    padding: 30px 32px 32px;
+    border: 1px solid color-mix(in srgb, var(--rm-tier-ink) 45%, transparent);
+    background:
+        radial-gradient(ellipse at 90% 0%, color-mix(in srgb, var(--rm-tier-ink) 18%, transparent), transparent 55%),
+        linear-gradient(160deg, rgba(255, 255, 255, 0.045), transparent 42%),
+        var(--rm-bg-card);
+    box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55), 0 0 60px color-mix(in srgb, var(--rm-tier-ink) 12%, transparent);
+    animation: rmLiveIn 320ms cubic-bezier(0.2, 0.9, 0.25, 1.05) both;
+}
+
+.rm-house-card[data-tier="silver"] { --rm-tier-ink: #cfd3d6; }
+.rm-house-card[data-tier="gold"]   { --rm-tier-ink: #e3c07a; }
+.rm-house-card[data-tier="black"]  { --rm-tier-ink: #9aa0a6; }
+.rm-house-card[data-tier="royal"]  { --rm-tier-ink: var(--rm-red-bright); }
+
+.rm-house-card::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: -60%;
+    width: 1px;
+    height: 60%;
+    background: linear-gradient(180deg, transparent, var(--rm-tier-ink), transparent);
+    animation: rmTierEdge 4.5s linear infinite;
+}
+
+.rm-house-card-glyph {
+    position: absolute;
+    right: -10px;
+    top: -26px;
+    font-family: Cinzel, serif;
+    font-size: 190px;
+    line-height: 1;
+    color: color-mix(in srgb, var(--rm-tier-ink) 9%, transparent);
+    pointer-events: none;
+    user-select: none;
+}
+
+.rm-house-card-code {
+    font-family: Cinzel, serif;
+    font-size: 20px;
+    letter-spacing: 0.3em;
+    color: var(--rm-tier-ink);
+    text-shadow: 0 0 18px color-mix(in srgb, var(--rm-tier-ink) 60%, transparent);
+}
+
+/* ---------------------------------------------------------------- */
+/* The map — panel, chips, rows, the selected blip                   */
+/* ---------------------------------------------------------------- */
+
+.rm-map-tool {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 11px;
+    border: 1px solid var(--rm-line);
+    background: rgba(0, 0, 0, 0.8);
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: 0.22em;
+    color: #8f8887;
+    backdrop-filter: blur(8px);
+    transition: border-color 0.2s ease, color 0.2s ease;
+}
+
+.rm-map-tool:hover { border-color: var(--rm-red); color: #fff; }
+
+.rm-map-chips { scrollbar-width: none; }
+.rm-map-chips::-webkit-scrollbar { display: none; }
+
+.rm-map-chip {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 9px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    font-size: 7px;
+    font-weight: 700;
+    letter-spacing: 0.2em;
+    color: #8f8887;
+    white-space: nowrap;
+    transition: border-color 0.2s ease, color 0.2s ease, background-color 0.2s ease;
+}
+
+.rm-map-chip:hover { border-color: rgba(255, 255, 255, 0.3); color: #fff; }
+.rm-map-chip.is-active { border-color: var(--chip, var(--rm-red)); background: color-mix(in srgb, var(--chip, var(--rm-red)) 14%, transparent); color: #fff; }
+
+.rm-map-chip-dot {
+    display: grid;
+    place-items: center;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--chip, var(--rm-red));
+    color: #0a0507;
+    font-size: 7px;
+    line-height: 1;
+}
+
+.rm-map-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 8px 16px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    text-align: left;
+    transition: background-color 0.15s ease;
+}
+
+.rm-map-row:hover { background: rgba(255, 255, 255, 0.04); }
+.rm-map-row.is-active { background: rgba(213, 31, 60, 0.12); box-shadow: inset 2px 0 0 var(--rm-red); }
+
+.rm-map-row-dot {
+    display: grid;
+    flex-shrink: 0;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    color: #0a0507;
+    font-size: 10px;
+    line-height: 1;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5);
+}
+
+.rm-map-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 9px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    font-size: 7px;
+    font-weight: 700;
+    letter-spacing: 0.2em;
+    color: #c9c2c1;
+    transition: border-color 0.2s ease, color 0.2s ease, background-color 0.2s ease;
+}
+
+.rm-map-action:hover { border-color: rgba(255, 255, 255, 0.35); color: #fff; }
+.rm-map-action.is-active { border-color: var(--rm-red); background: rgba(213, 31, 60, 0.18); color: #fff; }
+.rm-map-action.is-danger:hover { border-color: var(--rm-red); color: var(--rm-red); }
+
+.rm-map-detail { animation: rmLiveIn 220ms cubic-bezier(0.2, 0.9, 0.25, 1.05) both; }
+
+@media (max-width: 640px) {
+    .rm-map-detail { left: 8px !important; right: 8px; bottom: 8px !important; width: auto !important; }
+    .rm-map-panel { width: calc(100% - 1rem) !important; left: 8px !important; top: 8px !important; }
+    .rm-house-card { padding: 24px 22px 26px; }
+    .rm-house-card-glyph { font-size: 130px; }
+}

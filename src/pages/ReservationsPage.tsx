@@ -1,4 +1,8 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import {Link} from 'react-router-dom';
+import {FloorLegend, FloorMap} from '../components/floor/FloorMap';
+import {useFloorPlan} from '../hooks/useFloorPlan';
+import {tableState, type FloorTable, type TableState} from '../../shared/floorPlan.ts';
 import {CalendarClock, Check, MessageSquare, Phone, Send, Users, X} from 'lucide-react';
 import {NeonHeading} from '../components/ui/NeonHeading';
 import {Btn} from '../components/ui/Btn';
@@ -11,6 +15,7 @@ import {useLiveEvent} from '../hooks/useLiveData';
 import {playSfx} from '../lib/sfx';
 import {dialog} from '../stores/useDialogStore';
 import {toast} from '../stores/useToastStore';
+import {storedHouseCard} from '../components/house/HouseLookup';
 import {
   canMessage,
   isLive,
@@ -24,15 +29,15 @@ import {
   TIER_LABEL,
   type Reservation,
   type ReservationMessage,
-  type ReservationOccasion,
-  type ReservationTier
+  type ReservationOccasion
 } from '../lib/reservations';
 
 const PHONE_PREFIX = '+38-76-';
-const STEPS = ['ALKALOM', 'TÁRSASÁG', 'IDŐPONT', 'ELÉRHETŐSÉG'] as const;
+const STEPS = ['ALKALOM', 'TÁRSASÁG', 'IDŐPONT', 'ASZTAL', 'ELÉRHETŐSÉG'] as const;
 
 const OCCASIONS = Object.keys(OCCASION_LABEL) as ReservationOccasion[];
-const TIERS = Object.keys(TIER_LABEL) as ReservationTier[];
+/** A member code handed over by the House page (?member=) or remembered by the browser. */
+const initialMemberCode = (): string => (new URLSearchParams(window.location.search).get('member') || storedHouseCard()?.code || '').toUpperCase();
 
 /** `datetime-local` wants a local "YYYY-MM-DDTHH:mm" with no timezone suffix. */
 function toLocalInputValue(date: Date): string {
@@ -94,6 +99,7 @@ const BookingCard: React.FC<{reservation: Reservation; token: string; onCancel: 
       </div>
       <p className="mt-2 text-[10px] text-[#8d8584]">
         {formatDate(reservation.when)} · {formatTime(reservation.when)} · {reservation.guests} fő
+        {reservation.tableLabel ? ` · ${reservation.tableLabel}. asztal` : ''}
       </p>
       <p className="mt-2 text-[10px] leading-[1.7] text-[#c9c2c1]">{STATUS_HINT[reservation.status]}</p>
 
@@ -154,11 +160,15 @@ export const ReservationsPage: React.FC = () => {
   const [step, setStep] = useState(0);
   const [occasion, setOccasion] = useState<ReservationOccasion>('este');
   const [guests, setGuests] = useState(2);
-  const [tier, setTier] = useState<ReservationTier>('none');
+  const [memberCode, setMemberCode] = useState(initialMemberCode);
   const [when, setWhen] = useState(defaultWhen);
   const [name, setName] = useState('');
-  const [phone, setPhone] = useState(PHONE_PREFIX);
+  const [phone, setPhone] = useState(() => PHONE_PREFIX + (storedHouseCard()?.phone || ''));
   const [note, setNote] = useState('');
+  /** "any": the house picks; "pick": one table of the plan, chosen on the map. */
+  const [tableMode, setTableMode] = useState<'any' | 'pick'>('any');
+  const [tableId, setTableId] = useState('');
+  const [tableHint, setTableHint] = useState('');
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -192,6 +202,41 @@ export const ReservationsPage: React.FC = () => {
   const minWhen = useMemo(() => toLocalInputValue(new Date(Date.now() + 45 * 60000)), []);
   const maxWhen = useMemo(() => toLocalInputValue(new Date(Date.now() + 60 * 86400000)), []);
 
+  /* The room for the chosen evening. Only fetched once the guest wants to pick. */
+  const whenDate = useMemo(() => {
+    const date = when ? new Date(when) : null;
+    return date && !Number.isNaN(date.getTime()) ? date : null;
+  }, [when]);
+  const floor = useFloorPlan(whenDate, tableMode === 'pick');
+  const plan = floor.data?.plan || null;
+  const chosenTable = useMemo(() => plan?.tables.find((table) => table.id === tableId) || null, [plan, tableId]);
+  /* Without a member code the House tables are locked here; with one the server decides. */
+  const guestTier = memberCode.trim() ? undefined : 'none';
+
+  // The chosen table must still fit the party and be free at the time; when either changes under it, let it go.
+  useEffect(() => {
+    if (!chosenTable || !floor.data || !whenDate) return;
+    const state = tableState(chosenTable, whenDate, floor.data.slotMinutes, floor.data.taken, guests, guestTier);
+    if (state === 'free') return;
+    setTableId('');
+    setTableHint(state === 'taken' ? `A(z) ${chosenTable.label}. asztal erre az időpontra már foglalt — válassz másikat.` : `A(z) ${chosenTable.label}. asztal nem ekkora társaságra való.`);
+  }, [chosenTable, floor.data, whenDate, guests, guestTier]);
+
+  const pickTable = (table: FloorTable, state: TableState) => {
+    if (state === 'free') {
+      setTableId(table.id);
+      setTableHint('');
+      playSfx('ui_click');
+      return;
+    }
+    playSfx('error');
+    if (state === 'taken') setTableHint(`A(z) ${table.label}. asztal ekkor már foglalt. Válassz másikat, vagy másik időpontot.`);
+    else if (state === 'unfit') setTableHint(guests > table.seats ? `A(z) ${table.label}. asztalnál legfeljebb ${table.seats} fő fér el.` : `A(z) ${table.label}. asztalt legalább ${table.minGuests} főre adjuk ki.`);
+    else if (state === 'locked') setTableHint(`A(z) ${table.label}. asztal a House ${table.minTier} szintjétől foglalható — add meg a tagsági kódod a TÁRSASÁG lépésnél.`);
+  };
+
+  const stepReady = step !== 3 || tableMode === 'any' || !!tableId;
+
   const phoneDigits = phone.startsWith(PHONE_PREFIX) ? phone.slice(PHONE_PREFIX.length) : '';
   const canSubmit = name.trim().length >= 2 && phoneDigits.length === 7 && !!when;
 
@@ -221,7 +266,8 @@ export const ReservationsPage: React.FC = () => {
         // value and send an absolute instant the server can trust.
         at: new Date(when).toISOString(),
         occasion,
-        tier,
+        memberCode: memberCode.trim(),
+        tableId: tableMode === 'pick' ? tableId : '',
         note: note.trim(),
         visitorToken: token
       });
@@ -258,6 +304,9 @@ export const ReservationsPage: React.FC = () => {
     setConfirmed(null);
     setStep(0);
     setNote('');
+    setTableMode('any');
+    setTableId('');
+    setTableHint('');
     playSfx('open');
   };
 
@@ -291,6 +340,9 @@ export const ReservationsPage: React.FC = () => {
                   <span className="text-[34px] leading-none">月</span>
                 </div>
                 <div className="rm-label mt-8">FOGLALÁS RÖGZÍTVE</div>
+                {confirmed.tier !== 'none' && (
+                  <span className="mt-3 border border-[color:var(--rm-line-red)] px-3 py-1.5 text-[8px] tracking-[0.25em] text-[color:var(--rm-red-bright)]">THE HOUSE · {TIER_LABEL[confirmed.tier].toUpperCase()}</span>
+                )}
                 <NeonHeading as="h2" size={2} className="mt-3">
                   Várunk <em>téged.</em>
                 </NeonHeading>
@@ -304,7 +356,8 @@ export const ReservationsPage: React.FC = () => {
                     ['AZONOSÍTÓ', confirmed.code],
                     ['IDŐPONT', `${formatDate(confirmed.when)} · ${formatTime(confirmed.when)}`],
                     ['VENDÉGEK', `${confirmed.guests} fő`],
-                    ['ALKALOM', OCCASION_LABEL[confirmed.occasion]]
+                    ['ALKALOM', OCCASION_LABEL[confirmed.occasion]],
+                    ['ASZTAL', confirmed.tableLabel ? `${confirmed.tableLabel}. asztal` : 'A ház választ']
                   ].map(([label, value]) => (
                     <div
                       key={label}
@@ -330,7 +383,7 @@ export const ReservationsPage: React.FC = () => {
             ) : (
               <form onSubmit={submit} className="border border-[color:var(--rm-line)] bg-[#09090b] p-8 md:p-11">
                 {/* Step rail */}
-                <ol className="mb-9 grid grid-cols-2 gap-x-6 sm:grid-cols-4">
+                <ol className="mb-9 grid grid-cols-2 gap-x-6 sm:grid-cols-5">
                   {STEPS.map((label, index) => (
                     <li
                       key={label}
@@ -414,24 +467,29 @@ export const ReservationsPage: React.FC = () => {
 
                     <div className="rm-gilt my-9"/>
 
-                    <span className="text-[8px] tracking-[0.25em] text-[#777]">RED MOON TAGSÁG</span>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {TIERS.map((option) => (
-                        <button
-                          key={option}
-                          type="button"
-                          onClick={() => setTier(option)}
-                          aria-pressed={tier === option}
-                          className={`border px-4 py-2.5 text-[9px] font-bold tracking-[0.2em] transition-all ${
-                            tier === option
-                              ? 'border-[color:var(--rm-red)] bg-[rgba(227,40,78,0.12)] text-white'
-                              : 'border-white/10 text-[#8f8887] hover:border-white/30'
-                          }`}
-                        >
-                          {TIER_LABEL[option].toUpperCase()}
+                    <span className="text-[8px] tracking-[0.25em] text-[#777]">THE HOUSE · TAGSÁGI KÓD</span>
+                    <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+                      <input
+                        value={memberCode}
+                        onChange={(event) => setMemberCode(event.target.value.toUpperCase().slice(0, 12))}
+                        placeholder="RM-H-XXXX"
+                        autoCapitalize="characters"
+                        spellCheck={false}
+                        className="rm-input font-heading tracking-[0.2em] sm:max-w-[220px]"
+                      />
+                      {memberCode.trim() ? (
+                        <button type="button" onClick={() => setMemberCode('')} className="text-left text-[8px] tracking-[0.2em] text-[#777] hover:text-white">
+                          KÓD NÉLKÜL FOGLALOK
                         </button>
-                      ))}
+                      ) : (
+                        <Link to="/vip#kartya" className="text-left text-[8px] tracking-[0.2em] text-[#777] hover:text-white">
+                          MI EZ? ↗
+                        </Link>
+                      )}
                     </div>
+                    <p className="mt-3 max-w-md text-[10px] leading-[1.7] text-[#6f6968]">
+                      Ha a House tagja vagy, a kódoddal a foglalás a szinteddel érkezik a házhoz. A telefonszámnak egyeznie kell azzal, amit a háznak megadtál. Kód nélkül is foglalhatsz.
+                    </p>
                   </div>
                 )}
 
@@ -484,8 +542,81 @@ export const ReservationsPage: React.FC = () => {
                   </div>
                 )}
 
-                {/* 4 — contact */}
+                {/* 4 — the table */}
                 {step === 3 && (
+                  <div>
+                    <NeonHeading as="h2" size={3}>
+                      Melyik <em>asztal?</em>
+                    </NeonHeading>
+                    <p className="mb-7 mt-3 text-[11px] leading-[1.8] text-[#8d8584]">
+                      Rábízhatod a házra, vagy kiválaszthatod a tiédet a térképen. Amit erre az estére már elígértünk másnak, az foglaltként látszik.
+                    </p>
+
+                    <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                      {[
+                        {id: 'any' as const, glyph: '家', title: 'A HÁZ VÁLASZT', body: 'A legjobb szabad asztalt kapjátok, ami a társasághoz illik.'},
+                        {id: 'pick' as const, glyph: '席', title: 'ÉN VÁLASZTOK', body: 'Nézd meg a termet, és koppints arra az asztalra, amelyik tetszik.'}
+                      ].map((option) => (
+                        <button
+                          key={option.id}
+                          type="button"
+                          onClick={() => {
+                            setTableMode(option.id);
+                            playSfx('ui_click');
+                          }}
+                          aria-pressed={tableMode === option.id}
+                          className={`group relative overflow-hidden border p-5 text-left transition-all ${
+                            tableMode === option.id ? 'border-[color:var(--rm-red)] bg-[rgba(227,40,78,0.08)]' : 'border-white/10 hover:border-white/30'
+                          }`}
+                        >
+                          <span className="pointer-events-none absolute -right-2 -top-3 font-heading text-[54px] leading-none text-[rgba(227,40,78,0.16)] transition-transform duration-500 group-hover:scale-110" aria-hidden="true">
+                            {option.glyph}
+                          </span>
+                          <span className="relative block text-[10px] font-bold tracking-[0.12em] text-white">{option.title}</span>
+                          <span className="relative mt-1.5 block text-[10px] leading-[1.6] text-[#8d8584]">{option.body}</span>
+                        </button>
+                      ))}
+                    </div>
+
+                    {tableMode === 'pick' && (
+                      <div className="mt-6">
+                        {floor.data && whenDate ? (
+                          <>
+                            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                              <span className="text-[8px] tracking-[0.25em] text-[#777]">
+                                {formatDate(whenDate)} · {formatTime(whenDate)}–{formatTime(new Date(whenDate.getTime() + floor.data.slotMinutes * 60000))} · {guests} FŐ
+                              </span>
+                              <FloorLegend/>
+                            </div>
+                            <FloorMap plan={floor.data.plan} taken={floor.data.taken} at={whenDate} slotMinutes={floor.data.slotMinutes} guests={guests} tier={guestTier} selectedId={tableId} onSelect={pickTable}/>
+                            {tableHint && <p className="mt-3 text-[10px] leading-[1.6] text-[color:var(--rm-red)]">{tableHint}</p>}
+                            {chosenTable ? (
+                              <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 border border-[color:var(--rm-line-red)] bg-[rgba(227,40,78,0.06)] px-5 py-4">
+                                <strong className="font-heading text-[18px] text-white">{chosenTable.label}. asztal</strong>
+                                <span className="text-[10px] text-[#c9c2c1]">
+                                  {chosenTable.seats} fő
+                                  {plan?.zones.find((zone) => zone.id === chosenTable.zone)?.name ? ` · ${plan.zones.find((zone) => zone.id === chosenTable.zone)?.name}` : ''}
+                                  {chosenTable.tags?.length ? ` · ${chosenTable.tags.join(', ')}` : ''}
+                                </span>
+                                {chosenTable.note && <span className="w-full text-[10px] leading-[1.6] text-[#8d8584]">{chosenTable.note}</span>}
+                                <button type="button" onClick={() => setTableId('')} className="ml-auto text-[8px] tracking-[0.2em] text-[#777] hover:text-white">
+                                  MÉGSE
+                                </button>
+                              </div>
+                            ) : (
+                              <p className="mt-4 text-[10px] leading-[1.7] text-[#6f6968]">Koppints egy szabad asztalra. A sraffozott asztalok ekkor már foglaltak; a halványak nem ekkora társaságra valók.</p>
+                            )}
+                          </>
+                        ) : (
+                          <p className="text-[10px] text-[#6f6968]">{whenDate ? (floor.error ? floor.error : 'A terem betöltése…') : 'Előbb válassz időpontot.'}</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* 5 — contact */}
+                {step === 4 && (
                   <div>
                     <NeonHeading as="h2" size={3}>
                       Kit <em>várunk?</em>
@@ -545,7 +676,8 @@ export const ReservationsPage: React.FC = () => {
                           {phoneDigits.length === 7 ? phone : 'hiányzik'}
                         </span>
                         <span>{OCCASION_LABEL[occasion]}</span>
-                        {tier !== 'none' && <span className="text-[color:var(--rm-red)]">{TIER_LABEL[tier]}</span>}
+                        <span>{tableMode === 'pick' && chosenTable ? `${chosenTable.label}. asztal` : 'a ház választ asztalt'}</span>
+                        {memberCode.trim() && <span className="text-[color:var(--rm-red)]">HOUSE · {memberCode.trim()}</span>}
                       </div>
                     </div>
                   </div>
@@ -560,7 +692,7 @@ export const ReservationsPage: React.FC = () => {
 
                   {step < STEPS.length - 1 ? (
                     <Magnetic>
-                      <Btn type="button" variant="red" onClick={() => go(step + 1)}>
+                      <Btn type="button" variant="red" onClick={() => go(step + 1)} disabled={!stepReady}>
                         TOVÁBB <span>→</span>
                       </Btn>
                     </Magnetic>

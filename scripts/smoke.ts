@@ -393,6 +393,172 @@ if (!dash.data?.counts || typeof dash.data.counts.ordersOpen !== 'number' || typ
   failures += 1;
 }
 
+// ---------- the tour ----------
+const toured = await call(owner, 'POST', '/api/profile/tour', {module: 'staff', status: 'done'});
+if (toured.data?.user?.tours?.staff !== 'done') {
+  console.log('FAIL the tour should be recorded on the account', toured.data?.user?.tours);
+  failures += 1;
+}
+await call(owner, 'POST', '/api/profile/tour', {module: 'staff', status: 'reset'});
+await call(owner, 'POST', '/api/profile/tour', {module: 'nope', status: 'done'}, {expect: 400});
+const untoured = await call(owner, 'GET', '/api/me');
+if (untoured.data?.user?.tours?.staff) {
+  console.log('FAIL the tour reset should clear the module', untoured.data?.user?.tours);
+  failures += 1;
+}
+
+// ---------- the film ----------
+await call(owner, 'PATCH', '/api/house', {featuredVideo: 'https://youtu.be/dQw4w9WgXcQ', featuredVideoTitle: 'Smoke film', featuredVideoCaption: 'teszt'});
+const filmed = await call('guest', 'GET', '/api/public/house');
+if (filmed.data?.video?.id !== 'dQw4w9WgXcQ' || filmed.data?.video?.title !== 'Smoke film') {
+  console.log('FAIL the film should be public', filmed.data?.video);
+  failures += 1;
+}
+if (typeof filmed.data?.members?.total !== 'number') {
+  console.log('FAIL the house should count its members', filmed.data?.members);
+  failures += 1;
+}
+await call(owner, 'PATCH', '/api/house', {featuredVideo: 'https://vimeo.com/12345'}, {expect: 400});
+await call(owner, 'PATCH', '/api/house', {featuredVideo: ''});
+const unfilmed = await call('guest', 'GET', '/api/public/house');
+if (unfilmed.data?.video) {
+  console.log('FAIL the film should be gone', unfilmed.data?.video);
+  failures += 1;
+}
+
+// ---------- the House ----------
+const silver = await call('mgr', 'POST', '/api/members', {name: 'Smoke Silver', phone: '2223334', tier: 'silver', note: 'smoke'}, {expect: 201});
+await call('mgr', 'POST', '/api/members', {name: 'Smoke Black', tier: 'black'}, {expect: 403});
+const black = await call(owner, 'POST', '/api/members', {name: 'Smoke Black', phone: '3334445', tier: 'black'}, {expect: 201});
+await call('guest', 'POST', '/api/members', {name: 'Nope'}, {expect: 401});
+await call('mgr', 'POST', '/api/members', {name: 'Smoke Twin', phone: '2223334'}, {expect: 409});
+if (!/^RM-H-[A-Z0-9]{4}$/.test(String(silver.data?.member?.code))) {
+  console.log('FAIL a member code should read RM-H-XXXX', silver.data?.member?.code);
+  failures += 1;
+}
+const card = await call('guest', 'POST', '/api/public/member-lookup', {code: silver.data.member.code.toLowerCase(), phone: '2223334'});
+if (card.data?.member?.tier !== 'silver') {
+  console.log('FAIL the card should open with code + phone', card.data);
+  failures += 1;
+}
+await call('guest', 'POST', '/api/public/member-lookup', {code: silver.data.member.code, phone: '9999999'}, {expect: 403});
+await call('guest', 'POST', '/api/public/member-lookup', {code: 'RM-H-NOPE', phone: '2223334'}, {expect: 404});
+const memberToken = `v_smoke_m_${stamp}`;
+const memberBooking = await call('guest', 'POST', '/api/reservations', {name: 'Smoke Silver', phone: '2223334', guests: 2, at: new Date(Date.now() + 4 * 3600000).toISOString(), occasion: 'este', memberCode: silver.data.member.code.toLowerCase(), note: '', visitorToken: memberToken}, {expect: 201});
+if (memberBooking.data?.reservation?.tier !== 'silver') {
+  console.log('FAIL the booking should carry the member tier', memberBooking.data?.reservation);
+  failures += 1;
+}
+await call('guest', 'POST', '/api/reservations', {name: 'Smoke Guest', phone: '1234567', guests: 2, at: new Date(Date.now() + 5 * 3600000).toISOString(), occasion: 'este', memberCode: silver.data.member.code, note: '', visitorToken: memberToken}, {expect: 400});
+const staffView = await call(owner, 'GET', '/api/reservations');
+const seenBooking = (staffView.data?.reservations || []).find((entry: {id: string}) => entry.id === memberBooking.data?.reservation?.id);
+if (seenBooking && seenBooking.memberName !== 'Smoke Silver') {
+  console.log('FAIL the staff list should name the member', seenBooking);
+  failures += 1;
+}
+await call('guest', 'DELETE', `/api/reservations/${memberBooking.data.reservation.id}`, {visitorToken: memberToken});
+const visited = await call(owner, 'POST', `/api/members/${silver.data.member.id}/visit`, {});
+if (visited.data?.member?.visits !== 1) {
+  console.log('FAIL the visit should count', visited.data?.member);
+  failures += 1;
+}
+await call('mgr', 'PATCH', `/api/members/${black.data.member.id}`, {active: false}, {expect: 403});
+await call('mgr', 'PATCH', `/api/members/${silver.data.member.id}`, {active: false});
+await call('guest', 'POST', '/api/public/member-lookup', {code: silver.data.member.code, phone: '2223334'}, {expect: 404});
+const roster = await call('mgr', 'GET', '/api/members?q=smoke');
+if (!(roster.data?.members || []).some((entry: {id: string}) => entry.id === black.data?.member?.id) || typeof roster.data?.stats?.total !== 'number') {
+  console.log('FAIL the roster should list the members with stats', roster.data?.stats);
+  failures += 1;
+}
+await call('mgr', 'DELETE', `/api/members/${silver.data.member.id}`, undefined, {expect: 403});
+await call(owner, 'DELETE', `/api/members/${silver.data.member.id}`);
+await call(owner, 'DELETE', `/api/members/${black.data.member.id}`);
+
+// ---------- blips ----------
+const blip = await call('mgr', 'POST', '/api/map-blips', {x: 100, y: 200, label: 'Smoke blip', kind: 'food', description: 'teszt'}, {expect: 201});
+const movedBlip = await call('mgr', 'PATCH', `/api/map-blips/${blip.data.blip.id}`, {x: 150, y: 250});
+if (Math.round(movedBlip.data?.blip?.x) !== 150 || Math.round(movedBlip.data?.blip?.y) !== 250) {
+  console.log('FAIL the blip should move', movedBlip.data?.blip);
+  failures += 1;
+}
+await call('mgr', 'POST', '/api/map-blips', {x: 1, y: 1, label: 'Bad kind', kind: 'castle'}, {expect: 400});
+await call('mgr', 'DELETE', `/api/map-blips/${blip.data.blip.id}`);
+
+// ---------- the floor plan and tables ----------
+const floor = await call('guest', 'GET', '/api/public/floor-plan');
+const tables = (floor.data?.plan?.tables || []) as {id: string; label: string; seats: number; minGuests?: number; minTier?: string}[];
+if (!tables.length || typeof floor.data?.slotMinutes !== 'number') {
+  console.log('FAIL the floor plan should list tables', floor.data);
+  failures += 1;
+}
+const four = tables.find((table) => table.seats >= 4 && !table.minTier && (table.minGuests || 1) <= 4);
+const other = tables.find((table) => four && table.id !== four.id && table.seats >= 4 && !table.minTier && (table.minGuests || 1) <= 4);
+const vip = tables.find((table) => table.minTier);
+if (four && other) {
+  const tableAt = new Date(Date.now() + 6 * 3600000).toISOString();
+  const booking = (suffix: string, extra: Record<string, unknown>) => ({name: 'Smoke Table', phone: '4445556', guests: 4, at: tableAt, occasion: 'este', note: '', visitorToken: `v_smoke_t_${stamp}_${suffix}`, ...extra});
+  const picked = await call('guest', 'POST', '/api/reservations', booking('a', {tableId: four.id}), {expect: 201});
+  if (picked.data?.reservation?.tableId !== four.id || picked.data?.reservation?.tableLabel !== four.label) {
+    console.log('FAIL the booking should carry the table', picked.data?.reservation);
+    failures += 1;
+  }
+  await call('guest', 'POST', '/api/reservations', booking('b', {tableId: four.id, guests: four.seats + 1}), {expect: 400});
+  await call('guest', 'POST', '/api/reservations', booking('c', {tableId: 'no-such-table'}), {expect: 400});
+  // Nobody has looked at the first request yet, so a second one on the same table is allowed.
+  const rival = await call('guest', 'POST', '/api/reservations', booking('d', {tableId: four.id}), {expect: 201});
+  await call('mgr', 'PATCH', `/api/reservations/${picked.data.reservation.id}`, {status: 'confirmed'});
+  const heldPublic = await call('guest', 'GET', `/api/public/floor-plan?at=${encodeURIComponent(tableAt)}`);
+  const heldEntry = (heldPublic.data?.taken || []).find((entry: {tableId: string; code?: string}) => entry.tableId === four.id);
+  if (!heldEntry || heldEntry.code) {
+    console.log('FAIL a confirmed booking should hold its table, without naming the guest to the public', heldPublic.data?.taken);
+    failures += 1;
+  }
+  const heldStaff = await call('mgr', 'GET', `/api/public/floor-plan?at=${encodeURIComponent(tableAt)}`);
+  if (!(heldStaff.data?.taken || []).find((entry: {tableId: string; code?: string}) => entry.tableId === four.id && entry.code === picked.data.reservation.code)) {
+    console.log('FAIL staff should see who holds the table', heldStaff.data?.taken);
+    failures += 1;
+  }
+  await call('mgr', 'PATCH', `/api/reservations/${rival.data.reservation.id}`, {status: 'confirmed'}, {expect: 409});
+  await call('guest', 'POST', '/api/reservations', booking('e', {tableId: four.id}), {expect: 409});
+  const moved = await call('mgr', 'PATCH', `/api/reservations/${rival.data.reservation.id}`, {tableId: other.id});
+  if (moved.data?.reservation?.tableLabel !== other.label) {
+    console.log('FAIL the house should be able to move a booking to another table', moved.data?.reservation);
+    failures += 1;
+  }
+  await call('mgr', 'PATCH', `/api/reservations/${rival.data.reservation.id}`, {status: 'confirmed'});
+  if (vip) await call('guest', 'POST', '/api/reservations', booking('f', {tableId: vip.id, guests: Math.max(vip.minGuests || 1, 2)}), {expect: 403});
+  await call('guest', 'DELETE', `/api/reservations/${picked.data.reservation.id}`, {visitorToken: `v_smoke_t_${stamp}_a`});
+  await call('guest', 'DELETE', `/api/reservations/${rival.data.reservation.id}`, {visitorToken: `v_smoke_t_${stamp}_d`});
+} else {
+  console.log('FAIL the plan should have two open tables for four', tables.map((table) => table.id));
+  failures += 1;
+}
+await call('mgr', 'PUT', '/api/house/floor-plan', {plan: floor.data.plan}, {expect: 403});
+await call(owner, 'PUT', '/api/house/floor-plan', {plan: {...floor.data.plan, tables: [{id: 'X'}]}}, {expect: 400});
+const renamed = await call(owner, 'PUT', '/api/house/floor-plan', {plan: {...floor.data.plan, name: 'Smoke plan'}});
+if (renamed.data?.plan?.name !== 'Smoke plan') {
+  console.log('FAIL the owner should be able to save a plan', renamed.data);
+  failures += 1;
+}
+const savedPlan = await call('guest', 'GET', '/api/public/floor-plan');
+if (savedPlan.data?.plan?.name !== 'Smoke plan') {
+  console.log('FAIL the saved plan should be the public one', savedPlan.data?.plan?.name);
+  failures += 1;
+}
+await call(owner, 'DELETE', '/api/house/floor-plan');
+
+// ---------- what the browser needs for pushes ----------
+const clubNow = await call('guest', 'GET', '/api/club/state');
+if (!Array.isArray(clubNow.data?.state?.recentReactions)) {
+  console.log('FAIL the club state should replay recent reactions', Object.keys(clubNow.data?.state || {}));
+  failures += 1;
+}
+const statusNow = await call('guest', 'GET', '/api/public/status');
+if (!('realtime' in (statusNow.data || {}))) {
+  console.log('FAIL the status should say where realtime lives');
+  failures += 1;
+}
+
 // ---------- bartender session (single session rule) ----------
 await call('bar', 'POST', '/api/login', {username: bartender.data.user.username, password: 'Bar12345x'});
 await call('bar2', 'POST', '/api/login', {username: bartender.data.user.username, password: 'Bar12345x'}, {expect: 409});

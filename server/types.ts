@@ -52,6 +52,8 @@ export interface Account {
   lastLoginAt: string | null;
   lastActiveAt: string | null;
   createdAt: string | null;
+  /** Guided-tour modules this account finished or skipped: {module: 'done' | 'skipped'}. */
+  tours: Record<string, string>;
 }
 
 export interface SessionUser extends Account {

@@ -1,0 +1,112 @@
+/**
+ * The floor plan — the room drawn from data, coloured for one moment.
+ * The SVG scales to its box; on a phone it keeps a minimum width and
+ * scrolls sideways rather than shrinking the tables past tapping size.
+ */
+
+.rm-floor {
+    position: relative;
+    overflow: auto;
+    border: 1px solid var(--rm-line);
+    background: #07050a;
+    box-shadow: inset 0 0 80px rgba(0, 0, 0, 0.6);
+}
+
+.rm-floor-svg {
+    display: block;
+    width: 100%;
+    min-width: 560px;
+    height: auto;
+    font-family: Cinzel, serif;
+    user-select: none;
+}
+
+.rm-floor-bg { fill: #08060b; }
+.rm-floor-grid-dot { fill: rgba(255, 255, 255, 0.05); }
+.rm-floor-hatch-line { stroke: rgba(255, 120, 145, 0.35); stroke-width: 2; }
+.rm-floor-checker-cell { fill: rgba(255, 255, 255, 0.025); }
+
+/* Scenery */
+.rm-floor-zone rect { fill: rgba(255, 255, 255, 0.015); stroke: rgba(255, 255, 255, 0.07); stroke-dasharray: 6 6; }
+.rm-floor-zone text { fill: #5f5959; font-size: 10px; font-weight: 700; letter-spacing: 0.28em; }
+.rm-floor-wall { fill: none; stroke: #3b2229; stroke-width: 7; stroke-linejoin: round; stroke-linecap: round; }
+.rm-floor-feature-label { fill: #a09998; font-size: 10px; font-weight: 700; letter-spacing: 0.28em; }
+.rm-floor-bar-top { fill: rgba(255, 255, 255, 0.04); stroke: rgba(255, 90, 118, 0.4); stroke-width: 1; }
+.rm-floor-stool { fill: #2a1218; stroke: rgba(255, 255, 255, 0.2); stroke-width: 1; }
+.rm-floor-stage rect { fill: #1d0a10; stroke: var(--rm-red); stroke-width: 1.5; }
+.rm-floor-stage text { fill: #fff; font-size: 16px; font-weight: 700; letter-spacing: 0.35em; }
+.rm-floor-wave { fill: none; stroke: rgba(255, 43, 79, 0.65); stroke-width: 1.5; animation: rmFloorWave 2.4s ease-in-out infinite; }
+.rm-floor-dance-frame { fill: none; stroke: rgba(255, 255, 255, 0.12); stroke-dasharray: 3 5; }
+.rm-floor-door rect { fill: var(--rm-red); }
+.rm-floor-door path { fill: none; stroke: rgba(227, 40, 78, 0.45); stroke-dasharray: 3 4; }
+.rm-floor-pillar circle { fill: #1a1114; stroke: #3b2229; stroke-width: 2; }
+.rm-floor-pillar-inner { fill: #0d0a0c; stroke: none; }
+.rm-floor-plant circle { fill: #163121; stroke: rgba(99, 231, 169, 0.3); stroke-width: 1; }
+.rm-floor-plant-pot { fill: #2b1a12; stroke: none; }
+.rm-floor-room rect { fill: rgba(255, 255, 255, 0.03); stroke: rgba(255, 255, 255, 0.12); }
+.rm-floor-area rect { fill: none; stroke: rgba(255, 255, 255, 0.12); stroke-dasharray: 4 4; }
+.rm-floor-text { fill: #6f6968; font-size: 10px; letter-spacing: 0.28em; }
+
+/* Tables */
+.rm-floor-table { outline: none; }
+.rm-floor-table-body { transform-box: fill-box; transform-origin: center; transition: transform 0.2s ease; }
+.rm-floor-table.is-free, .rm-floor-table.is-locked { cursor: pointer; }
+.rm-floor-table.is-taken, .rm-floor-table.is-unfit { cursor: help; }
+.rm-floor-table.is-free:hover .rm-floor-table-body, .rm-floor-table.is-free:focus-visible .rm-floor-table-body { transform: scale(1.07); }
+.rm-floor-body { fill: #1c1519; stroke: rgba(255, 255, 255, 0.38); stroke-width: 1.5; transition: fill 0.2s ease, stroke 0.2s ease; }
+.rm-floor-table.is-free:hover .rm-floor-body, .rm-floor-table.is-free:focus-visible .rm-floor-body { fill: #26191f; stroke: #fff; }
+.rm-floor-seat { fill: #2a2026; stroke: rgba(255, 255, 255, 0.32); stroke-width: 1; transition: fill 0.25s ease, stroke 0.25s ease; }
+.rm-floor-seat.is-filled { fill: var(--rm-red); stroke: #fff; }
+.rm-floor-bench { fill: none; stroke: #2b1b21; stroke-width: 14; stroke-linecap: round; }
+.rm-floor-table-label { fill: #fff; font-size: 13px; font-weight: 700; letter-spacing: 0.06em; }
+.rm-floor-table-seats { fill: #8d8584; font-size: 7px; letter-spacing: 0.22em; font-family: Inter, system-ui, sans-serif; }
+.rm-floor-table-crown { fill: #e3c07a; font-size: 10px; }
+.rm-floor-hatch { stroke: none; }
+
+.rm-floor-table.is-taken .rm-floor-body { fill: #2a0d14; stroke: rgba(255, 43, 79, 0.6); }
+.rm-floor-table.is-taken .rm-floor-seat { fill: #1a0c10; stroke: rgba(255, 43, 79, 0.35); }
+.rm-floor-table.is-taken .rm-floor-table-label { fill: #ff8fa3; }
+.rm-floor-table.is-unfit { opacity: 0.38; }
+.rm-floor-table.is-inactive { opacity: 0.22; }
+.rm-floor-table.is-locked .rm-floor-body { stroke: #e3c07a; stroke-dasharray: 4 3; }
+
+.rm-floor-table.is-selected .rm-floor-body { fill: #3a0f1a; stroke: var(--rm-red-bright); stroke-width: 2; filter: url(#rm-floor-glow); }
+.rm-floor-table.is-selected .rm-floor-table-label { fill: #fff; }
+.rm-floor-table.is-own .rm-floor-body { stroke: #5ac8fa; stroke-width: 2; }
+.rm-floor-table.is-own .rm-floor-table-label { fill: #bfe9ff; }
+
+.rm-floor-pulse {
+    fill: none;
+    stroke: var(--rm-red);
+    stroke-width: 1.5;
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: rmFloorPulse 1.8s ease-out infinite;
+}
+
+@keyframes rmFloorPulse {
+    0% { transform: scale(0.92); opacity: 0.9; }
+    100% { transform: scale(1.3); opacity: 0; }
+}
+
+@keyframes rmFloorWave {
+    0%, 100% { opacity: 0.15; }
+    50% { opacity: 1; }
+}
+
+/* Legend */
+.rm-floor-legend { display: flex; flex-wrap: wrap; gap: 12px 16px; font-size: 8px; font-weight: 700; letter-spacing: 0.22em; color: #8d8584; }
+.rm-floor-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.rm-floor-legend i { display: inline-block; width: 12px; height: 12px; border-radius: 50%; border: 1px solid rgba(255, 255, 255, 0.38); background: #1c1519; }
+.rm-floor-legend .is-taken i { background: repeating-linear-gradient(45deg, #2a0d14 0 2px, rgba(255, 120, 145, 0.35) 2px 3px); border-color: rgba(255, 43, 79, 0.6); }
+.rm-floor-legend .is-unfit i { opacity: 0.38; }
+.rm-floor-legend .is-locked i { border-color: #e3c07a; border-style: dashed; }
+.rm-floor-legend .is-selected i { background: #3a0f1a; border-color: var(--rm-red-bright); box-shadow: 0 0 8px rgba(255, 43, 79, 0.6); }
+
+/* The console's plan editor */
+.rm-floor-editor { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; line-height: 1.55; min-height: 320px; white-space: pre; tab-size: 2; }
+
+@media (prefers-reduced-motion: reduce) {
+    .rm-floor-pulse, .rm-floor-wave { animation: none; }
+    .rm-floor-table-body { transition: none; }
+}

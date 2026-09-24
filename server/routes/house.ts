@@ -12,7 +12,7 @@ import {broadcast} from '../realtime.ts';
 import {blipFromRow, eventFromRow, galleryPublic} from './public.ts';
 import type {Ctx, Queryable, Row, SessionUser} from '../types.ts';
 
-const BLIP_KINDS = ['hq', 'bar', 'parking', 'meeting', 'danger', 'info', 'event', 'custom'] as const;
+const BLIP_KINDS = ['hq', 'bar', 'food', 'shop', 'garage', 'parking', 'meeting', 'hospital', 'police', 'danger', 'info', 'event', 'custom'] as const;
 
 const eventBody = z.object({
   title: z.string().trim().min(2, 'Cím kötelező.').max(120),
@@ -38,8 +38,21 @@ const houseBody = z.object({
   registration: z.string().trim().max(40).optional(),
   ownerUserId: z.string().nullable().optional(),
   transferAccount: z.string().trim().max(60).optional(),
-  transferName: z.string().trim().max(80).optional()
+  transferName: z.string().trim().max(80).optional(),
+  /** A YouTube link or id; empty removes the film from the home page. */
+  featuredVideo: z.string().trim().max(200).optional(),
+  featuredVideoTitle: z.string().trim().max(120).optional(),
+  featuredVideoCaption: z.string().trim().max(240).optional()
 });
+
+/** The 11-character id out of any YouTube address (watch, youtu.be, shorts, embed) or a bare id. */
+export function youtubeId(value: unknown): string | null {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  if (/^[A-Za-z0-9_-]{11}$/.test(raw)) return raw;
+  const match = raw.match(/(?:youtu\.be\/|youtube(?:-nocookie)?\.com\/(?:watch\?(?:.*&)?v=|embed\/|shorts\/|live\/|v\/))([A-Za-z0-9_-]{11})/);
+  return match ? match[1] : null;
+}
 
 const personBody = z.object({
   name: z.string().trim().min(2).max(80),
@@ -216,7 +229,10 @@ export function registerHouseRoutes(router: Router): void {
     pubOpenedByName: row.pub_opened_by_name || '',
     pubNote: row.pub_note || '',
     revenueResetAt: iso(row.revenue_reset_at),
-    activityResetAt: iso(row.activity_reset_at)
+    activityResetAt: iso(row.activity_reset_at),
+    featuredVideo: row.featured_video || '',
+    featuredVideoTitle: row.featured_video_title || '',
+    featuredVideoCaption: row.featured_video_caption || ''
   });
 
   const personOf = (row: Row) => ({id: row.id, name: row.name, title: row.title, note: row.note, monogram: row.monogram, tier: row.tier, sortOrder: row.sort_order, active: row.active});
@@ -248,6 +264,13 @@ export function registerHouseRoutes(router: Router): void {
     if (body.ownerUserId !== undefined) set('owner_user_id', body.ownerUserId || null);
     if (body.transferAccount !== undefined) set('transfer_account', body.transferAccount);
     if (body.transferName !== undefined) set('transfer_name', body.transferName);
+    if (body.featuredVideo !== undefined) {
+      const id = youtubeId(body.featuredVideo);
+      if (id === null) throw bad('Ez nem YouTube cím. Illeszd be a videó linkjét (youtube.com/watch?v=… vagy youtu.be/…).');
+      set('featured_video', id);
+    }
+    if (body.featuredVideoTitle !== undefined) set('featured_video_title', body.featuredVideoTitle);
+    if (body.featuredVideoCaption !== undefined) set('featured_video_caption', body.featuredVideoCaption);
     if (fields.length) await db.query(`update public.house set ${fields.join(', ')} where id = 1`, values);
     await audit(db, me, 'HOUSE_UPDATE', Object.keys(body).join(', '));
     await broadcast('content', 'house');

@@ -18,7 +18,8 @@ import {destroyMedia, storeSignature} from './media.ts';
 import type {Account, Capabilities, Queryable, Request, Role, Row, SessionUser, UserCtx} from './types.ts';
 
 export const ROLES = ['staff', 'manager', 'owner'] as const;
-export const JOBS = ['pultos', 'bartender', 'felszolgalo', 'biztonsag', 'hostess', 'dj', 'uzletvezeto'] as const;
+/** The four posts the house has. Anything else was retired and stripped from every account (migration 0006). */
+export const JOBS = ['bartender', 'biztonsag', 'dj', 'uzletvezeto'] as const;
 /** Jobs that may claim a supply run without a manager rank. */
 export const ORDER_RUNNER_JOBS = ['biztonsag'];
 
@@ -177,7 +178,7 @@ export async function activeSessionsOf(db: Queryable, userId: string, withinMs =
 
 const USER_COLUMNS = `id, username, name, nickname, title, role, jobs, phone, id_number, avatar, avatar_public_id,
   signature_url, signature_public_id, signature_at, signature_kind, signature_locked_at, signature_decided,
-  must_change_password, show_public, active, last_login_at, last_active_at, created_at`;
+  must_change_password, show_public, active, last_login_at, last_active_at, created_at, tours`;
 
 /**
  * Resolves the signed-in account from the session cookie, or null.
@@ -238,7 +239,8 @@ export function accountFromRow(row: Row): Account {
     active: row.active !== false,
     lastLoginAt: row.last_login_at ? new Date(row.last_login_at).toISOString() : null,
     lastActiveAt: row.last_active_at ? new Date(row.last_active_at).toISOString() : null,
-    createdAt: row.created_at ? new Date(row.created_at).toISOString() : null
+    createdAt: row.created_at ? new Date(row.created_at).toISOString() : null,
+    tours: row.tours && typeof row.tours === 'object' ? (row.tours as Record<string, string>) : {}
   };
 }
 
@@ -289,6 +291,8 @@ export function publicUser(account: Account, {self = false}: {self?: boolean} = 
     lastLoginAt: account.lastLoginAt || null,
     createdAt: account.createdAt || null,
     mustChangePassword: self ? !!account.mustChangePassword : undefined,
+    /** Own account only: which guided-tour modules were seen or skipped. */
+    tours: self ? account.tours || {} : undefined,
     capabilities: capabilitiesOf(account)
   };
 }

@@ -17,7 +17,7 @@ import {toast} from '../stores/useToastStore';
 import {
   isOpen,
   POSITIONS,
-  POSITION_LABEL,
+  positionLabel,
   STATUS_CLASS,
   STATUS_LABEL,
   type Application,
@@ -389,7 +389,7 @@ export const CareersPage: React.FC = () => {
                             </span>
                           </div>
                           <p className="mt-2 text-[10px] text-[#8d8584]">
-                            {POSITION_LABEL[application.position]} · {formatDate(application.at)}
+                            {positionLabel(application.position)} · {formatDate(application.at)}
                           </p>
                           {application.staffNote && (
                             <p className="mt-2 border-l border-[color:var(--rm-line-red)] pl-2.5 text-[10px] leading-[1.7] text-[#c9c2c1]">

@@ -21,7 +21,7 @@ export const PageHeader: React.FC<{
   actions?: React.ReactNode;
   className?: string;
 }> = ({kicker, title, lead, actions, className = ''}) => (
-  <div className={`mb-10 flex flex-col gap-6 md:flex-row md:items-end md:justify-between ${className}`}>
+  <div className={`mb-10 flex flex-col gap-6 md:flex-row md:items-end md:justify-between ${className}`} data-tour="page">
     <div className="min-w-0">
       <div className="rm-label">{kicker}</div>
       <NeonHeading as="h1" size={2} className="mt-3.5">
@@ -57,8 +57,10 @@ export const Panel: React.FC<{
   /** Adds the standard inner padding. Off for lists that draw their own rows. */
   padded?: boolean;
   tone?: 'default' | 'red';
-}> = ({label, title, action, children, className = '', padded = true, tone = 'default'}) => (
-  <section className={`rm-card ${tone === 'red' ? 'border-[color:var(--rm-line-red)]' : ''} ${padded ? 'p-6 md:p-7' : 'p-0'} ${className}`}>
+  /** A `data-tour` name, so the guided tour can light the panel up. */
+  tour?: string;
+}> = ({label, title, action, children, className = '', padded = true, tone = 'default', tour}) => (
+  <section className={`rm-card ${tone === 'red' ? 'border-[color:var(--rm-line-red)]' : ''} ${padded ? 'p-6 md:p-7' : 'p-0'} ${className}`} data-tour={tour}>
     {(label || title || action) && (
       <div className={`flex flex-wrap items-start justify-between gap-3 ${padded ? 'mb-5' : 'border-b border-[color:var(--rm-line)] px-6 py-4'}`}>
         <div className="min-w-0">

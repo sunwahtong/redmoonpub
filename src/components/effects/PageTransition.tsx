@@ -8,6 +8,8 @@ const LEAD_MS = 520;
 const HOLD_MS = 180;
 /** Matches the rmPageArrive keyframe duration. */
 const ARRIVE_MS = 900;
+/** Whatever happens to the navigation, the overlay never outlives this. */
+const FAILSAFE_MS = 3200;
 
 /**
  * The Red Moon page transition.
@@ -18,6 +20,12 @@ const ARRIVE_MS = 900;
  *
  * So link clicks are intercepted on the capture phase (before React Router's own
  * handler), the overlay is raised, and navigation happens once it is opaque.
+ *
+ * Two things can leave the overlay up with nothing behind it: a route that
+ * bounces straight back (a guard redirecting to where the click came from,
+ * so the path never changes) and a route that changes twice in a row (the
+ * second change used to cancel the timer that lowered it). The overlay now
+ * drops on its own timer regardless, and a failsafe clears it either way.
  */
 export const PageTransition: React.FC = () => {
   const {pathname} = useLocation();
@@ -60,26 +68,27 @@ export const PageTransition: React.FC = () => {
     return () => document.removeEventListener('click', onClick, true);
   }, [navigate]);
 
-  /* Drop the overlay once the new route has painted. */
+  /* Drop the overlay once the new route has painted. The timers are left to
+     run even if the path changes again meanwhile. */
   useEffect(() => {
     if (!pendingRef.current) return;
     pendingRef.current = false;
-
-    const hide = window.setTimeout(() => {
+    window.setTimeout(() => {
       setActive(false);
       document.body.classList.add('rm-page-arriving');
+      window.setTimeout(() => document.body.classList.remove('rm-page-arriving'), ARRIVE_MS);
     }, HOLD_MS);
-
-    const clear = window.setTimeout(
-      () => document.body.classList.remove('rm-page-arriving'),
-      HOLD_MS + ARRIVE_MS
-    );
-
-    return () => {
-      window.clearTimeout(hide);
-      window.clearTimeout(clear);
-    };
   }, [pathname]);
+
+  /* Failsafe: a click whose navigation never lands (bounced by a guard) must not keep the curtain up. */
+  useEffect(() => {
+    if (!active) return;
+    const timer = window.setTimeout(() => {
+      pendingRef.current = false;
+      setActive(false);
+    }, FAILSAFE_MS);
+    return () => window.clearTimeout(timer);
+  }, [active]);
 
   return (
     <div className={`rm-transition${active ? '' : ' is-ready'}`} aria-hidden="true">

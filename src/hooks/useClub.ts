@@ -125,6 +125,8 @@ export interface ClubState {
   requestsOpen: boolean;
   /** Reactions in the last minute. */
   vibe: number;
+  /** The last seconds of reactions, for pages the pushes do not reach. */
+  recentReactions: {id: number; emoji: string; color: string}[];
   people: ClubPerson[];
   current: (ClubTrack & {playbackPlaying?: boolean; playbackPosition?: number; addedBy?: string}) | null;
   setlist: SetlistEntry[];

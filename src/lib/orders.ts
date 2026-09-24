@@ -88,15 +88,7 @@ export function varianceSeverity(order: SupplyOrder): 'none' | 'minor' | 'major'
 /* Jobs                                                                */
 /* ------------------------------------------------------------------ */
 
-export type StaffJob =
-  | 'pultos'
-  | 'bartender'
-  | 'felszolgalo'
-  | 'biztonsag'
-  | 'hostess'
-  | 'dj'
-  | 'uzletvezeto'
-  | '';
+export type StaffJob = 'bartender' | 'biztonsag' | 'dj' | 'uzletvezeto' | '';
 
 /**
  * What a person does, as opposed to what they may do.
@@ -107,22 +99,16 @@ export type StaffJob =
  */
 export const JOB_LABEL: Record<StaffJob, string> = {
   '': 'Nincs megadva',
-  pultos: 'Kasszás',
   bartender: 'Bartender',
-  felszolgalo: 'Felszolgáló',
   biztonsag: 'Biztonság',
-  hostess: 'Hostess',
   dj: 'DJ',
   uzletvezeto: 'Manager'
 };
 
 export const JOB_GLYPH: Record<StaffJob, string> = {
   '': '·',
-  pultos: '銭',
   bartender: '酒',
-  felszolgalo: '侍',
   biztonsag: '守',
-  hostess: '迎',
   dj: '音',
   uzletvezeto: '長'
 };

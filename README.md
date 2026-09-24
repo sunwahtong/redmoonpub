@@ -103,11 +103,21 @@ and comes back with an error toast if the server disagrees.
 ### Accounts and permissions
 
 One login for everything. `role` is the permission ladder
-(`staff` < `manager` < `owner`); `jobs` is what the person does (bartender,
-security, DJ, …). Capabilities derive from both: the `dj` job opens the
-booth, `biztonsag` may run supply orders, managers open the house, owners
+(`staff` < `manager` < `owner`); `jobs` is what the person does, one of the
+four posts the house has: `bartender`, `biztonsag` (security), `dj`,
+`uzletvezeto` (manager). Capabilities derive from both: the `dj` job opens
+the booth, `biztonsag` may run supply orders, managers open the house, owners
 can do everything. An owner creates accounts at `/staff/users`; every new or
 reset account must change its temporary password on first login.
+
+The first time an account opens the console it is walked through it: a
+guided tour in Hungarian, one module per kind of work (the console for
+everyone, the booth for whoever may open it, the manager's tools, the
+owner's). Each module is a chain of steps that navigates to a page, lights
+up one part of it and explains it; finishing or skipping (after a warning)
+is recorded on the account (`staff_accounts.tours`), so a promotion or a
+new job brings only the missing module up next time. Any module can be
+replayed from the profile page.
 
 Passwords are Argon2id-hashed (64 MiB, 3 passes, via hash-wasm, so no native
 build); legacy scrypt and PBKDF2 hashes still verify and are upgraded at
@@ -143,7 +153,35 @@ A booking walks a visible pipeline: received → being looked at (or
 wait-listed) → decided → the evening. The guest sees each step on their own
 page and can write to the house on the booking; managers answer from the
 console, with quick replies. Both sides get unread counters and live
-updates.
+updates. A House member books with their code (see below): the tier on the
+booking comes from the card, never from the form.
+
+A booking either leaves the table to the house or names one. The form's
+ASZTAL step draws the room from the floor plan (`shared/floorPlan.ts`
+describes it; the owner edits it as JSON at `/staff/showcase`, the built-in
+room is test data): zones, the bar, the stage, walls and doors, and every
+table with its seats. For the chosen evening a table is free, already
+promised (hatched — a confirmed or seated booking holds it for
+`RESERVATION_SLOT_MINUTES`, 150 minutes, from its start; a request nobody
+has looked at holds nothing), the wrong size for the party, or House-only.
+Two guests may ask for the same table; the first confirmation wins and the
+second cannot be confirmed until it is moved. The console's booking book
+shows the table on each booking, lets a manager assign or move it from a
+list that knows what is taken, and has an ALAPRAJZ panel that colours the
+room for any moment with who holds what.
+
+### The House
+
+Membership is something the house grants and the site recognises. A member
+has a code (`RM-H-XXXX`, said at the door, typed into a booking), a tier
+(silver, gold, black, royal), the phone number that proves the code is
+theirs, a visit count the door bumps, and a note only the house sees.
+Managers grant Silver and Gold at `/staff/members`; Black and Royal are the
+owner's to give, suspend and take back. On the public House page (`/vip`)
+the tier counts are live, and a member opens their own card with code +
+phone: tier, visits, what the tier gives, and a booking link that carries
+the code. Lookups are rate limited and the card is remembered by the
+browser.
 
 ### The club and the booth
 
@@ -216,3 +254,25 @@ page. On an upcoming or running event a guest taps "OTT LESZEK" once — one
 count per network and browser, taken back with a second tap — and the count
 shows to everyone. On the menu a heart marks a drink as a favourite and a
 "KEDVENCEIM" chip filters to them; that list lives in the browser only.
+
+### The film
+
+The owner can pin a YouTube clip to the home page from the showcase
+(`/staff/showcase`): a link or a video id, a title and a line. It sits high
+on the page as a muted, cropped preview that plays by itself in view and
+pauses out of it — the frame is only revealed once the player reports it is
+playing and YouTube's own overlays have faded, so none of YouTube's chrome
+shows. One tap opens the film large with sound and the real controls; the
+house music steps aside meanwhile. Without a clip the section does not
+exist.
+
+### The map
+
+`/location` is SeeCity's atlas (tiles under `public/assets/map`) with the
+house's markers on it: thirteen kinds in three families (around the house,
+the city, signals), searchable and filterable in the panel, grouped by the
+group name a manager gave them. Selecting a marker or a row flies there and
+opens a card with a shareable link (`/location?blip=<id>`) and the
+coordinates. Managers place markers by clicking the map, edit them, move
+them by dragging and remove them. Below the map the house's own marker is
+spelled out as the way there, with what is nearest to it and a legend.

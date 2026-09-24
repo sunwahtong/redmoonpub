@@ -1,6 +1,6 @@
 import React, {useMemo, useState} from 'react';
 import {Link} from 'react-router-dom';
-import {Activity, ArrowUpRight, Bell, Boxes, Check, ClipboardList, Coins, DoorClosed, DoorOpen, FileText, Newspaper, Radio, Timer, Truck, UserPlus, Users} from 'lucide-react';
+import {Activity, ArrowUpRight, Bell, Boxes, Check, ClipboardList, Coins, Crown, DoorClosed, DoorOpen, FileText, Newspaper, Radio, Timer, Truck, UserPlus, Users} from 'lucide-react';
 import {Btn, BtnLink} from '../../components/ui/Btn';
 import {Sparkline} from '../../components/ui/Sparkline';
 import {Avatar, PageHeader, Panel, SectionTitle} from '../../components/ui/console';
@@ -139,6 +139,7 @@ export const DashboardPage: React.FC = () => {
       ? [
           {to: '/staff/inventory', label: 'RAKTÁR', hint: counts?.lowStock ? `${counts.lowStock} tétel fogy` : 'Készlet rendben', icon: Boxes, badge: counts?.lowStock},
           {to: '/staff/applications', label: 'JELENTKEZÉSEK', hint: 'Új emberek', icon: UserPlus, badge: counts?.applicationsPending},
+          {to: '/staff/members', label: 'A HOUSE', hint: 'Tagság, kódok, látogatások', icon: Crown},
           {to: '/staff/documents', label: 'BIZONYLATOK', hint: 'Nyugta, számla, jelentés', icon: FileText}
         ]
       : []),
@@ -184,8 +185,8 @@ export const DashboardPage: React.FC = () => {
         />
 
         {/* ------------------------------------------------ NOW */}
-        <div className="rm-now-grid">
-          <div className={`rm-now-tile ${house?.open ? 'is-good' : 'is-red'}`}>
+        <div className="rm-now-grid" data-tour="now">
+          <div className={`rm-now-tile ${house?.open ? 'is-good' : 'is-red'}`} data-tour="door">
             <span className="rm-now-tile-glyph" aria-hidden="true">{house?.open ? '開' : '閉'}</span>
             <span className="rm-now-tile-label">
               {house?.open ? <DoorOpen size={10}/> : <DoorClosed size={10}/>} A HÁZ
@@ -242,7 +243,7 @@ export const DashboardPage: React.FC = () => {
 
         {/* ------------------------------------------------ QUICK */}
         <SectionTitle label="01 / GYORS" title="Amit most csinálnál."/>
-        <div className="rm-quick-grid">
+        <div className="rm-quick-grid" data-tour="quick">
           {quick.map((item) => (
             <Link key={item.to} to={item.to} className={`rm-quick${item.primary ? ' is-primary' : ''}`}>
               <item.icon size={16}/>
@@ -365,7 +366,9 @@ export const DashboardPage: React.FC = () => {
           </div>
 
           <div className="flex flex-col gap-3.5">
-            <StaffBoard/>
+            <div data-tour="board">
+              <StaffBoard/>
+            </div>
 
             {isManager && (
               <Panel

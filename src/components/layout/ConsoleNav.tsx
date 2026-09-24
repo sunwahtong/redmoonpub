@@ -61,7 +61,7 @@ export const ConsoleNav: React.FC = () => {
           below the header once stuck. The staff pages no longer pad themselves. */}
       <div className="h-[68px]" aria-hidden="true"/>
 
-      <div className="rm-console-nav">
+      <div className="rm-console-nav" data-tour="nav">
         <nav className="rm-console-row rm-console-scroll px-6 lg:px-12" aria-label="Konzol">
           <NavLink to="/staff" end className="rm-console-tab is-home">
             ÁTTEKINTÉS

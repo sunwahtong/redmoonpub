@@ -163,7 +163,7 @@ export async function clubState(db: Queryable, {moderator = false}: {moderator?:
   await housekeeping(db);
   await syncStation(db);
   const state = (await db.query('select * from public.club_state where id = 1')).rows[0];
-  const [listeners, chat, people, setlist, poll, board, vibe, dj] = await Promise.all([
+  const [listeners, chat, people, setlist, poll, board, vibe, dj, recent] = await Promise.all([
     db.query<{n: number}>('select count(*)::int as n from public.club_presence'),
     db.query('select * from public.club_chat order by at desc limit 80'),
     db.query('select name, color from public.club_listeners where expires_at > now() order by approved_at desc limit 200'),
@@ -174,7 +174,9 @@ export async function clubState(db: Queryable, {moderator = false}: {moderator?:
         order by case status when 'pending' then 0 when 'accepted' then 1 else 2 end, votes desc, at asc limit 30`
     ),
     vibeOf(db),
-    state.dj_user_id ? db.query<{avatar: string}>('select avatar from public.staff_accounts where id = $1', [state.dj_user_id]) : Promise.resolve({rows: [] as {avatar: string}[]})
+    state.dj_user_id ? db.query<{avatar: string}>('select avatar from public.staff_accounts where id = $1', [state.dj_user_id]) : Promise.resolve({rows: [] as {avatar: string}[]}),
+    // The last seconds of reactions, so a page without pushes still sees the room cheer.
+    db.query<{id: number; emoji: string; color: string}>(`select id, emoji, color from public.club_reactions where at > now() - interval '20 seconds' order by id desc limit 40`)
   ]);
   const slug = stationSlug(state.provider_url);
   const out = {
@@ -203,6 +205,7 @@ export async function clubState(db: Queryable, {moderator = false}: {moderator?:
     slowMode: Number(state.slow_mode_seconds) || 0,
     requestsOpen: state.requests_open !== false,
     vibe,
+    recentReactions: recent.rows.map((row) => ({id: Number(row.id), emoji: row.emoji, color: row.color || ''})),
     people: people.rows.map((row) => ({name: row.name, color: row.color || PALETTE[0]})),
     current: (moderator ? state.current : state.current ? {name: state.current.name, addedBy: state.current.addedBy || ''} : null) as Row | null,
     setlist: setlist.rows.map(setlistOf),
@@ -428,7 +431,10 @@ export function registerClubRoutes(router: Router): void {
     const ip = clientIp(req);
     const voter = voterOf(ip, body.clientId);
     await rateLimit(db, `club-react:${voter}`, 1, 2500);
-    await db.query('insert into public.club_reactions (emoji, voter) values ($1, $2)', [emoji, voter]);
+    const identity = body.token ? await identityOf(db, body.token, ip) : null;
+    const color = identity?.color || '';
+    const {rows} = await db.query<{id: number}>('insert into public.club_reactions (emoji, voter, color) values ($1, $2, $3) returning id', [emoji, voter, color]);
+    const id = rows[0].id;
     const vibe = await vibeOf(db);
     let pushed = true;
     try {
@@ -436,11 +442,8 @@ export function registerClubRoutes(router: Router): void {
     } catch {
       pushed = false;
     }
-    if (pushed) {
-      const identity = body.token ? await identityOf(db, body.token, ip) : null;
-      await pushClub('reaction', {emoji, color: identity?.color || '', vibe});
-    }
-    return {ok: true, vibe, pushed};
+    if (pushed) await pushClub('reaction', {id, emoji, color, vibe});
+    return {ok: true, id, vibe, pushed};
   });
 
   /** A listener asks for a song: one from the library, or any title in words. */

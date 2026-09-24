@@ -321,7 +321,7 @@ export const DjPage: React.FC = () => {
         </div>
 
         {/* ------------------------------------------------ LIVE CONTROL */}
-        <div className={`rm-now mb-3.5 mt-8 p-6 md:p-7${live ? ' is-on' : ''}`}>
+        <div className={`rm-now mb-3.5 mt-8 p-6 md:p-7${live ? ' is-on' : ''}`} data-tour="dj-live">
           <div className="relative grid grid-cols-1 gap-6 lg:grid-cols-[auto_1fr_auto] lg:items-start">
             <div className="flex items-start gap-4">
               <span className="rm-now-disc" aria-hidden="true"/>
@@ -421,7 +421,7 @@ export const DjPage: React.FC = () => {
         <div className="grid grid-cols-1 gap-3.5 xl:grid-cols-3">
           {/* ------------------------------------------------ LEFT */}
           <div className="flex flex-col gap-3.5 xl:col-span-2">
-            <Panel label="BEMONDÁS" title="Mi szól most?" action={<VibeMeter vibe={state?.vibe ?? 0} className="w-48"/>}>
+            <Panel tour="dj-announce" label="BEMONDÁS" title="Mi szól most?" action={<VibeMeter vibe={state?.vibe ?? 0} className="w-48"/>}>
               <form onSubmit={announce} className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_1.4fr_auto]">
                 <input value={artist} onChange={(event) => setArtist(event.target.value.slice(0, 120))} placeholder="Előadó (opcionális)" className={inputClass}/>
                 <input value={track} onChange={(event) => setTrack(event.target.value.slice(0, 160))} placeholder="Cím" required className={inputClass}/>
@@ -434,6 +434,7 @@ export const DjPage: React.FC = () => {
 
             {state && <Setlist entries={state.setlist} nowPlaying={station?.nowPlaying} live={live} canModerate onRemove={(id) => act(() => apiSend(`/api/dj/setlist/${id}`, 'DELETE'), 'delete')} limit={30}/>}
 
+            <div data-tour="dj-chat">
             <ChatPanel
               lines={lines}
               people={state?.people || []}
@@ -464,6 +465,7 @@ export const DjPage: React.FC = () => {
                 </div>
               }
             />
+            </div>
 
             <Panel label="MOST SZÓL A PULTBAN" title={state?.current ? state.current.name : 'Nincs lejátszott zene a tárból.'}>
               {state?.current ? (
@@ -496,6 +498,7 @@ export const DjPage: React.FC = () => {
 
             <Panel
               padded={false}
+              tour="dj-library"
               label={`ZENETÁR (${state?.library.length ?? 0})`}
               action={
                 <label className="rm-btn is-ghost !px-3 !py-2 !text-[8px] cursor-pointer">
@@ -542,6 +545,7 @@ export const DjPage: React.FC = () => {
           {/* ------------------------------------------------ RIGHT */}
           <div className="flex flex-col gap-3.5">
             {state && (
+              <div data-tour="dj-requests">
               <RequestBoard
                 requests={state.requests}
                 requestsOpen={state.requestsOpen}
@@ -551,9 +555,11 @@ export const DjPage: React.FC = () => {
                 showDeclined
                 emptyText="Nincs kérés. Ami a chatben „ZENÉT KÉREK”-kel érkezik, itt jelenik meg — a szavazatokkal együtt."
               />
+              </div>
             )}
 
             {state?.poll ? (
+              <div data-tour="dj-poll">
               <PollCard
                 poll={state.poll}
                 canVote={false}
@@ -566,8 +572,9 @@ export const DjPage: React.FC = () => {
                   )
                 }
               />
+              </div>
             ) : (
-              <Panel label="SZAVAZÁS" title="Kérdezd a termet.">
+              <Panel tour="dj-poll" label="SZAVAZÁS" title="Kérdezd a termet.">
                 <form onSubmit={openPoll} className="flex flex-col gap-2">
                   <input value={question} onChange={(event) => setQuestion(event.target.value.slice(0, 160))} placeholder="Kérdés — pl. Merre menjen az este?" className={inputClass}/>
                   {options.map((option, index) => (

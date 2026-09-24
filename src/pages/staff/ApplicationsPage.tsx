@@ -8,7 +8,7 @@ import {apiSend, formatDate, formatTime} from '../../lib/api';
 import {playSfx} from '../../lib/sfx';
 import {toast} from '../../stores/useToastStore';
 import {
-  POSITION_LABEL,
+  positionLabel,
   STATUS_CLASS,
   STATUS_LABEL,
   type Application,
@@ -57,7 +57,7 @@ export const ApplicationsPage: React.FC = () => {
         if (filter === 'open' && !['pending', 'interview'].includes(application.status)) return false;
         if (!needle) return true;
         return normalize(
-          `${application.code} ${application.name} ${application.phone} ${POSITION_LABEL[application.position]}`
+          `${application.code} ${application.name} ${application.phone} ${positionLabel(application.position)}`
         ).includes(needle);
       })
       // Newest first: recruitment is read as an inbox.
@@ -174,7 +174,7 @@ export const ApplicationsPage: React.FC = () => {
                       {STATUS_LABEL[application.status].toUpperCase()}
                     </span>
                     <span className="border border-[color:var(--rm-line-red)] px-2.5 py-1 text-[8px] tracking-[0.18em] text-[color:var(--rm-red)]">
-                      {POSITION_LABEL[application.position]}
+                      {positionLabel(application.position)}
                     </span>
                   </div>
 

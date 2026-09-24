@@ -240,6 +240,19 @@ export function registerSessionRoutes(router: Router): void {
     return {user: publicUser((await loadAccount(db, me.id))!, {self: true})};
   });
 
+  /** The guided tour: a module was finished or skipped. */
+  router.post('/api/profile/tour', async ({db, req, user}) => {
+    const me = requireUser({user});
+    const body = await readJson(req);
+    const module = String(body.module || '').trim();
+    const status = String(body.status || '').trim();
+    if (!['staff', 'dj', 'manager', 'owner'].includes(module)) throw bad('Ismeretlen modul.');
+    if (!['done', 'skipped', 'reset'].includes(status)) throw bad('Ismeretlen állapot.');
+    if (status === 'reset') await db.query('update public.staff_accounts set tours = tours - $2 where id = $1', [me.id, module]);
+    else await db.query(`update public.staff_accounts set tours = tours || jsonb_build_object($2::text, $3::text) where id = $1`, [me.id, module, status]);
+    return {user: publicUser((await loadAccount(db, me.id))!, {self: true})};
+  });
+
   router.get('/api/permissions', async ({user}) => {
     const me = requireUser({user});
     return {permissions: {role: me.role, ...capabilitiesOf(me)}};

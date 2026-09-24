@@ -10,13 +10,16 @@ import {liveBus, type Topic} from './live';
  * every message to the in-page bus. The client library is loaded on first
  * use, so pages that never subscribe never download it.
  *
- * With no VITE_SUPABASE_URL / VITE_SUPABASE_PUBLISHABLE_KEY (local development)
- * the module reports itself unavailable and the hooks keep their polling.
+ * The address and the publishable key come from the build (VITE_SUPABASE_URL
+ * / VITE_SUPABASE_PUBLISHABLE_KEY) or, when the build has none, from the
+ * status feed the server answers on every page (`configureRealtime`). A page
+ * that subscribed before the key arrived connects the moment it does. With
+ * neither, the module reports itself unavailable and the hooks keep polling.
  */
-const URL = String(import.meta.env.VITE_SUPABASE_URL || '').replace(/\/+$/, '');
-const KEY = String(import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY || '');
+let URL = String(import.meta.env.VITE_SUPABASE_URL || '').replace(/\/+$/, '');
+let KEY = String(import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY || '');
 
-export const realtimeAvailable = !!(URL && KEY);
+export let realtimeAvailable = !!(URL && KEY);
 
 type Channel = {
   on: (type: 'broadcast', filter: {event: string}, handler: (message: {event: string; payload: Record<string, unknown>}) => void) => Channel;
@@ -28,8 +31,14 @@ interface Client {
   channel: (topic: string, options?: unknown) => Channel;
 }
 
+interface Entry {
+  channel: Channel | null;
+  refs: number;
+  connecting: boolean;
+}
+
 let clientPromise: Promise<Client> | null = null;
-const channels = new Map<Topic, {channel: Channel; refs: number}>();
+const channels = new Map<Topic, Entry>();
 let connected = false;
 const statusListeners = new Set<(connected: boolean) => void>();
 
@@ -52,32 +61,50 @@ async function client(): Promise<Client> {
   return clientPromise;
 }
 
+function connect(topic: Topic, entry: Entry): void {
+  if (entry.connecting || entry.channel || !realtimeAvailable) return;
+  entry.connecting = true;
+  client().then((instance) => {
+    entry.connecting = false;
+    if (entry.refs <= 0 || channels.get(topic) !== entry) return;
+    const channel = instance.channel(`rm:${topic}`, {config: {broadcast: {self: false}}});
+    entry.channel = channel;
+    channel
+      .on('broadcast', {event: '*'}, (message) => {
+        liveBus.emit({topic, event: message.event, payload: message.payload || {}});
+      })
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') setConnected(true);
+        else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') setConnected(false);
+      });
+  });
+}
+
+/**
+ * The server told us where Realtime lives. First call wins; pages that were
+ * already waiting on a topic connect now.
+ */
+export function configureRealtime(url: string, key: string): void {
+  if (realtimeAvailable || !url || !key) return;
+  URL = url.replace(/\/+$/, '');
+  KEY = key;
+  realtimeAvailable = true;
+  for (const [topic, entry] of channels) connect(topic, entry);
+}
+
 /**
  * Subscribes to a topic for as long as the returned function is not called.
  * Several subscribers share one channel.
  */
 export function subscribe(topic: Topic): () => void {
-  if (!realtimeAvailable) return () => {};
   let released = false;
   const existing = channels.get(topic);
   if (existing) {
     existing.refs += 1;
   } else {
-    const entry = {channel: null as unknown as Channel, refs: 1};
+    const entry: Entry = {channel: null, refs: 1, connecting: false};
     channels.set(topic, entry);
-    client().then((instance) => {
-      if (released && entry.refs <= 0) return;
-      const channel = instance.channel(`rm:${topic}`, {config: {broadcast: {self: false}}});
-      entry.channel = channel;
-      channel
-        .on('broadcast', {event: '*'}, (message) => {
-          liveBus.emit({topic, event: message.event, payload: message.payload || {}});
-        })
-        .subscribe((status) => {
-          if (status === 'SUBSCRIBED') setConnected(true);
-          else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') setConnected(false);
-        });
-    });
+    connect(topic, entry);
   }
   return () => {
     if (released) return;

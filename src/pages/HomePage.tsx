@@ -13,6 +13,7 @@ import {Smoke} from '../components/effects/Smoke';
 import {Starfield} from '../components/effects/Starfield';
 import {SignatureTitle} from '../components/hero/SignatureTitle';
 import {TonightBar} from '../components/home/TonightBar';
+import {FeaturedVideo} from '../components/home/FeaturedVideo';
 import {CountdownUnits, EventCard} from '../components/events/EventCard';
 import {LeaderCard} from '../components/about/LeaderCard';
 import {useLiveData} from '../hooks/useLiveData';
@@ -172,6 +173,9 @@ export const HomePage: React.FC = () => {
           ))}
         </div>
       </div>
+
+      {/* The house's film, when the owner set one. */}
+      {houseData?.video && <FeaturedVideo clip={houseData.video}/>}
 
       <TonightBar/>
 

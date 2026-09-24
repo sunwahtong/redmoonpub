@@ -7,11 +7,14 @@ import {audit, notifyManagers, requireRole, requireUser} from '../auth.ts';
 import {bad, notFound, parse, readJson, type Router} from '../http.ts';
 import {broadcast} from '../realtime.ts';
 import {applicationStaff, messageOf, RESERVATION_STATUSES, reservationStaff} from './public.ts';
+import {BLOCKING_STATUSES, checkTable, loadFloorPlan} from './floor.ts';
 import type {Queryable, Row} from '../types.ts';
 
 const reservationUpdate = z.object({
   status: z.enum(RESERVATION_STATUSES, {message: 'Ismeretlen állapot.'}).optional(),
-  staffNote: z.string().trim().max(300).optional()
+  staffNote: z.string().trim().max(300).optional(),
+  /** A table of the plan; an empty string clears it. */
+  tableId: z.string().trim().max(40).optional()
 });
 
 const applicationUpdate = z.object({
@@ -51,14 +54,27 @@ export function registerGuestRoutes(router: Router): void {
     const existing = (await db.query('select * from public.reservations where id = $1', [params.id])).rows[0];
     if (!existing) throw notFound('A foglalás nem található.');
     const body = parse(reservationUpdate, await readJson(req));
-    if (body.status === undefined && body.staffNote === undefined) throw bad('Nincs mit menteni.');
+    if (body.status === undefined && body.staffNote === undefined && body.tableId === undefined) throw bad('Nincs mit menteni.');
     const status = body.status ?? existing.status;
     const staffNote = body.staffNote ?? existing.staff_note ?? '';
+    const tableId = body.tableId ?? existing.table_id ?? '';
+    let tableLabel = tableId && tableId === existing.table_id ? existing.table_label || '' : '';
+    // The table is looked at whenever the booking ends up holding one: on assignment, and when it is
+    // confirmed or seated with one. The house may seat anyone anywhere, so the tier gate does not apply.
+    if (tableId) {
+      const plan = await loadFloorPlan(db);
+      const holds = (BLOCKING_STATUSES as readonly string[]).includes(status);
+      const table = holds
+        ? await checkTable(db, plan, tableId, Number(existing.guests) || 1, existing.tier, new Date(existing.starts_at), existing.id, {skipTier: true})
+        : plan.tables.find((entry) => entry.id === tableId && entry.active !== false);
+      if (!table) throw bad('Ez az asztal nincs a térképen.');
+      tableLabel = table.label;
+    }
     const {rows} = await db.query(
-      `update public.reservations set status = $2, staff_note = $3, handled_at = now(), handled_by_name = $4, updated_at = now() where id = $1 returning *`,
-      [params.id, status, staffNote, me.name]
+      `update public.reservations set status = $2, staff_note = $3, handled_at = now(), handled_by_name = $4, updated_at = now(), table_id = $5, table_label = $6 where id = $1 returning *`,
+      [params.id, status, staffNote, me.name, tableId, tableLabel]
     );
-    await audit(db, me, 'RESERVATION_UPDATE', `${existing.code} · ${existing.name} · ${status}`);
+    await audit(db, me, 'RESERVATION_UPDATE', `${existing.code} · ${existing.name} · ${status}${tableLabel ? ` · ${tableLabel}. asztal` : ''}`);
     await broadcast('reservations', 'update', {reservationId: params.id});
     return {reservation: reservationStaff(rows[0])};
   });

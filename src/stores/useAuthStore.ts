@@ -55,6 +55,8 @@ export interface AuthUser {
   lastLoginAt: string | null;
   createdAt: string | null;
   mustChangePassword?: boolean;
+  /** Own account only: guided-tour modules finished or skipped ({module: 'done' | 'skipped'}). */
+  tours?: Record<string, string>;
   capabilities: Capabilities;
 }
 

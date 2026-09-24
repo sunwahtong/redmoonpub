@@ -15,6 +15,7 @@ import './styles/chrome.css';
 import './styles/premium.css';
 import './styles/console.css';
 import './styles/club.css';
+import './styles/floor.css';
 
 installMediaVariables();
 

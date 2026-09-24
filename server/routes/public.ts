@@ -33,6 +33,8 @@ import {broadcast, realtimeEnabled} from '../realtime.ts';
 import {config} from '../config.ts';
 import type {Queryable, Request, Row} from '../types.ts';
 import {effectiveStreamUrl, onAir, stationEmbedUrl, stationSlug, syncStation} from '../station.ts';
+import {memberForBooking, memberStats} from './members.ts';
+import {checkTable, loadFloorPlan} from './floor.ts';
 
 export const RESERVATION_OCCASIONS = ['este', 'szuletesnap', 'uzleti', 'randi', 'csapat', 'vip', 'egyeb'] as const;
 export const RESERVATION_TIERS = ['none', 'silver', 'gold', 'black', 'royal'] as const;
@@ -99,6 +101,10 @@ export const reservationPublic = (row: Row) => ({
   guests: row.guests,
   occasion: row.occasion,
   tier: row.tier,
+  memberCode: row.member_code || '',
+  memberName: row.member_name || '',
+  tableId: row.table_id || '',
+  tableLabel: row.table_label || '',
   note: row.note || '',
   status: row.status,
   staffNote: row.staff_note || '',
@@ -165,6 +171,10 @@ const reservationCreate = z.object({
   at: z.string().trim().min(1, 'Válassz időpontot.'),
   occasion: z.enum(RESERVATION_OCCASIONS, {message: 'Ismeretlen alkalom.'}).default('este'),
   tier: z.enum(RESERVATION_TIERS, {message: 'Ismeretlen tagsági szint.'}).default('none'),
+  /** A House membership code; the tier comes from the card, not from the form. */
+  memberCode: z.string().trim().max(20).default(''),
+  /** A table of the floor plan; empty means "any table", the house picks. */
+  tableId: z.string().trim().max(40).default(''),
   note: z.string().trim().max(400).default(''),
   visitorToken: z.string().trim().min(1, 'A böngészőazonosító hiányzik. Frissítsd az oldalt.').max(200)
 });
@@ -231,6 +241,8 @@ export async function houseStatus(db: Queryable) {
     nowPlaying: club.rows[0]?.station_title ? {title: club.rows[0].station_title as string, artist: (club.rows[0].station_artist || '') as string} : null,
     notice: club.rows[0]?.notice || '',
     nextEvent: event.rows[0] ? eventFromRow(event.rows[0]) : null,
+    /** Where the browser subscribes for pushes. The publishable key is public by design. */
+    realtime: realtimeEnabled() && config.supabasePublishableKey ? {url: config.supabaseUrl, key: config.supabasePublishableKey} : null,
     serverNow: new Date().toISOString()
   };
 }
@@ -255,11 +267,14 @@ export function registerPublicRoutes(router: Router): void {
 
   router.get('/api/public/house', async ({db}) => {
     const [house, people] = await Promise.all([
-      db.query('select name, address, phone, registration from public.house where id = 1'),
+      db.query('select name, address, phone, registration, featured_video, featured_video_title, featured_video_caption from public.house where id = 1'),
       db.query('select id, name, title, note, monogram, tier, sort_order from public.house_people where active order by sort_order, name')
     ]);
+    const row = house.rows[0] || {};
     return {
-      house: house.rows[0] || {name: 'Red Moon Pub', address: '', phone: '', registration: ''},
+      house: {name: row.name || 'Red Moon Pub', address: row.address || '', phone: row.phone || '', registration: row.registration || ''},
+      video: row.featured_video ? {id: row.featured_video, title: row.featured_video_title || '', caption: row.featured_video_caption || ''} : null,
+      members: await memberStats(db),
       people: people.rows.map((row) => ({
         id: row.id,
         name: row.name,
@@ -474,7 +489,7 @@ export function registerPublicRoutes(router: Router): void {
 
   router.post('/api/reservations', async ({db, req}) => {
     const body = parse(reservationCreate, await readJson(req));
-    await rateLimit(db, `reservation:${clientIp(req)}`, 10, 60 * 60 * 1000);
+    await rateLimit(db, `reservation:${clientIp(req)}`, 20, 60 * 60 * 1000);
     const when = new Date(body.at);
     if (Number.isNaN(when.getTime())) throw bad('Érvénytelen időpont.');
     if (when.getTime() < Date.now() + 30 * 60000) throw bad('Legalább fél órával előbbre foglalj.');
@@ -486,16 +501,21 @@ export function registerPublicRoutes(router: Router): void {
     if (open.rows[0].n >= RESERVATION_MAX_OPEN) {
       throw tooMany(`Egyszerre legfeljebb ${RESERVATION_MAX_OPEN} élő foglalásod lehet. Mondj le egyet, mielőtt újat kérsz.`);
     }
+    // A member's code settles the tier; without one the booking carries no tier at all.
+    const member = await memberForBooking(db, body.memberCode, phone);
+    const tier = member ? member.tier : 'none';
+    // A named table must be on the plan, fit the party, be open to their tier and be free at that time.
+    const table = body.tableId ? await checkTable(db, await loadFloorPlan(db), body.tableId, body.guests, tier, when) : null;
     const {rows} = await db.query(
-      `insert into public.reservations (code, starts_at, name, phone, guests, occasion, tier, note, visitor_hash)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9) returning *`,
-      [shortCode(), when, body.name, phone, body.guests, body.occasion, body.tier, body.note, fingerprint]
+      `insert into public.reservations (code, starts_at, name, phone, guests, occasion, tier, note, visitor_hash, member_code, member_name, table_id, table_label)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) returning *`,
+      [shortCode(), when, body.name, phone, body.guests, body.occasion, tier, body.note, fingerprint, member ? member.code : '', member ? member.name : '', table ? table.id : '', table ? table.label : '']
     );
     const reservation = rows[0];
     await notifyManagers(
       db,
       'Új asztalfoglalás',
-      `${reservation.name} · ${reservation.guests} fő · ${new Date(reservation.starts_at).toLocaleString('hu-HU')} · ${reservation.code}`,
+      `${reservation.name} · ${reservation.guests} fő · ${new Date(reservation.starts_at).toLocaleString('hu-HU')}${reservation.table_label ? ` · ${reservation.table_label}. asztal` : ''} · ${reservation.code}`,
       {reservationId: reservation.id}
     );
     await broadcast('reservations', 'new', {reservationId: reservation.id});

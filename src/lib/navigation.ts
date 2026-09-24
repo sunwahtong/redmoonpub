@@ -77,6 +77,9 @@ export const NAV_GROUP: NavGroup = {
   ]
 };
 
+/** The staff console and the booth — not the login page, which is public chrome with a public pill. */
+export const isConsolePath = (pathname: string): boolean => pathname === '/staff' || pathname.startsWith('/staff/') || pathname === '/dj';
+
 /** Everything public, flattened. The footer lists the lot. */
 export const ALL_PUBLIC_LINKS: NavLink[] = [...NAV_LINKS, ...NAV_GROUP.links];
 
@@ -118,6 +121,7 @@ export const STAFF_NAV: StaffNavLink[] = [
 
   {to: '/staff/reservations', label: 'FOGLALÁSOK', need: 'staff', group: 'VENDÉG'},
   {to: '/staff/applications', label: 'JELENTKEZÉSEK', need: 'manager', group: 'VENDÉG'},
+  {to: '/staff/members', label: 'A HOUSE', need: 'manager', group: 'VENDÉG'},
 
   {to: '/staff/orders', label: 'BESZERZÉS', need: 'staff', group: 'KÉSZLET'},
   {to: '/staff/inventory', label: 'RAKTÁR', need: 'manager', group: 'KÉSZLET'},

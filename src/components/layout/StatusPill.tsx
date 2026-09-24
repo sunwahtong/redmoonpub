@@ -5,6 +5,7 @@ import {useHouseStatus} from '../../hooks/useHouseStatus';
 import {useCountdown} from '../../hooks/useCountdown';
 import {formatTime, formatWeekday} from '../../lib/api';
 import {useChromeStore} from '../../stores/useChromeStore';
+import {isConsolePath} from '../../lib/navigation';
 
 /** What the closed house says under its title. Facts, not a slogan. */
 export function closedLine(closedAt: string | null | undefined, nextEvent: {startsAt: string} | null | undefined): string {
@@ -33,7 +34,7 @@ export const StatusPill: React.FC = () => {
     setExpanded(false);
   }, [location.pathname, setExpanded]);
 
-  const hidden = location.pathname.startsWith('/staff') || location.pathname === '/dj';
+  const hidden = isConsolePath(location.pathname);
 
   const since = useMemo(() => {
     if (!data?.open || !data.since) return '';
@@ -115,7 +116,7 @@ export const DoorChip: React.FC<{className?: string}> = ({className = ''}) => {
   const location = useLocation();
   const toggleDoor = useChromeStore((state) => state.toggleDoor);
   if (!data) return null;
-  const inConsole = location.pathname.startsWith('/staff') || location.pathname === '/dj';
+  const inConsole = isConsolePath(location.pathname);
   const classes = `rm-door-chip ${data.open ? 'is-open' : 'is-closed'}${data.live ? ' is-live' : ''} ${className}`;
   const title = data.open ? `Nyitva ${data.since ? formatTime(data.since) : ''} óta` : 'Zárva';
   const body = (

@@ -81,6 +81,10 @@ export interface HousePerson {
 export interface PublicHouse {
   house: {name: string; address: string; phone: string; registration: string};
   people: HousePerson[];
+  /** The owner's featured YouTube clip for the home page, or null. */
+  video: {id: string; title: string; caption: string} | null;
+  /** House membership, counted. */
+  members?: {total: number; byTier: Record<'silver' | 'gold' | 'black' | 'royal', number>};
 }
 
 export type GalleryTag = 'ter' | 'este' | 'jel';

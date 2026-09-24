@@ -1,6 +1,6 @@
 import React, {useMemo, useRef, useState} from 'react';
 import {useNavigate} from 'react-router-dom';
-import {Camera, Coins, KeyRound, LogOut, Receipt, Timer, Trash2, Truck} from 'lucide-react';
+import {Camera, Coins, KeyRound, LogOut, Play, Receipt, Timer, Trash2, Truck} from 'lucide-react';
 import {Btn} from '../../components/ui/Btn';
 import {ActivityCalendar} from '../../components/ui/ActivityCalendar';
 import {Avatar, Badge, Chips, Field, inputClass, PageHeader, Panel, Stat} from '../../components/ui/console';
@@ -12,6 +12,8 @@ import {toast} from '../../stores/useToastStore';
 import {JOB_GLYPH, JOB_LABEL, type StaffJob} from '../../lib/orders';
 import {roleAtLeast, useAuthStore, type AuthUser} from '../../stores/useAuthStore';
 import {SignatureStudio} from '../../components/profile/SignatureStudio';
+import {requiredModules, TOUR_MODULES} from '../../lib/tour';
+import {startTour} from '../../stores/useTourStore';
 
 interface PersonalAnalytics {
   totals: {
@@ -298,7 +300,7 @@ export const ProfilePage: React.FC = () => {
         <div className="rm-gilt my-14"/>
 
         <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-2">
-          <form onSubmit={saveProfile} className="rm-card flex flex-col gap-3.5 p-7">
+          <form onSubmit={saveProfile} className="rm-card flex flex-col gap-3.5 p-7" data-tour="profile">
             <span className="rm-label">ADATOK</span>
             <h2 className="mb-2 font-heading text-[22px] text-white">Alapadatok</h2>
             <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
@@ -338,6 +340,26 @@ export const ProfilePage: React.FC = () => {
             </Btn>
           </form>
         </div>
+
+        {/* The guided tour, replayable part by part. */}
+        <Panel className="mt-3.5" label="BEMUTATÓ" title="A konzol, lépésről lépésre.">
+          <p className="text-[11px] leading-[1.7] text-[#8d8584]">Az első belépéskor végigvezettünk a konzolon. Bármelyik részt újranézheted — vagy az egészet elölről.</p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {requiredModules(user).map((id) => {
+              const module = TOUR_MODULES[id];
+              const state = user?.tours?.[id];
+              return (
+                <button key={id} type="button" onClick={() => startTour([id])} className="rm-chip" title={module.blurb}>
+                  <Play size={9}/> {module.label}
+                  <span className="rm-chip-count">{state === 'done' ? 'megnézve' : state === 'skipped' ? 'kihagyva' : 'új'}</span>
+                </button>
+              );
+            })}
+            <button type="button" onClick={() => startTour(requiredModules(user))} className="rm-chip is-active">
+              MIND ELÖLRŐL
+            </button>
+          </div>
+        </Panel>
       </section>
     </main>
   );
