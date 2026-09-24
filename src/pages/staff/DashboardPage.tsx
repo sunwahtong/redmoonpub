@@ -14,6 +14,7 @@ import {playSfx} from '../../lib/sfx';
 import {toast} from '../../stores/useToastStore';
 import {dialog} from '../../stores/useDialogStore';
 import {useAuthStore, can, roleAtLeast} from '../../stores/useAuthStore';
+import {useShiftReportStore} from '../../stores/useShiftReportStore';
 
 interface Dashboard {
   today: {revenue: number; items: number; salesCount: number};
@@ -80,6 +81,8 @@ export const DashboardPage: React.FC = () => {
   const shiftElapsed = useElapsed(dashboard?.openShift?.openedAt || null);
 
   const [busy, setBusy] = useState(false);
+  const pendingReports = useShiftReportStore((state) => state.queue.length);
+  const wakeReports = useShiftReportStore((state) => state.wake);
 
   const today = dashboard?.today;
   const counts = dashboard?.counts;
@@ -183,6 +186,14 @@ export const DashboardPage: React.FC = () => {
             </>
           }
         />
+
+        {pendingReports > 0 && (
+          <button type="button" onClick={wakeReports} className="rm-closing-banner">
+            <span className="rm-label">FONTOS</span>
+            <strong>{pendingReports === 1 ? 'Egy műszakzárás vár rád: az utalás részletei.' : `${pendingReports} műszakzárás vár rád: az utalások részletei.`}</strong>
+            <span>MEGNYITOM →</span>
+          </button>
+        )}
 
         {/* ------------------------------------------------ NOW */}
         <div className="rm-now-grid" data-tour="now">

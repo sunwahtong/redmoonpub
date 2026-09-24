@@ -1,3 +1,4 @@
+import {useShiftReportStore, type ShiftReport} from '../../stores/useShiftReportStore';
 import React, {useMemo, useState} from 'react';
 import {Check, DoorClosed, DoorOpen, LogOut, Moon, UserMinus, UserPlus, Users} from 'lucide-react';
 import {Btn, BtnLink} from '../../components/ui/Btn';
@@ -107,9 +108,11 @@ export const ShiftPage: React.FC = () => {
     });
     if (!sure) return;
     run(async () => {
-      await apiSend('/api/shifts/close', 'POST', {closingCash: Number(closingCash), notes});
+      const reply = await apiSend<{report?: ShiftReport | null}>('/api/shifts/close', 'POST', {closingCash: Number(closingCash), notes});
       setClosingCash('');
       setNotes('');
+      // The closer's own report opens at once; everyone else's arrives by push.
+      if (reply.report) useShiftReportStore.getState().push(reply.report);
     }, 'Műszak lezárva.');
   };
 

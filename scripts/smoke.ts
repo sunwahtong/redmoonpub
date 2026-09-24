@@ -575,7 +575,39 @@ await call('mgr', 'POST', '/api/documents/issued', {kind: 'transactions', refere
 await call('mgr', 'PUT', '/api/profile/signature', {mode: 'generated', seed: 'after-lock'}, {expect: 409});
 await call(owner, 'POST', `/api/users/${manager.data.user.id}/signature`, {}, {expect: 409});
 await call('mgr', 'POST', '/api/logout', {});
-await call(owner, 'POST', '/api/shifts/close', {closingCash: 9000, notes: 'smoke'});
+const closing = await call(owner, 'POST', '/api/shifts/close', {closingCash: 9000, notes: 'smoke'});
+const report = closing.data?.report;
+if (!report || typeof report.amount !== 'number' || !/^M-\d+, \S+ \d+\.( \d+\/\d+)? - Red M\. O\.$/.test(String(report.transfer?.memo))) {
+  console.log('FAIL the closer should get a closing report with the transfer memo', report);
+  failures += 1;
+}
+if (report?.transfer?.account !== '21541444-70524373' || report?.transfer?.owner !== 'Zhen Yu Xiao') {
+  console.log('FAIL the report should say where the money goes', report?.transfer);
+  failures += 1;
+}
+const pendingOwner = await call(owner, 'GET', '/api/shift-reports/pending');
+if (!(pendingOwner.data?.reports || []).some((entry: {id: string}) => entry.id === report?.id)) {
+  console.log('FAIL the report should wait for the closer until seen', pendingOwner.data);
+  failures += 1;
+}
+await call('bar3', 'POST', '/api/login', {username: bartender.data.user.username, password: 'Bar12345y', force: true});
+const pendingBar = await call('bar3', 'GET', '/api/shift-reports/pending');
+const barReport = (pendingBar.data?.reports || []).find((entry: {shiftId: string}) => entry.shiftId === shift.data.shift.id);
+if (!barReport || barReport.amount !== 0 || !String(barReport.transfer?.memo).endsWith('- Smoke B.')) {
+  console.log('FAIL every member of the shift should get a report', pendingBar.data);
+  failures += 1;
+}
+if (barReport) {
+  const seen = await call('bar3', 'POST', `/api/shift-reports/${barReport.id}/seen`, {});
+  if (seen.data?.pending !== 0) {
+    console.log('FAIL a seen report should leave nothing pending', seen.data);
+    failures += 1;
+  }
+}
+await call('bar3', 'POST', `/api/shift-reports/${report?.id}/seen`, {}, {expect: 404});
+await call('bar3', 'GET', '/api/shift-reports');
+await call('bar3', 'POST', '/api/logout', {});
+await call(owner, 'POST', `/api/shift-reports/${report?.id}/seen`, {});
 const closed = await call('guest', 'GET', '/api/public/status');
 if (closed.data?.open) {
   console.log('FAIL pub should close with the shift');

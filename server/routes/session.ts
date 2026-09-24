@@ -1,6 +1,7 @@
 /**
  * Signing in and out, the current account, presence and the profile.
  */
+import {unseenCount} from './shiftReports.ts';
 import {z} from 'zod';
 import {
   activeSessionsOf,
@@ -111,7 +112,7 @@ export function registerSessionRoutes(router: Router): void {
     await db.query('update public.staff_accounts set last_active_at = now() where id = $1', [me.id]);
     // A promotion while signed in shows up here, so the signature prompt can appear at once.
     const signaturePrompt = roleAtLeast(me.role, 'manager') && !me.signatureDecided && !me.signatureLockedAt;
-    return {ok: true, at: new Date().toISOString(), role: me.role, signaturePrompt};
+    return {ok: true, at: new Date().toISOString(), role: me.role, signaturePrompt, shiftReports: await unseenCount(db, me.id)};
   });
 
   router.get('/api/presence', async ({db, user}) => {

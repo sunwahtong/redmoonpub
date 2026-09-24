@@ -1,5 +1,5 @@
 import React, {useMemo} from 'react';
-import {seatPositions, tableClashes, tableState, type FloorFeature, type FloorPlan, type FloorTable, type TableState} from '../../../shared/floorPlan.ts';
+import {featureSize, seatPositions, smoothPath, tableClashes, tableState, type FloorFeature, type FloorPlan, type FloorTable, type TableSide, type TableState} from '../../../shared/floorPlan.ts';
 import type {HeldTable} from '../../hooks/useFloorPlan';
 
 export const STATE_LABEL: Record<TableState, string> = {
@@ -30,6 +30,8 @@ interface Props {
 }
 
 const hhmm = (value: string | Date): string => new Date(value).toLocaleTimeString('hu-HU', {hour: '2-digit', minute: '2-digit'});
+const centred = {textAnchor: 'middle', dominantBaseline: 'middle'} as const;
+const pointsAttr = (points: [number, number][]): string => points.map((point) => point.join(',')).join(' ');
 
 /** The table's outline, used for the body, the hatch and the pulse ring. */
 const Body: React.FC<{table: FloorTable; className?: string; fill?: string; inflate?: number}> = ({table, className, fill, inflate = 0}) =>
@@ -41,7 +43,11 @@ const Body: React.FC<{table: FloorTable; className?: string; fill?: string; infl
 
 /** A booth's bench: a thick line around the seated sides. */
 const Bench: React.FC<{table: FloorTable}> = ({table}) => {
-  const sides = table.seatSides?.length ? table.seatSides : ['left', 'top', 'right'];
+  const sides: TableSide[] = table.seatCounts
+    ? (Object.keys(table.seatCounts) as TableSide[]).filter((side) => (table.seatCounts?.[side] || 0) > 0)
+    : table.seatSides?.length
+      ? table.seatSides
+      : ['left', 'top', 'right'];
   const d = 22;
   const x0 = -table.w / 2 - d;
   const x1 = table.w / 2 + d;
@@ -55,24 +61,62 @@ const Bench: React.FC<{table: FloorTable}> = ({table}) => {
   return <path d={segments.join(' ')} className="rm-floor-bench"/>;
 };
 
+/** Where a rectangular bar's stools go. */
+function barStools(w: number, h: number, side: TableSide | 'none' | undefined, count: number | undefined): {cx: number; cy: number}[] {
+  const vertical = h > w;
+  const where = side || (vertical ? 'right' : 'bottom');
+  if (where === 'none') return [];
+  const along = where === 'top' || where === 'bottom' ? w : h;
+  const n = count ?? Math.max(2, Math.floor(along / 42));
+  return Array.from({length: n}, (_, i) => {
+    const t = (i + 0.5) / n;
+    if (where === 'top') return {cx: -w / 2 + w * t, cy: -h / 2 - 15};
+    if (where === 'bottom') return {cx: -w / 2 + w * t, cy: h / 2 + 15};
+    if (where === 'left') return {cx: -w / 2 - 15, cy: -h / 2 + h * t};
+    return {cx: w / 2 + 15, cy: -h / 2 + h * t};
+  });
+}
+
 const Feature: React.FC<{feature: FloorFeature}> = ({feature}) => {
-  const {kind, x = 0, y = 0, w = 80, h = 40, rotation = 0, label} = feature;
-  if (kind === 'wall') return <polyline points={(feature.points || []).map((point) => point.join(',')).join(' ')} className="rm-floor-wall"/>;
+  const [dw, dh] = featureSize(feature.kind);
+  const {kind, x = 0, y = 0, w = dw, h = dh, rotation = 0, label} = feature;
   const transform = `translate(${x} ${y})${rotation ? ` rotate(${rotation})` : ''}`;
-  const centred = {textAnchor: 'middle', dominantBaseline: 'middle'} as const;
+  const upright = rotation ? `rotate(${-rotation})` : undefined;
 
   switch (kind) {
+    case 'wall':
+      return <polyline points={pointsAttr(feature.points || [])} className="rm-floor-wall"/>;
+    case 'sofa': {
+      const d = smoothPath(feature.points || []);
+      return (
+        <g className="rm-floor-sofa">
+          <path d={d} className="rm-floor-sofa-outer"/>
+          <path d={d} className="rm-floor-sofa-inner"/>
+        </g>
+      );
+    }
     case 'bar': {
+      if (feature.points) {
+        const centre = feature.points.reduce((sum, point) => [sum[0] + point[0], sum[1] + point[1]], [0, 0]).map((value) => value / feature.points!.length);
+        const lx = feature.x ?? centre[0];
+        const ly = feature.y ?? centre[1];
+        return (
+          <g className="rm-floor-bar">
+            <polygon points={pointsAttr(feature.points)} className="rm-floor-bar-poly"/>
+            <text transform={`translate(${lx} ${ly})${rotation ? ` rotate(${rotation})` : ''}`} className="rm-floor-feature-label" {...centred}>
+              {label || 'PULT'}
+            </text>
+          </g>
+        );
+      }
       const vertical = h > w;
-      const count = Math.max(2, Math.floor((vertical ? h : w) / 42));
       return (
         <g transform={transform} className="rm-floor-bar">
           <rect x={-w / 2} y={-h / 2} width={w} height={h} rx="8" fill="url(#rm-floor-bar)"/>
           <rect x={-w / 2 + 6} y={-h / 2 + 6} width={w - 12} height={h - 12} rx="5" className="rm-floor-bar-top"/>
-          {Array.from({length: count}, (_, i) => {
-            const t = (i + 0.5) / count;
-            return vertical ? <circle key={i} cx={w / 2 + 15} cy={-h / 2 + h * t} r="6" className="rm-floor-stool"/> : <circle key={i} cx={-w / 2 + w * t} cy={h / 2 + 15} r="6" className="rm-floor-stool"/>;
-          })}
+          {barStools(w, h, feature.stoolSide, feature.stools).map((stool, i) => (
+            <circle key={i} cx={stool.cx} cy={stool.cy} r="6" className="rm-floor-stool"/>
+          ))}
           <text className="rm-floor-feature-label" transform={vertical ? 'rotate(-90)' : undefined} {...centred}>
             {label || 'PULT'}
           </text>
@@ -88,7 +132,22 @@ const Feature: React.FC<{feature: FloorFeature}> = ({feature}) => {
           <path d={`M ${-w / 2 - 22} -15 q -14 15 0 30`} className="rm-floor-wave" style={{animationDelay: '0.4s'}}/>
           <path d={`M ${w / 2 + 12} -9 q 9 9 0 18`} className="rm-floor-wave"/>
           <path d={`M ${w / 2 + 22} -15 q 14 15 0 30`} className="rm-floor-wave" style={{animationDelay: '0.4s'}}/>
-          <text {...centred}>{label || 'DJ'}</text>
+          <text transform={upright} {...centred}>
+            {label || 'DJ'}
+          </text>
+        </g>
+      );
+    case 'speaker':
+      return (
+        <g transform={transform} className="rm-floor-speaker">
+          <circle r={w / 2 + 8} className="rm-floor-speaker-ring"/>
+          <circle r={w / 2}/>
+          <text {...centred}>S</text>
+          {label && (
+            <text y={w / 2 + 14} className="rm-floor-feature-label rm-floor-feature-caption" {...centred}>
+              {label}
+            </text>
+          )}
         </g>
       );
     case 'dance':
@@ -96,7 +155,7 @@ const Feature: React.FC<{feature: FloorFeature}> = ({feature}) => {
         <g transform={transform} className="rm-floor-dance">
           <rect x={-w / 2} y={-h / 2} width={w} height={h} rx="10" fill="url(#rm-floor-checker)"/>
           <rect x={-w / 2} y={-h / 2} width={w} height={h} rx="10" className="rm-floor-dance-frame"/>
-          <text className="rm-floor-feature-label" {...centred}>
+          <text className="rm-floor-feature-label" transform={upright} {...centred}>
             {label || 'TÁNCPARKETT'}
           </text>
         </g>
@@ -106,16 +165,47 @@ const Feature: React.FC<{feature: FloorFeature}> = ({feature}) => {
         <g transform={transform} className="rm-floor-door">
           <path d={`M ${-w / 2} ${-h / 2} A ${w} ${w} 0 0 1 ${w / 2} ${-h / 2 - w * 0.55}`}/>
           <rect x={-w / 2} y={-h / 2} width={w} height={h} rx="3"/>
-          <text y={-h / 2 - 14} className="rm-floor-feature-label" {...centred}>
-            {label || 'BEJÁRAT'}
-          </text>
+          <g transform={`translate(0 ${-h / 2 - w * 0.55 - 10})`}>
+            <text transform={upright} className="rm-floor-feature-label rm-floor-feature-caption" {...centred}>
+              {label || 'BEJÁRAT'}
+            </text>
+          </g>
+        </g>
+      );
+    case 'stairs':
+      return (
+        <g transform={transform} className="rm-floor-stairs">
+          {[0, 1, 2, 3].map((i) => {
+            const half = (w * (0.55 + 0.15 * i)) / 2;
+            const ly = -h / 2 + (h * (i + 0.5)) / 4;
+            return <line key={i} x1={-half} y1={ly} x2={half} y2={ly}/>;
+          })}
+          {label && (
+            <text y={h / 2 + 12} className="rm-floor-feature-label rm-floor-feature-caption" {...centred}>
+              {label}
+            </text>
+          )}
         </g>
       );
     case 'pillar':
       return (
         <g transform={transform} className="rm-floor-pillar">
-          <circle r={w / 2}/>
-          <circle r={Math.max(2, w / 2 - 5)} className="rm-floor-pillar-inner"/>
+          {w === h ? (
+            <>
+              <circle r={w / 2}/>
+              <circle r={Math.max(2, w / 2 - 5)} className="rm-floor-pillar-inner"/>
+            </>
+          ) : (
+            <>
+              <rect x={-w / 2} y={-h / 2} width={w} height={h} rx="10"/>
+              <rect x={-w / 2 + 5} y={-h / 2 + 5} width={w - 10} height={h - 10} rx="7" className="rm-floor-pillar-inner"/>
+            </>
+          )}
+          {label && (
+            <text className="rm-floor-feature-label rm-floor-feature-caption" {...centred}>
+              {label}
+            </text>
+          )}
         </g>
       );
     case 'plant':
@@ -127,12 +217,16 @@ const Feature: React.FC<{feature: FloorFeature}> = ({feature}) => {
           <circle r={w * 0.13} className="rm-floor-plant-pot"/>
         </g>
       );
+    case 'seat':
+      return <circle cx={x} cy={y} r={w / 2} className="rm-floor-loose-seat"/>;
+    case 'stool':
+      return <circle cx={x} cy={y} r={w / 2} className="rm-floor-stool"/>;
     case 'restroom':
     case 'area':
       return (
         <g transform={transform} className={kind === 'restroom' ? 'rm-floor-room' : 'rm-floor-area'}>
           <rect x={-w / 2} y={-h / 2} width={w} height={h} rx="4"/>
-          <text className="rm-floor-feature-label" {...centred}>
+          <text className="rm-floor-feature-label" transform={upright} {...centred}>
             {label || (kind === 'restroom' ? 'WC' : '')}
           </text>
         </g>
@@ -162,6 +256,7 @@ const Table: React.FC<{
   const interactive = !!onSelect && state !== 'inactive';
   const upright = rotation ? `rotate(${-rotation})` : undefined;
   const activate = () => onSelect?.(table, state);
+  const armchair = table.seatStyle === 'armchair';
   return (
     <g
       transform={`translate(${table.x} ${table.y})${rotation ? ` rotate(${rotation})` : ''}`}
@@ -184,23 +279,27 @@ const Table: React.FC<{
       <title>{title}</title>
       {selected && <Body table={table} className="rm-floor-pulse" inflate={10}/>}
       <g className="rm-floor-table-body">
-        {table.shape === 'booth' && <Bench table={table}/>}
-        {seats.map((seat, index) => (
-          <circle key={index} cx={seat.x} cy={seat.y} r="7" className={`rm-floor-seat${index < filled ? ' is-filled' : ''}`}/>
-        ))}
+        {table.shape === 'booth' && table.bench !== false && <Bench table={table}/>}
+        {seats.map((seat, index) =>
+          armchair ? (
+            <rect key={index} x={seat.x - 8} y={seat.y - 8} width="16" height="16" rx="4" transform={`rotate(${seat.angle} ${seat.x} ${seat.y})`} className={`rm-floor-seat is-armchair${index < filled ? ' is-filled' : ''}`}/>
+          ) : (
+            <circle key={index} cx={seat.x} cy={seat.y} r="7" className={`rm-floor-seat${index < filled ? ' is-filled' : ''}`}/>
+          )
+        )}
         <Body table={table} className="rm-floor-body"/>
         {state === 'taken' && <Body table={table} className="rm-floor-hatch" fill="url(#rm-floor-hatch)"/>}
         <g transform={upright}>
-          <text y={table.h < 40 ? 0 : -3} className="rm-floor-table-label" textAnchor="middle" dominantBaseline="middle">
+          <text y={table.h < 40 ? 0 : -3} className="rm-floor-table-label" {...centred}>
             {table.label}
           </text>
           {table.h >= 40 && (
-            <text y={12} className="rm-floor-table-seats" textAnchor="middle" dominantBaseline="middle">
+            <text y={12} className="rm-floor-table-seats" {...centred}>
               {table.seats} FŐ
             </text>
           )}
           {table.minTier && (
-            <text x={table.w / 2 - 8} y={-table.h / 2 + 9} className="rm-floor-table-crown" textAnchor="middle" dominantBaseline="middle">
+            <text x={table.w / 2 - 8} y={-table.h / 2 + 9} className="rm-floor-table-crown" {...centred}>
               王
             </text>
           )}
@@ -266,7 +365,7 @@ export const FloorMap: React.FC<Props> = ({plan, taken, at, slotMinutes, guests,
         {plan.zones.map((zone) => (
           <g key={zone.id} className="rm-floor-zone">
             <rect x={zone.x} y={zone.y} width={zone.w} height={zone.h} rx="10"/>
-            <text x={zone.x + 14} y={zone.y + 20}>{zone.name.toUpperCase()}</text>
+            <text x={zone.labelX ?? zone.x + 14} y={zone.labelY ?? zone.y + 20}>{zone.name.toUpperCase()}</text>
           </g>
         ))}
 

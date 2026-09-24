@@ -110,3 +110,18 @@
     .rm-floor-pulse, .rm-floor-wave { animation: none; }
     .rm-floor-table-body { transition: none; }
 }
+
+/* The house's own scenery: sofas, speakers, stairs, loose chairs, polygon bars */
+.rm-floor-svg { max-height: 82vh; }
+.rm-floor-sofa-outer { fill: none; stroke: #4a1a26; stroke-width: 22; stroke-linecap: round; stroke-linejoin: round; }
+.rm-floor-sofa-inner { fill: none; stroke: rgba(227, 40, 78, 0.72); stroke-width: 10; stroke-linecap: round; stroke-linejoin: round; }
+.rm-floor-speaker circle { fill: #1d0a10; stroke: var(--rm-red); stroke-width: 1.5; }
+.rm-floor-speaker text { fill: #fff; font-size: 16px; font-weight: 700; }
+.rm-floor-speaker-ring { fill: none !important; stroke: rgba(255, 43, 79, 0.5) !important; stroke-width: 1 !important; transform-box: fill-box; transform-origin: center; animation: rmFloorPulse 2.4s ease-out infinite; }
+.rm-floor-stairs line { stroke: rgba(255, 90, 118, 0.6); stroke-width: 2; stroke-linecap: round; }
+.rm-floor-loose-seat { fill: #2a2026; stroke: rgba(255, 255, 255, 0.32); stroke-width: 1; }
+.rm-floor-bar-poly { fill: url(#rm-floor-bar); stroke: rgba(255, 90, 118, 0.45); stroke-width: 1.5; stroke-linejoin: round; }
+.rm-floor-pillar rect { fill: #1a1114; stroke: #3b2229; stroke-width: 2; }
+.rm-floor-pillar rect.rm-floor-pillar-inner { fill: #0d0a0c; stroke: none; }
+.rm-floor-feature-caption { font-size: 8px; letter-spacing: 0.2em; fill: #6f6968; }
+.rm-floor-speaker .rm-floor-feature-caption { fill: #8d8584; }

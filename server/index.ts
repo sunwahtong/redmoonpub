@@ -33,6 +33,7 @@ import {registerMediaRoutes} from './routes/media.ts';
 import {registerCommunityRoutes} from './routes/community.ts';
 import {registerMemberRoutes} from './routes/members.ts';
 import {registerFloorRoutes} from './routes/floor.ts';
+import {registerShiftReportRoutes} from './routes/shiftReports.ts';
 import type {Ctx, Db, Request} from './types.ts';
 
 const router = createRouter();
@@ -49,6 +50,7 @@ registerMediaRoutes(router);
 registerCommunityRoutes(router);
 registerMemberRoutes(router);
 registerFloorRoutes(router);
+registerShiftReportRoutes(router);
 
 let seeded: Promise<void> | null = null;
 

@@ -14,6 +14,7 @@ import {PointerSpotlight} from './components/effects/PointerSpotlight';
 import {Toaster} from './components/ui/Toaster';
 import {DialogHost} from './components/ui/DialogHost';
 import {TourHost} from './components/staff/Tour';
+import {ShiftReportHost} from './components/staff/ShiftReport';
 import {ErrorBoundary} from './components/ui/ErrorBoundary';
 import {useUiSounds} from './hooks/useUiSounds';
 import {useAuthStore} from './stores/useAuthStore';
@@ -117,6 +118,7 @@ export const App: React.FC = () => {
       <Toaster/>
       <DialogHost/>
       <TourHost/>
+      <ShiftReportHost/>
       <div className="flex min-h-screen flex-col">
         <Navbar/>
         <div className="flex-1">

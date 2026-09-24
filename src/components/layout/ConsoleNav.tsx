@@ -5,6 +5,7 @@ import {STAFF_NAV, type StaffNavLink} from '../../lib/navigation';
 import {can, roleAtLeast, useAuthStore} from '../../stores/useAuthStore';
 import {realtimeAvailable, useRealtimeConnected} from '../../lib/realtime';
 import {Avatar} from '../ui/console';
+import {useShiftReportStore} from '../../stores/useShiftReportStore';
 
 /** The console's four areas, in the order they read. */
 const GROUPS: StaffNavLink['group'][] = ['MŰSZAK', 'VENDÉG', 'KÉSZLET', 'HÁZ'];
@@ -27,6 +28,8 @@ export const ConsoleNav: React.FC = () => {
   const location = useLocation();
   const subRef = useRef<HTMLDivElement>(null);
   const connected = useRealtimeConnected();
+  const pendingReports = useShiftReportStore((state) => state.queue.length);
+  const wakeReports = useShiftReportStore((state) => state.wake);
   const [picked, setPicked] = useState<StaffNavLink['group'] | null>(null);
 
   const links = useMemo(
@@ -80,6 +83,11 @@ export const ConsoleNav: React.FC = () => {
             </button>
           ))}
           <span className="rm-console-spacer" aria-hidden="true"/>
+          {pendingReports > 0 && (
+            <button type="button" onClick={wakeReports} className="rm-console-alert" title="Műszakzárás vár rád">
+              <i aria-hidden="true"/> ZÁRÁS <span>· UTALÁS VÁR</span>
+            </button>
+          )}
           <span className={`rm-console-live${connected ? ' is-on' : ''}`} title={connected ? 'A változások azonnal megjelennek' : realtimeAvailable ? 'Kapcsolódás… addig rendszeres frissítés' : 'Rendszeres frissítés'}>
             <i aria-hidden="true"/> {connected ? 'ÉLŐ' : 'FRISSÍTÉS'}
           </span>

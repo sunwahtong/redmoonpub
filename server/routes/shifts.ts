@@ -11,6 +11,7 @@ import {audit, loadAccount, requireRole, requireUser, roleAtLeast} from '../auth
 import {bad, conflict, created, forbidden, iso, notFound, parse, readJson, type Router} from '../http.ts';
 import {saleFromRow} from './staff.ts';
 import {broadcast} from '../realtime.ts';
+import {createShiftReports, reportView} from './shiftReports.ts';
 import type {Queryable, Row, SessionUser} from '../types.ts';
 
 const openBody = z.object({
@@ -280,7 +281,11 @@ export function registerShiftRoutes(router: Router): void {
     });
     await audit(db, me, 'SHIFT_CLOSE', `Műszak zárva · bevétel ${revenue} Ft · záró kassza ${Math.round(body.closingCash)} Ft${house.pub_open ? ' · a ház bezárt' : ''}`);
     await broadcast('house', 'shift', {open: false});
-    return {shift: await loadShift(db, shift.id), transfer: closure.transfer, pubClosed: !!house.pub_open};
+    // Everyone who worked it gets their closing report; the closer sees theirs in the reply.
+    const reports = await createShiftReports(db, shift.id, {id: me.id, name: me.name}, breakdown, endedAt);
+    await broadcast('staff', 'shift-closed', {shiftId: shift.id, userIds: reports.map((row) => row.user_id)});
+    const own = reports.find((row) => row.user_id === me.id);
+    return {shift: await loadShift(db, shift.id), transfer: closure.transfer, pubClosed: !!house.pub_open, report: own ? await reportView(db, own) : null};
   });
 
   router.delete('/api/shifts/:id', async ({db, user, params}) => {

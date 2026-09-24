@@ -23,13 +23,16 @@ const hhmm = (value: Date | string): string => new Date(value).toLocaleTimeStrin
 
 export const slotEnd = (start: Date | string): Date => new Date(new Date(start).getTime() + RESERVATION_SLOT_MINUTES * 60000);
 
+/** The built-in room in canonical shape (defaults filled in), same as a saved one. */
+const defaultPlan = (): FloorPlan => normalizeFloorPlan(DEFAULT_FLOOR_PLAN);
+
 export async function loadFloorPlan(db: Queryable): Promise<FloorPlan> {
   const row = (await db.query('select plan from public.floor_plans where id = $1', [PLAN_ID])).rows[0];
-  if (!row) return DEFAULT_FLOOR_PLAN;
+  if (!row) return defaultPlan();
   try {
     return normalizeFloorPlan(row.plan);
   } catch {
-    return DEFAULT_FLOOR_PLAN;
+    return defaultPlan();
   }
 }
 
@@ -114,6 +117,6 @@ export function registerFloorRoutes(router: Router): void {
     await db.query('delete from public.floor_plans where id = $1', [PLAN_ID]);
     await audit(db, me, 'FLOOR_PLAN_RESET', 'alapértelmezett alaprajz');
     await broadcast('content', 'floor-plan');
-    return {plan: DEFAULT_FLOOR_PLAN};
+    return {plan: defaultPlan()};
   });
 }

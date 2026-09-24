@@ -147,6 +147,17 @@ open — in the header chip, the corner pill and the home hero, within a
 second. Closing the shift closes the door. Sales require an open shift and
 membership. Every shift keeps a per-member breakdown for the hours report.
 
+Closing also writes a **closing report** for everyone who worked the shift
+(and whoever closed it): what that person sold, and where to transfer it —
+the house's account number and owner, and the exact memo to write
+(`<shift id>, <closing day> - <first name + initials>`, e.g.
+`M-014, szeptember 25. 2/2 - Yuanzhe G.`; the `2/2` only appears when the
+day had several closings). The closer sees theirs the moment the shift
+closes, as an animated full-screen card; everyone else sees theirs the
+moment they are on the site — at once if they are signed in anywhere, on
+their next visit if not — and a pulsing ZÁRÁS badge in the console plus a
+banner on the dashboard keep pointing at it until they press MEGNÉZTEM.
+
 ### Reservations
 
 A booking walks a visible pipeline: received → being looked at (or

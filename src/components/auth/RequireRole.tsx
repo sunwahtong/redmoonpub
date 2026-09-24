@@ -4,6 +4,7 @@ import {useAuthStore, roleAtLeast, type Role} from '../../stores/useAuthStore';
 import {apiSend} from '../../lib/api';
 import {dialog} from '../../stores/useDialogStore';
 import {ConsoleNav} from '../layout/ConsoleNav';
+import {useShiftReportStore} from '../../stores/useShiftReportStore';
 
 interface Props {
   /** Minimum rank required to see the page. */
@@ -39,10 +40,12 @@ export const RequireRole: React.FC<Props> = ({need = 'staff', children}) => {
   useEffect(() => {
     if (!user) return;
     const beat = () =>
-      apiSend<{signaturePrompt?: boolean; role?: string}>('/api/presence/heartbeat', 'POST', {})
+      apiSend<{signaturePrompt?: boolean; role?: string; shiftReports?: number}>('/api/presence/heartbeat', 'POST', {})
         .then((reply) => {
           // A promotion since the last /api/me: refresh the account so the prompt can show.
           if ((reply.signaturePrompt && !user.signaturePrompt) || (reply.role && reply.role !== user.role)) restore();
+          // A closing that happened while the socket was quiet.
+          if (typeof reply.shiftReports === 'number' && reply.shiftReports !== useShiftReportStore.getState().queue.length) useShiftReportStore.getState().check();
         })
         .catch((error) => {
           // A 401 means the session ended elsewhere (takeover, revocation): re-check.
