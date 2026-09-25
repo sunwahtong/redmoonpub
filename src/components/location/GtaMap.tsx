@@ -15,7 +15,7 @@ import {BLIP_GROUP_LABEL, BLIP_GROUPS, BLIP_KINDS, BLIP_STYLES, blipMarkerHtml, 
 import blipStyles from '../../styles/blips.css?inline';
 
 /**
- * Tiles live under public/assets/map. The gta-v-map component builds its URLs as
+ * Tiles live under map-tiles/ (served at /assets/map). The gta-v-map component builds its URLs as
  * `<tileBaseUrl>/<folder>/{z}/{x}/{y}.<ext>` with folders styleSatelite,
  * styleAtlas and styleGrid. VITE_MAP_TILE_BASE can point elsewhere at build time.
  */
@@ -424,7 +424,7 @@ export const GtaMap: React.FC<Props> = ({blips, refresh, focusId = null, onFocus
             <span className="rm-label">TÉRKÉP / HIÁNYZÓ CSEMPÉK</span>
             <h3 className="mt-3 font-heading text-[22px] text-white">A térképcsempék hiányoznak.</h3>
             <p className="mt-3 text-[11px] leading-[1.8] text-[#8d8584]">
-              Másold a styleSatelite, styleAtlas és styleGrid mappákat ide: <code className="text-white">public/assets/map/</code>, vagy állítsd be a <code className="text-white">VITE_MAP_TILE_BASE</code> változót a tárhely URL-jére.
+              Másold a styleSatelite, styleAtlas és styleGrid mappákat ide: <code className="text-white">map-tiles/</code>, vagy állítsd be a <code className="text-white">VITE_MAP_TILE_BASE</code> változót a tárhely URL-jére.
             </p>
           </div>
         </div>

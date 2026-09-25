@@ -17,12 +17,17 @@ export const config = Object.freeze({
   root: ROOT,
   publicDir: path.join(ROOT, 'public'),
   distDir: path.join(ROOT, 'dist'),
+  /** The map tile pack, kept out of public/ so a build does not copy 300 MB into dist. */
+  tilesDir: path.join(ROOT, 'map-tiles'),
   migrationsDir: path.join(ROOT, 'supabase', 'migrations'),
 
   port: Number(process.env.PORT || 3000),
   production: process.env.NODE_ENV === 'production' || !!process.env.VERCEL,
   /** One short-lived invocation per request (Vercel), or a long-lived process. */
   serverless: !!process.env.VERCEL || bool(process.env.RM_SERVERLESS),
+
+  /** Where the browser loads map tiles from; empty means this server's /assets/map. Read here for the CSP. */
+  tileBase: text(process.env.VITE_MAP_TILE_BASE),
 
   /** PostgreSQL connection string. Empty means the embedded local database. */
   databaseUrl: text(process.env.DATABASE_URL),

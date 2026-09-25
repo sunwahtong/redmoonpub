@@ -8,14 +8,10 @@ dist
 LEGACY_PROJECT
 tsconfig.tsbuildinfo
 
-# The GTA V tile pack: 438 MB across 4102 files. Far too large for a Vercel
-# deployment, and it never changes. It is uploaded once to Supabase Storage with
-# `npm run tiles:upload`, and the frontend is pointed at it with
-# VITE_MAP_TILE_BASE. See DEPLOY-VERCEL.md.
-# Turned off because off Supabase Storage 5 GB limitation
-# public/assets/map/styleAtlas
-# public/assets/map/styleGrid
-# public/assets/map/styleSatelite
+# The GTA V tile pack: 313 MB across 4098 files, never changing. It is not
+# deployed here: it is published once to a static host (README → Map tiles)
+# and the frontend is pointed at it with VITE_MAP_TILE_BASE.
+map-tiles
 
 # Unused leftover from an earlier map iteration. red-moon-map-v8.png is kept:
 # the gallery still shows it.

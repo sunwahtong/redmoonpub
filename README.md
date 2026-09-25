@@ -44,30 +44,66 @@ Node's built-in type stripping, so there is no build step for it.
 | `npm run user:create -- --username x --password y --role owner` | Create or `--reset` an account from the CLI |
 | `npm run data:reset -- --apply` | Wipe transactional data (dry run without `--apply`) |
 | `npm run media:upload` | Mirror `public/assets` (pictures, background music) to Cloudinary, once |
-| `npm run tiles:upload` | One-off upload of the map tile pack to Supabase Storage (only if you serve tiles from there) |
+| `npm run tiles:upload` | One-off upload of the map tile pack to Supabase Storage (Cloudflare Pages is the better home, see Map tiles) |
 
-## Deployment (Vercel + Supabase + Cloudinary)
+## Deployment (Render + Supabase + Cloudinary, all free tiers)
 
-1. Migrations `supabase/migrations/0001_init.sql` and `0002_…sql` are applied
-   to project `hrlgxkcawgumsaudlnma`. The backend also applies pending files
-   on start, so later migrations only need to be committed.
-2. Set the environment variables listed in `.env.example` in the Vercel
-   project. Required: `DATABASE_URL` (Supabase *transaction pooler*, port
-   6543) and the three `CLOUDINARY_*` credentials. Recommended: the Supabase
-   URL + publishable key pairs (server and `VITE_`) for instant updates;
-   `SUPABASE_SECRET_KEY` is optional. Optional:
-   `VITE_CLOUDINARY_CLOUD_NAME` after `npm run media:upload`, `OWNER_*` for a
-   fresh database.
-3. Node version: 24.x (Project → Settings → General). `vercel.json` routes
-   every `/api/*` request into one function, `api/index.ts`.
+The site runs as one long-lived Node process (`npm start` = `node
+server/index.ts`): the API, the built site from `dist/`, `public/` and the map
+tiles. `render.yaml` describes it as a Render Blueprint.
+
+1. Push the repository to GitHub. In Render: New → Blueprint → pick the
+   repository. Render reads `render.yaml` and asks for the secrets marked
+   `sync: false`:
+   - `DATABASE_URL`: Supabase → Project Settings → Database → connection
+     string, *session pooler* (port 5432; the process keeps a small pool).
+   - `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`, and the
+     same URL + publishable key as `VITE_SUPABASE_URL` /
+     `VITE_SUPABASE_PUBLISHABLE_KEY` (instant updates; without them the site
+     polls).
+   - `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`
+     (uploads), and `VITE_CLOUDINARY_CLOUD_NAME` so pictures and the music
+     come from Cloudinary rather than from this service (run
+     `npm run media:upload` once, locally, if not done yet).
+   - `VITE_MAP_TILE_BASE`: the tile host (below), or empty to serve the tiles
+     from this service.
+   `VITE_*` values are baked in at build time: change one, redeploy.
+2. Migrations apply themselves on the first request (`public.app_migrations`
+   remembers which). `OWNER_*` are only needed on an empty database.
+3. The free instance sleeps after 15 minutes without a request and wakes on
+   the next one (about half a minute). To keep it awake, have a free
+   monitor (cron-job.org, UptimeRobot) fetch `/api/health` every 10
+   minutes; one always-on service fits in Render's 750 free hours a month.
+4. Custom domain: Render → Settings → Custom Domains, then a CNAME at the
+   registrar. TLS is automatic.
+
+Vercel is no longer the target: its Hobby fair-use pool was exhausted by the
+tile pack being deployed and served with the site, and by one function
+invocation per poll. `vercel.json` and `api/index.ts` still work if ever
+needed, with the tiles served from the static host.
 
 ### Map tiles
 
-`public/assets/map` is 436 MB across 4102 files. `.vercelignore` currently
-excludes it from the deployment; either remove those lines (Vercel dedups
-unchanged files between deploys, and its bandwidth pool is far larger than
-Supabase's) or upload the pack once with `npm run tiles:upload` and set
-`VITE_MAP_TILE_BASE`.
+`map-tiles/` holds the GTA V atlas: 313 MB across 4098 small JPEG/PNG tiles
+(`styleAtlas`, `styleGrid`, `styleSatelite`, `{z}/{x}/{y}`). It lives
+outside `public/` on purpose: Vite copies `public/` into `dist/` on every
+build, and the pack would make `dist/` 480 MB. The Node server serves the
+folder at `/assets/map` (locally and on Render), so nothing else is needed
+to run the map.
+
+To spare the web service's bandwidth, publish the pack once to Cloudflare
+Pages (free, unlimited bandwidth, no build) and point the site at it:
+
+```bash
+npx wrangler@latest login
+npx wrangler@latest pages project create redmoon-tiles --production-branch main
+npx wrangler@latest pages deploy map-tiles --project-name redmoon-tiles
+```
+
+Then set `VITE_MAP_TILE_BASE=https://redmoon-tiles.pages.dev` (or the custom
+domain) and redeploy. `map-tiles/_headers` gives the files a year of caching
+and the CORS header the map's tile probe needs. GitHub Pages works the same
+way (a repository with the three folders at its root).
 
 ## How it fits together
 
@@ -279,7 +315,7 @@ exist.
 
 ### The map
 
-`/location` is SeeCity's atlas (tiles under `public/assets/map`) with the
+`/location` is SeeCity's atlas (tiles under `map-tiles/`) with the
 house's markers on it: thirteen kinds in three families (around the house,
 the city, signals), searchable and filterable in the panel, grouped by the
 group name a manager gave them. Selecting a marker or a row flies there and

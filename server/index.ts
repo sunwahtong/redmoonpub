@@ -12,6 +12,7 @@
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
+import zlib from 'node:zlib';
 import type {ServerResponse} from 'node:http';
 import {fileURLToPath} from 'node:url';
 import {config} from './config.ts';
@@ -153,19 +154,60 @@ const MIME: Record<string, string> = {
 const IMMUTABLE = 'public, max-age=31536000, immutable';
 const STATIC = 'public, max-age=86400';
 
-const PAGE_HEADERS = {
+/** The tile host's origin, when the tiles are served from elsewhere: the map probes it with a fetch. */
+const tileOrigin = (): string => {
+  try {
+    return /^https?:/.test(config.tileBase) ? new URL(config.tileBase).origin : '';
+  } catch {
+    return '';
+  }
+};
+
+/** What the page may load. The long-lived server sets this itself; no platform config does. */
+const CSP = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "font-src 'self' https://fonts.gstatic.com data:",
+  "img-src 'self' data: blob: https:",
+  "media-src 'self' blob: data: https:",
+  `connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.cloudinary.com https://res.cloudinary.com https://fonts.googleapis.com https://fonts.gstatic.com ${tileOrigin()}`.trim(),
+  "frame-src 'self' https://gocast.fm https://www.youtube.com https://www.youtube-nocookie.com",
+  "worker-src 'self' blob:",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'none'"
+].join('; ');
+
+const PAGE_HEADERS: Record<string, string> = {
   'X-Content-Type-Options': 'nosniff',
   'X-Frame-Options': 'DENY',
   'Referrer-Policy': 'strict-origin-when-cross-origin',
-  'Permissions-Policy': 'camera=(), microphone=(), geolocation=()'
+  'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+  'Content-Security-Policy': CSP,
+  ...(config.production ? {'Strict-Transport-Security': 'max-age=63072000; includeSubDomains'} : {})
 };
 
-function sendFile(res: ServerResponse, file: string, miss: () => void, cacheControl = 'no-store'): void {
+/** Text is worth compressing on the way out; pictures, tiles and audio are compressed already. */
+const COMPRESSIBLE = new Set(['.html', '.css', '.js', '.mjs', '.json', '.svg', '.txt']);
+
+function sendFile(res: ServerResponse, file: string, miss: () => void, cacheControl = 'no-store', gzip = false): void {
   fs.stat(file, (error, stat) => {
     if (error || !stat.isFile()) return miss();
     const ext = path.extname(file).toLowerCase();
-    res.writeHead(200, {...PAGE_HEADERS, 'Content-Type': MIME[ext] || 'application/octet-stream', 'Cache-Control': cacheControl});
-    fs.createReadStream(file).pipe(res);
+    const headers: Record<string, string> = {...PAGE_HEADERS, 'Content-Type': MIME[ext] || 'application/octet-stream', 'Cache-Control': cacheControl};
+    const stream = fs.createReadStream(file);
+    if (gzip && COMPRESSIBLE.has(ext)) {
+      headers['Content-Encoding'] = 'gzip';
+      headers.Vary = 'Accept-Encoding';
+      res.writeHead(200, headers);
+      stream.pipe(zlib.createGzip()).pipe(res);
+      return;
+    }
+    headers['Content-Length'] = String(stat.size);
+    res.writeHead(200, headers);
+    stream.pipe(res);
   });
 }
 
@@ -196,12 +238,19 @@ export function createServer(): http.Server {
       res.writeHead(503, {'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store'});
       return res.end('Build missing. Run "npm run build" before starting the server.');
     }
-    const spa = () => sendFile(res, indexHtml, () => res.writeHead(404).end('Not found'));
+    const gzip = /\bgzip\b/.test(String(req.headers['accept-encoding'] || ''));
+    const spa = () => sendFile(res, indexHtml, () => res.writeHead(404).end('Not found'), 'no-store', gzip);
     if (pathname === '/') return spa();
+    // The tile pack lives outside public/ so a build does not copy it into dist/.
+    if (pathname.startsWith('/assets/map/')) {
+      const tile = resolveWithin(config.tilesDir, pathname.slice('/assets/map'.length));
+      if (!tile) return res.writeHead(403).end('Forbidden');
+      return sendFile(res, tile, () => res.writeHead(404).end('Not found'), IMMUTABLE);
+    }
     const distFile = resolveWithin(config.distDir, pathname);
     const publicFile = resolveWithin(config.publicDir, pathname);
     if (!distFile || !publicFile) return res.writeHead(403).end('Forbidden');
-    sendFile(res, distFile, () => sendFile(res, publicFile, spa, STATIC), pathname.startsWith('/assets/') ? IMMUTABLE : 'no-store');
+    sendFile(res, distFile, () => sendFile(res, publicFile, spa, STATIC, gzip), pathname.startsWith('/assets/') ? IMMUTABLE : 'no-store', gzip);
   });
 }
 

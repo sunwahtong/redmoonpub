@@ -28,7 +28,7 @@ import process from 'node:process';
 import {fileURLToPath} from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const TILE_ROOT = path.join(ROOT, 'public', 'assets', 'map');
+const TILE_ROOT = path.join(ROOT, 'map-tiles');
 
 const args = process.argv.slice(2);
 const flag = (name) => args.includes(`--${name}`);
