@@ -10,7 +10,10 @@ import {Setlist} from '../components/club/Setlist';
 import {Stage} from '../components/club/Stage';
 import {TonightCard} from '../components/club/TonightCard';
 import {clubClientId, useClub, useClubIdentity, useVoteMemory, type ClubChatMessage, type RegisteredListener} from '../hooks/useClub';
+import {TierChip} from '../components/house/TierChip';
 import {apiSend} from '../lib/api';
+import {RANK} from '../lib/houseCard';
+import {houseToken, storedHouseSession} from '../lib/houseSession';
 import {realtimeAvailable} from '../lib/realtime';
 import {playSfx} from '../lib/sfx';
 import {dialog} from '../stores/useDialogStore';
@@ -45,6 +48,8 @@ export const ClubPage: React.FC = () => {
   const canModerate = !!user && user.capabilities.dj;
   const approved = identity.status === 'accepted' && !!identity.token;
   const myName = canModerate ? user!.nickname || user!.name : identity.name;
+  /* The House card this browser carries, if any: its crest goes next to the name. */
+  const house = useMemo(storedHouseSession, []);
 
   /* Presence heartbeat — drives the listener counter and the show's peak. */
   React.useEffect(() => {
@@ -90,14 +95,14 @@ export const ClubPage: React.FC = () => {
     setSending(true);
     try {
       if (mode === 'request') {
-        await apiSend('/api/club/request', 'POST', {token: identity.token, title: value});
+        await apiSend('/api/club/request', 'POST', {token: identity.token, title: value, houseToken: houseToken() || undefined});
         toast.success('Kérés elküldve', 'A DJ látja a pultban, a többiek szavazhatnak rá.');
         setMode('chat');
       } else if (canModerate) {
         const data = await apiSend<{message: ClubChatMessage}>('/api/dj/chat', 'POST', {text: value});
         if (data.message) appendLocal(data.message);
       } else {
-        const data = await apiSend<{message: ClubChatMessage}>('/api/club/chat', 'POST', {name: identity.name, text: value, token: identity.token});
+        const data = await apiSend<{message: ClubChatMessage}>('/api/club/chat', 'POST', {name: identity.name, text: value, token: identity.token, houseToken: houseToken() || undefined});
         if (data.message) appendLocal(data.message);
       }
       setText('');
@@ -354,6 +359,12 @@ export const ClubPage: React.FC = () => {
                   <div className="min-w-0 flex-1">
                     <strong className="block truncate text-[13px] text-white">{identity.name}</strong>
                     <span className="text-[9px] text-[#8d8584]">A színed a chatben. 3 napig él a neved.</span>
+                    {house && (
+                      <span className="mt-1.5 flex flex-wrap items-center gap-2 text-[9px] text-[#8d8584]">
+                        <TierChip tier={house.tier}/>
+                        {RANK[house.tier] >= 2 ? 'A kéréseid a pult elejére kerülnek.' : 'A címered ott lesz a neved mellett.'}
+                      </span>
+                    )}
                   </div>
                   <button type="button" onClick={() => setShowSwatches((value) => !value)} aria-label="Szín választása" className="p-1.5 text-[#8f8887] hover:text-white">
                     <Palette size={15}/>

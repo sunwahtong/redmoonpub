@@ -56,7 +56,9 @@ export const publicProduct = (row: Row) => ({
   image: row.image || '',
   subtitle: row.subtitle || '',
   description: row.description || '',
-  section: row.section || 'other'
+  section: row.section || 'other',
+  /** Empty on the open list; a tier on the House's secret list. */
+  minTier: row.min_tier || ''
 });
 
 export const eventFromRow = (row: Row) => ({
@@ -76,6 +78,8 @@ export const eventFromRow = (row: Row) => ({
   dressCode: row.dress_code || '',
   featured: !!row.featured,
   active: row.active !== false,
+  /** Empty for an open evening; the lowest House tier invited otherwise. */
+  minTier: row.min_tier || '',
   createdByName: row.created_by_name || '',
   createdAt: iso(row.created_at),
   updatedAt: iso(row.updated_at)
@@ -106,6 +110,11 @@ export const reservationPublic = (row: Row) => ({
   tableId: row.table_id || '',
   tableLabel: row.table_label || '',
   note: row.note || '',
+  /** Names a Royal member listed for the door, one per line. */
+  guestList: String(row.guest_list || '')
+    .split('\n')
+    .map((line: string) => line.trim())
+    .filter(Boolean),
   status: row.status,
   staffNote: row.staff_note || '',
   handledAt: iso(row.handled_at),
@@ -287,7 +296,7 @@ export function registerPublicRoutes(router: Router): void {
   });
 
   router.get('/api/public-products', async ({db}) => {
-    const {rows} = await db.query(`select * from public.products where active and category = 'drink' order by sort_order, name`);
+    const {rows} = await db.query(`select * from public.products where active and category = 'drink' and min_tier = '' and member_code = '' order by sort_order, name`);
     return {products: rows.map(publicProduct)};
   });
 
@@ -309,7 +318,7 @@ export function registerPublicRoutes(router: Router): void {
 
   router.get('/api/public-events', async ({db}) => {
     const {rows} = await db.query(
-      `select e.*, (select count(*)::int from public.event_rsvps r where r.event_id = e.id) as going from public.events e where e.active order by e.starts_at asc limit 60`
+      `select e.*, (select count(*)::int from public.event_rsvps r where r.event_id = e.id) as going from public.events e where e.active and e.min_tier = '' order by e.starts_at asc limit 60`
     );
     return {events: rows.map(eventFromRow)};
   });

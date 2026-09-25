@@ -9,6 +9,8 @@ export interface ClubChatMessage {
   text: string;
   kind: 'chat' | 'dj' | 'request' | 'request-accepted' | 'request-declined' | 'system' | 'now-playing' | 'notice' | 'poll' | string;
   color: string;
+  /** The writer's House tier, when their card was in the browser. */
+  tier?: string;
   requestId?: string | null;
 }
 
@@ -55,6 +57,8 @@ export interface MusicRequest {
   id: string;
   name: string;
   color: string;
+  /** The House tier behind the request; Gold and above go to the front. */
+  tier?: string;
   at: string;
   status: RequestStatus | string;
   votes: number;

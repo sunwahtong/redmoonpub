@@ -27,9 +27,18 @@ interface Draft {
   dressCode: string;
   featured: boolean;
   active: boolean;
+  /** Empty: everyone. A tier: an invitation, shown only in the House's inner rooms from that tier up. */
+  minTier: string;
 }
 
 const TAG_SUGGESTIONS = ['LIVE DJ', 'TEMATIKUS EST', 'HAPPY HOUR', 'KARAOKE', 'ZÁRTKÖRŰ', 'VIP EST'];
+const INVITE_TIERS: {id: string; label: string}[] = [
+  {id: '', label: 'MINDENKI'},
+  {id: 'silver', label: 'HOUSE SILVER+'},
+  {id: 'gold', label: 'GOLD+'},
+  {id: 'black', label: 'BLACK+'},
+  {id: 'royal', label: 'CSAK ROYAL'}
+];
 
 function toLocalInput(value: string | null | undefined): string {
   if (!value) return '';
@@ -59,7 +68,8 @@ const emptyDraft = (): Draft => ({
   entryFee: '',
   dressCode: '',
   featured: false,
-  active: true
+  active: true,
+  minTier: ''
 });
 
 const draftOf = (event: RedMoonEvent): Draft => ({
@@ -75,7 +85,8 @@ const draftOf = (event: RedMoonEvent): Draft => ({
   entryFee: event.entryFee === null || event.entryFee === undefined ? '' : String(event.entryFee),
   dressCode: event.dressCode || '',
   featured: !!event.featured,
-  active: event.active !== false
+  active: event.active !== false,
+  minTier: event.minTier || ''
 });
 
 export const StaffEventsPage: React.FC = () => {
@@ -139,7 +150,8 @@ export const StaffEventsPage: React.FC = () => {
     entryFee: draft.entryFee === '' ? null : Number(draft.entryFee),
     dressCode: draft.dressCode,
     featured: draft.featured,
-    active: draft.active
+    active: draft.active,
+    minTier: draft.minTier
   });
 
   const save = (event: React.FormEvent) => {
@@ -304,6 +316,18 @@ export const StaffEventsPage: React.FC = () => {
               </label>
             </div>
 
+            <div className="mt-5">
+              <span className="text-[8px] tracking-[0.25em] text-[#777]">KINEK</span>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {INVITE_TIERS.map((entry) => (
+                  <button key={entry.id} type="button" onClick={() => setDraft({...draft, minTier: entry.id})} aria-pressed={draft.minTier === entry.id} className={`rm-chip${draft.minTier === entry.id ? ' is-active' : ''}`}>
+                    {entry.label}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-2 text-[10px] text-[#8d8584]">{draft.minTier ? 'Meghívás: a nyilvános oldalon nem jelenik meg, a House belső szobájában igen — ettől a szinttől felfelé.' : 'Nyilvános este: mindenki látja a rendezvények oldalán.'}</p>
+            </div>
+
             {draft.startsAt && (
               <div className="mt-6 flex flex-wrap items-center gap-4 border-t border-white/[0.06] pt-5">
                 <span className="text-[8px] tracking-[0.25em] text-[#777]">ELŐNÉZET · VISSZASZÁMLÁLÓ</span>
@@ -360,6 +384,7 @@ export const StaffEventsPage: React.FC = () => {
                           <Star size={9}/> KIEMELT
                         </Badge>
                       )}
+                      {event.minTier && <Badge tone="sky">HOUSE · {event.minTier.toUpperCase()}+</Badge>}
                       {event.tag && <Badge tone="sky">{event.tag}</Badge>}
                       {event.active === false && <Badge tone="warn">REJTETT</Badge>}
                     </div>

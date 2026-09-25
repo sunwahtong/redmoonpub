@@ -30,6 +30,8 @@ export interface Reservation {
   /** The table asked for or assigned; empty means the house picks. */
   tableId?: string;
   tableLabel?: string;
+  /** Names a Royal member listed for the door. */
+  guestList?: string[];
   note: string;
   status: ReservationStatus;
   staffNote: string;

@@ -7,6 +7,8 @@
  */
 
 export interface Person {
+  /** The account behind the signature, when known; lets a document tell the issuer and the countersigner apart. */
+  id?: string;
   name: string;
   /** Identity card number, as printed on a document. */
   idNumber: string;

@@ -22,7 +22,7 @@ interface Dashboard {
   lowStock: {id: string; name: string; stock: number; minStock: number}[];
   topSales: {product: string; qty: number}[];
   openShift: {id: string; openedByName?: string; openedAt?: string} | null;
-  counts: {reservationsToday: number; reservationsPending: number; applicationsPending: number; ordersOpen: number; unread: number; lowStock: number};
+  counts: {reservationsToday: number; reservationsPending: number; applicationsPending: number; ordersOpen: number; unread: number; lowStock: number; memberMessages?: number};
 }
 
 interface Presence {
@@ -142,7 +142,7 @@ export const DashboardPage: React.FC = () => {
       ? [
           {to: '/staff/inventory', label: 'RAKTÁR', hint: counts?.lowStock ? `${counts.lowStock} tétel fogy` : 'Készlet rendben', icon: Boxes, badge: counts?.lowStock},
           {to: '/staff/applications', label: 'JELENTKEZÉSEK', hint: 'Új emberek', icon: UserPlus, badge: counts?.applicationsPending},
-          {to: '/staff/members', label: 'A HOUSE', hint: 'Tagság, kódok, látogatások', icon: Crown},
+          {to: '/staff/members', label: 'A HOUSE', hint: counts?.memberMessages ? `${counts.memberMessages} üzenet a tagoktól` : 'Tagság, kódok, látogatások', icon: Crown, badge: counts?.memberMessages},
           {to: '/staff/documents', label: 'BIZONYLATOK', hint: 'Nyugta, számla, jelentés', icon: FileText}
         ]
       : []),

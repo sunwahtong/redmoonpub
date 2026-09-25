@@ -1,5 +1,5 @@
-import React, {useMemo, useState} from 'react';
-import {Eye, FileDown, FileText, ReceiptText, Trash2, X} from 'lucide-react';
+import React, {useEffect, useMemo, useState} from 'react';
+import {ArrowLeft, Eye, FileDown, FileText, ReceiptText, Trash2, X} from 'lucide-react';
 import {Btn} from '../../components/ui/Btn';
 import {Select} from '../../components/ui/Select';
 import {Badge, Chips, Field, PageHeader, Panel, SearchField} from '../../components/ui/console';
@@ -10,6 +10,7 @@ import {dialog} from '../../stores/useDialogStore';
 import {useAuthStore, roleAtLeast} from '../../stores/useAuthStore';
 import {playSfx} from '../../lib/sfx';
 import {
+  countersignerOf,
   DOCUMENT_DESCRIPTION,
   DOCUMENT_LABEL,
   renderDocumentHtml,
@@ -71,6 +72,16 @@ export const DocumentsPage: React.FC = () => {
   const [period, setPeriod] = useState<Period>('week');
   const [shiftId, setShiftId] = useState('');
   const [preview, setPreview] = useState<{html: string; payload: DocumentPayload; reference: string} | null>(null);
+
+  /* Escape leaves the preview, like any sheet. */
+  useEffect(() => {
+    if (!preview) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setPreview(null);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [preview]);
   const [busy, setBusy] = useState(false);
 
   const sales = useMemo(() => saleData?.sales || [], [saleData]);
@@ -120,7 +131,7 @@ export const DocumentsPage: React.FC = () => {
       const reference = referenceFor(payload);
       await downloadDocumentPdf(payload, context, reference);
       // The house's register of issued documents; from here on the signatures on it are final.
-      const issued = await apiSend<{newlyLocked: number}>('/api/documents/issued', 'POST', {kind: payload.kind, reference, countersigned: payload.countersign !== false, storedDocumentId: payload.reference}).catch(() => null);
+      const issued = await apiSend<{newlyLocked: number}>('/api/documents/issued', 'POST', {kind: payload.kind, reference, countersigned: !!countersignerOf(payload, context), storedDocumentId: payload.reference}).catch(() => null);
       if (issued?.newlyLocked) await restore();
       toast.success('PDF elmentve', `${DOCUMENT_LABEL[payload.kind]} · ${reference}`);
       playSfx('success');
@@ -264,11 +275,18 @@ export const DocumentsPage: React.FC = () => {
               <div className="text-[10px] leading-[1.7] text-[#8d8584]">
                 Kiállító: <b className="text-white">{context?.issuer.name || user?.name}</b> · {context?.issuer.title}
                 {user?.signatureLocked ? <span className="text-[#6f6968]"> · az aláírásod végleges</span> : <span className="text-amber-300/80"> · az első letöltéssel az aláírásod véglegessé válik</span>}
-                {context?.owner && (
+                {context && countersignerOf({countersign: true}, context) ? (
                   <>
                     <br/>
-                    Ellenjegyzi: <b className="text-white">{context.owner.name}</b>
+                    Ellenjegyzi: <b className="text-white">{context.owner?.name}</b>
                   </>
+                ) : (
+                  context?.owner && (
+                    <>
+                      <br/>
+                      <span className="text-[#6f6968]">Te vagy az aláíró tulajdonos: az aláírásod egyszer kerül a dokumentumra.</span>
+                    </>
+                  )
                 )}
                 <br/>
                 <span className="text-[#6f6968]">
@@ -326,7 +344,17 @@ export const DocumentsPage: React.FC = () => {
             </div>
           </Panel>
 
-          <Panel label="RÉSZLETEK" className="h-fit">
+          <Panel
+            label="RÉSZLETEK"
+            className="h-fit"
+            action={
+              open ? (
+                <button type="button" onClick={() => setOpenId(null)} aria-label="Bezárás" className="p-1 text-[#8f8887] hover:text-white">
+                  <X size={14}/>
+                </button>
+              ) : undefined
+            }
+          >
             {!open ? (
               <p className="text-[11px] text-[#8d8584]">Válassz egy bizonylatot a listából.</p>
             ) : (
@@ -378,6 +406,9 @@ export const DocumentsPage: React.FC = () => {
                   <Btn onClick={() => openPreview(buildStoredDocument(open))} disabled={!context} className="w-full justify-center">
                     <Eye size={13}/> ELŐNÉZET
                   </Btn>
+                  <Btn onClick={() => setOpenId(null)} className="w-full justify-center">
+                    <ArrowLeft size={13}/> VISSZA A LISTÁHOZ
+                  </Btn>
                   {(open.type === 'receipt' || isOwner) && (
                     <button type="button" onClick={() => remove(open)} className="mt-2 inline-flex items-center justify-center gap-2 text-[9px] tracking-[0.18em] text-[#777] hover:text-[color:var(--rm-red)]">
                       <Trash2 size={11}/> TÖRLÉS
@@ -394,11 +425,16 @@ export const DocumentsPage: React.FC = () => {
       {preview && (
         <div className="fixed inset-0 z-[1500] flex flex-col bg-black/85 backdrop-blur-sm">
           <div className="flex items-center justify-between gap-4 border-b border-[color:var(--rm-line)] bg-[#09090b] px-5 py-3">
-            <div className="min-w-0">
-              <span className="rm-label">ELŐNÉZET</span>
-              <h3 className="truncate font-heading text-[16px] text-white">
-                {DOCUMENT_LABEL[preview.payload.kind]} · {preview.reference}
-              </h3>
+            <div className="flex min-w-0 items-center gap-4">
+              <Btn onClick={() => setPreview(null)} className="shrink-0">
+                <ArrowLeft size={13}/> VISSZA
+              </Btn>
+              <div className="min-w-0">
+                <span className="rm-label">ELŐNÉZET</span>
+                <h3 className="truncate font-heading text-[16px] text-white">
+                  {DOCUMENT_LABEL[preview.payload.kind]} · {preview.reference}
+                </h3>
+              </div>
             </div>
             <div className="flex items-center gap-2">
               <Btn variant="red" onClick={() => download(preview.payload)} disabled={busy}>

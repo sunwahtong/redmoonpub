@@ -418,6 +418,12 @@ export const StaffReservationsPage: React.FC = () => {
                     {reservation.note && (
                       <p className="mt-3 max-w-xl border-l border-[color:var(--rm-line-red)] pl-3 text-[11px] leading-[1.8] text-[#a09998]">{reservation.note}</p>
                     )}
+                    {!!reservation.guestList?.length && (
+                      <p className="mt-3 max-w-xl text-[11px] leading-[1.8] text-[#c9c2c1]">
+                        <span className="mr-2 text-[8px] tracking-[0.25em] text-[#777]">VENDÉGLISTA · {reservation.guestList.length}</span>
+                        {reservation.guestList.join(', ')}
+                      </p>
+                    )}
 
                     <div className="mt-4">
                       <Pipeline status={reservation.status}/>

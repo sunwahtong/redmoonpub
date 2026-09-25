@@ -23,6 +23,10 @@ interface Product {
   imagePublicId?: string;
   subtitle: string;
   active: boolean;
+  /** A tier keeps it off the public list: a secret of the House from that tier up. */
+  minTier?: string;
+  /** A member's code makes it their own named drink. */
+  memberCode?: string;
 }
 
 interface Draft {
@@ -31,7 +35,17 @@ interface Draft {
   minStock: string;
   section: DrinkSection;
   subtitle: string;
+  minTier: string;
+  memberCode: string;
 }
+
+const TIER_OPTIONS = [
+  {value: '', label: 'Mindenki'},
+  {value: 'silver', label: 'House Silver+'},
+  {value: 'gold', label: 'House Gold+'},
+  {value: 'black', label: 'House Black+'},
+  {value: 'royal', label: 'Csak Royal'}
+];
 
 const normalize = (value: string) => value.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 
@@ -108,7 +122,9 @@ export const ProductsPage: React.FC = () => {
       price: String(product.price),
       minStock: String(product.minStock),
       section: product.section,
-      subtitle: product.subtitle || ''
+      subtitle: product.subtitle || '',
+      minTier: product.minTier || '',
+      memberCode: product.memberCode || ''
     });
   };
 
@@ -124,6 +140,8 @@ export const ProductsPage: React.FC = () => {
     // when allowed and actually changed.
     if (isOwner && Number(draft.price) !== product.price) patch.price = Number(draft.price);
     if (isOwner && draft.subtitle !== (product.subtitle || '')) patch.subtitle = draft.subtitle;
+    if (draft.minTier !== (product.minTier || '')) patch.minTier = draft.minTier;
+    if (draft.memberCode.trim().toUpperCase() !== (product.memberCode || '')) patch.memberCode = draft.memberCode.trim().toUpperCase();
 
     run(async () => {
       await apiSend(`/api/products/${product.id}`, 'PATCH', patch);
@@ -249,6 +267,17 @@ export const ProductsPage: React.FC = () => {
                           placeholder="alcím"
                           className={`${field} disabled:opacity-40`}
                         />
+                        <div className="flex flex-wrap gap-2">
+                          <Select value={draft.minTier} options={TIER_OPTIONS} onChange={(value) => setDraft({...draft, minTier: value})} className="max-w-[190px]" size="sm" aria-label="Kinek"/>
+                          <input
+                            value={draft.memberCode}
+                            onChange={(event) => setDraft({...draft, memberCode: event.target.value.toUpperCase()})}
+                            placeholder="tag kódja · saját ital"
+                            maxLength={20}
+                            className={`${field} max-w-[190px] font-heading tracking-[0.12em]`}
+                            title="RM-H-XXXX: a tag saját itala, csak ő látja a belső szobában"
+                          />
+                        </div>
                         <div className="flex gap-2">
                           <Btn variant="red" onClick={() => saveEdit(product)}>
                             <Check size={12}/> MENTÉS
@@ -269,6 +298,8 @@ export const ProductsPage: React.FC = () => {
                           <strong className="block truncate text-[11px] text-white">{product.name}</strong>
                           <span className="text-[9px] text-[#777]">
                             {sectionLabel(product.section)} · {product.stock} db · min. {product.minStock}
+                            {product.minTier ? ` · HOUSE ${product.minTier.toUpperCase()}+` : ''}
+                            {product.memberCode ? ` · ${product.memberCode} itala` : ''}
                           </span>
                         </div>
                         <span className="shrink-0 font-heading text-[14px] text-[color:var(--rm-red)]">

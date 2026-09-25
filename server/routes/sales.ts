@@ -302,7 +302,8 @@ export function registerSalesRoutes(router: Router): void {
       const {rows} = await db.query<{id: string}>(`select id from public.staff_accounts where role = 'owner' and active order by created_at asc limit 1`);
       owner = rows[0] ? await loadAccount(db, rows[0].id) : null;
     }
-    const countersigner = body.countersigned && owner ? owner : null;
+    // The signing owner countersigns what others issue; their own documents carry their signature once.
+    const countersigner = body.countersigned && owner && owner.id !== me.id ? owner : null;
     await db.query(
       `insert into public.issued_documents (kind, reference, issuer_id, issuer_name, countersigner_id, countersigner_name, stored_document_id)
        values ($1, $2, $3, $4, $5, $6, $7)`,

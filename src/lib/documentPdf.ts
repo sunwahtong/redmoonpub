@@ -1,5 +1,5 @@
 import type {Column, Content, TDocumentDefinitions, TableCell} from 'pdfmake/interfaces';
-import {DOCUMENT_LABEL, documentFileName, issuedStamp, resolveSignatures, type DocumentContext, type DocumentPayload} from './documents';
+import {countersignerOf, DOCUMENT_LABEL, documentFileName, issuedStamp, resolveSignatures, type DocumentContext, type DocumentPayload} from './documents';
 import type {Person} from './house';
 import {signatureImageData} from './signature';
 
@@ -157,9 +157,9 @@ export function buildPdfDefinition(payload: DocumentPayload, context: DocumentCo
     content.push({ul: payload.notes.map((note) => ({text: note, fontSize: 8.5, color: '#3d3d47'})), margin: [0, 0, 0, 0]});
   }
 
-  const countersign = payload.countersign !== false;
+  const countersigner = countersignerOf(payload, {issuer, owner});
   content.push({
-    columns: [signatureColumn(issuer, issuer.role === 'owner' ? 'Tulajdonos' : 'Manager'), {text: '', width: '*'}, countersign ? signatureColumn(owner, 'Tulajdonos') : {text: '', width: 230}],
+    columns: [signatureColumn(issuer, issuer.role === 'owner' ? 'Tulajdonos' : 'Manager'), {text: '', width: '*'}, countersigner ? signatureColumn(countersigner, 'Tulajdonos') : {text: '', width: 230}],
     margin: [0, 34, 0, 0],
     unbreakable: true
   });

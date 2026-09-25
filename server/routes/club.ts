@@ -22,6 +22,7 @@ import {AUDIO_TYPES, cloudinaryEnabled, extensionOf, firstFilePart, isOurCloudin
 import {broadcast} from '../realtime.ts';
 import {config} from '../config.ts';
 import {effectiveStreamUrl, onAir, stationEmbedUrl, stationSlug, syncStation} from '../station.ts';
+import {memberByToken} from './members.ts';
 import type {Queryable, Row, SessionUser, UserCtx} from '../types.ts';
 
 const NAME_TTL_MS = 3 * 24 * 60 * 60 * 1000;
@@ -88,6 +89,7 @@ const chatPublic = (row: Row) => ({
   text: row.text,
   kind: row.kind || 'chat',
   color: row.color || (row.kind === 'dj' ? DJ_COLOR : ''),
+  tier: row.tier || '',
   requestId: row.request_id || null
 });
 const chatModerator = (row: Row) => ({...chatPublic(row), ip: row.ip || null, browserHash: row.browser_hash || null});
@@ -99,6 +101,7 @@ const requestPublic = (row: Row) => ({
   at: iso(row.at),
   name: row.name,
   color: row.color || '',
+  tier: row.tier || '',
   status: row.status,
   votes: Number(row.votes) || 0,
   item: row.item ? {id: row.item.id, name: row.item.name, requestOnly: !!row.item.requestOnly} : null
@@ -147,6 +150,16 @@ async function identityOf(db: Queryable, token: unknown, ip: string): Promise<Ro
   return rows[0] || null;
 }
 
+/** The House tier behind a presented card, or nothing: the crest a line or a request carries. */
+async function tierOfCard(db: Queryable, houseToken: unknown): Promise<string> {
+  if (!houseToken) return '';
+  const member = await memberByToken(db, houseToken);
+  return member ? String(member.tier) : '';
+}
+
+/** Gold and above ask the booth first. */
+const PRIORITY_SQL = `case when tier in ('gold', 'black', 'royal') then 1 else 0 end`;
+
 const trackOf = (row: Row) => ({id: row.id, name: row.name, url: row.url, size: row.size, addedBy: row.added_by_name || '', addedAt: iso(row.added_at)});
 
 interface PlayItem {
@@ -171,7 +184,7 @@ export async function clubState(db: Queryable, {moderator = false}: {moderator?:
     latestPoll(db),
     db.query(
       `select * from public.club_requests where at > now() - interval '8 hours' and status <> 'declined'
-        order by case status when 'pending' then 0 when 'accepted' then 1 else 2 end, votes desc, at asc limit 30`
+        order by case status when 'pending' then 0 when 'accepted' then 1 else 2 end, ${PRIORITY_SQL} desc, votes desc, at asc limit 30`
     ),
     vibeOf(db),
     state.dj_user_id ? db.query<{avatar: string}>('select avatar from public.staff_accounts where id = $1', [state.dj_user_id]) : Promise.resolve({rows: [] as {avatar: string}[]}),
@@ -253,7 +266,9 @@ export async function clubState(db: Queryable, {moderator = false}: {moderator?:
 const chatBody = z.object({
   name: z.string().trim().min(1).max(32).optional(),
   text: z.string().trim().min(1, 'Az üzenet nem lehet üres.').max(500),
-  token: z.string().trim().max(160).optional()
+  token: z.string().trim().max(160).optional(),
+  /** The House card this browser carries, for the crest next to the name. */
+  houseToken: z.string().trim().max(160).optional()
 });
 
 const liveBody = z.object({
@@ -384,6 +399,7 @@ export function registerClubRoutes(router: Router): void {
     let name = moderator ? djName(user!) : '';
     let color = moderator ? DJ_COLOR : '';
     let browserHash: string | null = null;
+    const tier = moderator ? '' : await tierOfCard(db, body.houseToken);
     if (!moderator) {
       const identity = await identityOf(db, body.token, ip);
       if (!identity || (body.name && identity.name !== body.name)) throw forbidden('Előbb kérd a megjelenési neved jóváhagyását a DJ-től.');
@@ -396,13 +412,14 @@ export function registerClubRoutes(router: Router): void {
       const slow = (await db.query<{slow_mode_seconds: number}>('select slow_mode_seconds from public.club_state where id = 1')).rows[0]?.slow_mode_seconds || 0;
       await rateLimit(db, `club-chat:${ip}`, 1, Math.max(2500, slow * 1000));
     }
-    const {rows} = await db.query('insert into public.club_chat (name, text, kind, color, ip, browser_hash) values ($1, $2, $3, $4, $5, $6) returning *', [
+    const {rows} = await db.query('insert into public.club_chat (name, text, kind, color, ip, browser_hash, tier) values ($1, $2, $3, $4, $5, $6, $7) returning *', [
       name,
       body.text,
       moderator ? 'dj' : 'chat',
       color,
       ip,
-      browserHash
+      browserHash,
+      tier
     ]);
     const message = chatPublic(rows[0]);
     await pushClub('chat', {message});
@@ -467,19 +484,21 @@ export function registerClubRoutes(router: Router): void {
       if (title) item = {id: `text_${crypto.randomUUID()}`, name: title, url: '', requestOnly: true};
     }
     if (!item) throw bad('Írd be, mit szeretnél hallani.');
-    const {rows} = await db.query('insert into public.club_requests (name, color, ip, browser_hash, item) values ($1, $2, $3, $4, $5) returning *', [identity.name, identity.color || '', ip, identity.browser_hash, JSON.stringify(item)]);
-    const chat = await db.query('insert into public.club_chat (name, text, kind, color, request_id, ip, browser_hash) values ($1, $2, $3, $4, $5, $6, $7) returning *', [
+    const tier = await tierOfCard(db, body.houseToken);
+    const {rows} = await db.query('insert into public.club_requests (name, color, ip, browser_hash, item, tier) values ($1, $2, $3, $4, $5, $6) returning *', [identity.name, identity.color || '', ip, identity.browser_hash, JSON.stringify(item), tier]);
+    const chat = await db.query('insert into public.club_chat (name, text, kind, color, request_id, ip, browser_hash, tier) values ($1, $2, $3, $4, $5, $6, $7, $8) returning *', [
       identity.name,
       `Zenét kér: ${item.name}`,
       'request',
       identity.color || '',
       rows[0].id,
       ip,
-      identity.browser_hash
+      identity.browser_hash,
+      tier
     ]);
     await pushClub('chat', {message: chatPublic(chat.rows[0])});
     await pushClub('requests');
-    return created({request: {id: rows[0].id, name: identity.name, item, status: 'pending', votes: 0}});
+    return created({request: {id: rows[0].id, name: identity.name, tier, item, status: 'pending', votes: 0}});
   });
 
   /** Anyone in the room can back a request; a second tap takes the vote back. */

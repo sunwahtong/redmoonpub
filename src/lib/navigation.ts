@@ -45,6 +45,12 @@ export const NAV_GROUP: NavGroup = {
       description: 'A négy tagsági szint, és ahogy meghívunk.'
     },
     {
+      to: '/house',
+      label: 'BELSŐ SZOBA',
+      glyph: '門',
+      description: 'Tagoknak: meghívások, titkos itallap, a ház vonala.'
+    },
+    {
       to: '/about',
       label: 'RÓLUNK',
       glyph: '家',

@@ -94,6 +94,17 @@ export interface DocumentContext {
 }
 
 /**
+ * Who countersigns: the signing owner, unless the document does not take a
+ * countersignature or the owner issued it themselves — their signature is
+ * already on it once.
+ */
+export function countersignerOf(payload: Pick<DocumentPayload, 'countersign'>, context: Pick<DocumentContext, 'issuer' | 'owner'>): Person | null {
+  if (payload.countersign === false || !context.owner) return null;
+  const same = (context.owner.id && context.owner.id === context.issuer.id) || (!context.owner.id && context.owner.name === context.issuer.name);
+  return same ? null : context.owner;
+}
+
+/**
  * Fetches each signer's stored signature so a document can embed it: SVG
  * text for a drawn or generated one, a data URL for an uploaded picture. A
  * signature that cannot be fetched simply leaves its line empty.
@@ -253,7 +264,7 @@ export function renderDocumentHtml(payload: DocumentPayload, context: DocumentCo
 
   <div class="signatures">
     ${signatureBlock(issuer, issuer.role === 'owner' ? 'Tulajdonos' : 'Manager')}
-    ${payload.countersign === false ? '' : signatureBlock(owner, 'Tulajdonos')}
+    ${signatureBlock(countersignerOf(payload, {issuer, owner}), 'Tulajdonos')}
   </div>
 
   <footer>

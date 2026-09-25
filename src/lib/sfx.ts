@@ -20,7 +20,10 @@ export type SfxName =
   | 'cash_close'
   | 'copy'
   | 'login'
-  | 'logout';
+  | 'logout'
+  | 'live_start'
+  | 'live_stop'
+  | 'low_stock';
 
 const VOLUME_KEY = 'redmoon-volume';
 const MUTED_KEY = 'redmoon-sfx';

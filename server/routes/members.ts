@@ -10,7 +10,7 @@
 import crypto from 'node:crypto';
 import {z} from 'zod';
 import {audit, rateLimit, requireRole, roleAtLeast} from '../auth.ts';
-import {bad, clientIp, conflict, created, forbidden, iso, normalizePhone, notFound, parse, readJson, type Router} from '../http.ts';
+import {bad, clientIp, conflict, created, forbidden, iso, normalizePhone, notFound, parse, readJson, sha256, type Router} from '../http.ts';
 import {broadcast} from '../realtime.ts';
 import type {Queryable, Row} from '../types.ts';
 
@@ -18,6 +18,10 @@ export const MEMBER_TIERS = ['silver', 'gold', 'black', 'royal'] as const;
 export type MemberTier = (typeof MEMBER_TIERS)[number];
 
 const RANK: Record<string, number> = {silver: 1, gold: 2, black: 3, royal: 4};
+export const tierRankOf = (tier: unknown): number => RANK[String(tier)] || 0;
+
+/** How long a presented card keeps opening the inner rooms. */
+const MEMBER_SESSION_DAYS = 30;
 
 /** One step of a member's climb: the tier, when it was reached, who gave it. */
 interface TierStep {
@@ -56,11 +60,13 @@ export const memberOf = (row: Row) => ({
   grantedByName: row.granted_by_name || '',
   grantedAt: iso(row.granted_at),
   updatedAt: iso(row.updated_at),
-  tierHistory: historyOf(row)
+  tierHistory: historyOf(row),
+  /** Lines the member wrote that nobody in the house has read yet. */
+  unread: Number(row.unread) || 0
 });
 
 /** What a guest sees of their own card. */
-const cardOf = (row: Row) => ({
+export const cardOf = (row: Row) => ({
   code: row.code,
   name: row.name,
   tier: row.tier as MemberTier,
@@ -82,6 +88,33 @@ const normalizeCode = (value: unknown): string => String(value || '').trim().toU
 
 /** The tiers this person may hand out. */
 const mayGrant = (role: string, tier: string): boolean => roleAtLeast(role, 'owner') || RANK[tier] <= RANK.gold;
+
+/**
+ * A presented card becomes a session: a random token the browser keeps and
+ * sends to the inner rooms, stored hashed. A member keeps their last five.
+ */
+export async function createMemberSession(db: Queryable, memberId: string): Promise<string> {
+  const token = crypto.randomBytes(24).toString('base64url');
+  await db.query('insert into public.member_sessions (token_hash, member_id, expires_at) values ($1, $2, now() + make_interval(days => $3))', [sha256(token), memberId, MEMBER_SESSION_DAYS]);
+  await db.query(
+    `delete from public.member_sessions where expires_at < now()
+        or (member_id = $1 and token_hash not in (select token_hash from public.member_sessions where member_id = $1 order by created_at desc limit 5))`,
+    [memberId]
+  );
+  return token;
+}
+
+/** The active member behind a session token, or null. */
+export async function memberByToken(db: Queryable, token: unknown): Promise<Row | null> {
+  const raw = String(token || '').trim();
+  if (!raw) return null;
+  const {rows} = await db.query(
+    `select m.* from public.member_sessions s join public.members m on m.id = s.member_id
+      where s.token_hash = $1 and s.expires_at > now() and m.active limit 1`,
+    [sha256(raw)]
+  );
+  return rows[0] || null;
+}
 
 /**
  * Resolves a booking's member code: the active member behind it, if the
@@ -118,7 +151,7 @@ export function registerMemberRoutes(router: Router): void {
     const member = (await db.query('select * from public.members where code = $1 and active', [code])).rows[0];
     if (!member) throw notFound('Nincs ilyen aktív tagság.');
     if (member.phone && (!phone || member.phone !== phone)) throw forbidden('A kódhoz tartozó telefonszám nem egyezik.');
-    return {member: cardOf(member)};
+    return {member: cardOf(member), token: await createMemberSession(db, member.id)};
   });
 
   /* ---------------- console ---------------- */
@@ -127,9 +160,10 @@ export function registerMemberRoutes(router: Router): void {
     requireRole({user}, 'manager');
     const q = String(query.get('q') || '').trim().toLowerCase();
     const {rows} = await db.query(
-      `select * from public.members
-        where $1 = '' or lower(name) like $2 or lower(code) like $2 or phone like $2
-        order by active desc, case tier when 'royal' then 0 when 'black' then 1 when 'gold' then 2 else 3 end, name limit 400`,
+      `select m.*, (select count(*)::int from public.member_messages x where x.member_id = m.id and not x.from_house and x.read_at is null) as unread
+         from public.members m
+        where $1 = '' or lower(m.name) like $2 or lower(m.code) like $2 or m.phone like $2
+        order by m.active desc, case m.tier when 'royal' then 0 when 'black' then 1 when 'gold' then 2 else 3 end, m.name limit 400`,
       [q, `%${q}%`]
     );
     return {members: rows.map(memberOf), stats: await memberStats(db)};

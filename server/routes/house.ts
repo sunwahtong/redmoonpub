@@ -27,7 +27,9 @@ const eventBody = z.object({
   entryFee: z.coerce.number().int().min(0).max(10_000_000).nullable().optional(),
   dressCode: z.string().trim().max(120).default(''),
   featured: z.boolean().default(false),
-  active: z.boolean().default(true)
+  active: z.boolean().default(true),
+  /** Empty: everyone. A tier: an invitation, shown only in the House's inner rooms from that tier up. */
+  minTier: z.enum(['', 'silver', 'gold', 'black', 'royal']).default('')
 });
 type EventInput = z.infer<typeof eventBody>;
 
@@ -115,18 +117,18 @@ export function registerHouseRoutes(router: Router): void {
     acceptImage(body.coverImage, body.coverPublicId, 'event');
     const coverPublicId = body.coverImage ? body.coverPublicId : '';
     if (body.featured) await db.query('update public.events set featured = false where featured');
-    const values = [body.title, body.subtitle, body.description, body.place || 'Red Moon Pub', startsAt, endsAt, body.tag, body.coverImage, coverPublicId, body.entryFee ?? null, body.dressCode, body.featured, body.active];
+    const values = [body.title, body.subtitle, body.description, body.place || 'Red Moon Pub', startsAt, endsAt, body.tag, body.coverImage, coverPublicId, body.entryFee ?? null, body.dressCode, body.featured, body.active, body.minTier];
     if (id) {
       const {rows} = await db.query(
         `update public.events set title = $2, subtitle = $3, description = $4, place = $5, starts_at = $6, ends_at = $7, tag = $8,
-           cover_image = $9, cover_public_id = $10, entry_fee = $11, dress_code = $12, featured = $13, active = $14 where id = $1 returning *`,
+           cover_image = $9, cover_public_id = $10, entry_fee = $11, dress_code = $12, featured = $13, active = $14, min_tier = $15 where id = $1 returning *`,
         [id, ...values]
       );
       return rows[0];
     }
     const {rows} = await db.query(
-      `insert into public.events (title, subtitle, description, place, starts_at, ends_at, tag, cover_image, cover_public_id, entry_fee, dress_code, featured, active, created_by, created_by_name)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) returning *`,
+      `insert into public.events (title, subtitle, description, place, starts_at, ends_at, tag, cover_image, cover_public_id, entry_fee, dress_code, featured, active, min_tier, created_by, created_by_name)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) returning *`,
       [...values, user.id, user.name]
     );
     return rows[0];

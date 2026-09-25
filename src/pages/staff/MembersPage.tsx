@@ -1,11 +1,11 @@
-import React, {useMemo, useRef, useState} from 'react';
-import {Check, Copy, CreditCard, Pencil, Plus, Trash2, UserCheck, X} from 'lucide-react';
+import React, {useEffect, useMemo, useRef, useState} from 'react';
+import {Check, Copy, CreditCard, MessageSquare, Pencil, Plus, Send, Trash2, UserCheck, X} from 'lucide-react';
 import {Btn} from '../../components/ui/Btn';
 import {Chips, Field, inputClass, PageHeader, Panel, SearchField, Stat} from '../../components/ui/console';
 import {MemberCard} from '../../components/house/MemberCard';
 import {CardOverlay, type CardCue, type CardPlay} from '../../components/house/CardStage';
 import {useLiveData} from '../../hooks/useLiveData';
-import {apiSend, formatDate} from '../../lib/api';
+import {apiSend, formatDate, formatTime} from '../../lib/api';
 import {MEMBERSHIP} from '../../lib/content';
 import {RANK, tierMeta, type Tier, type TierStep} from '../../lib/houseCard';
 import {playSfx} from '../../lib/sfx';
@@ -27,6 +27,8 @@ interface Member {
   grantedAt: string;
   updatedAt: string;
   tierHistory: TierStep[];
+  /** Lines the member wrote on the house's line that nobody has read yet. */
+  unread: number;
 }
 
 interface Feed {
@@ -80,6 +82,7 @@ export const MembersPage: React.FC = () => {
   const [editing, setEditing] = useState<Member | null>(null);
   const [edit, setEdit] = useState({name: '', phone: PHONE_PREFIX, tier: 'silver' as Tier, note: ''});
   const [stage, setStage] = useState<{member: Member; cue: CardCue | null} | null>(null);
+  const [threadId, setThreadId] = useState<string | null>(null);
   const cueKey = useRef(0);
 
   /* The card on the stage follows the roster, so a visit marked meanwhile shows; a torn-up card keeps its last state. */
@@ -338,6 +341,11 @@ export const MembersPage: React.FC = () => {
                   {member.note && <p className="mt-2 text-[10px] leading-[1.6] text-[#8d8584]">{member.note}</p>}
                 </div>
                 <div className="flex flex-wrap gap-2">
+                  {RANK[member.tier] >= 3 && (
+                    <Btn variant={member.unread ? 'red' : 'outline'} onClick={() => setThreadId(threadId === member.id ? null : member.id)} title="A ház vonala: amit a tag írt, és a válasz">
+                      <MessageSquare size={12}/> ÜZENETEK{member.unread ? ` · ${member.unread}` : ''}
+                    </Btn>
+                  )}
                   <Btn onClick={() => openCard(member)} title="A kártya nagyban, képként letölthető">
                     <CreditCard size={12}/> KÁRTYA
                   </Btn>
@@ -393,6 +401,8 @@ export const MembersPage: React.FC = () => {
                   </div>
                 </form>
               )}
+
+              {threadId === member.id && <MemberThread member={member} onRead={() => replace({...member, unread: 0})}/>}
             </article>
           ))}
         </div>
@@ -400,5 +410,89 @@ export const MembersPage: React.FC = () => {
 
       {stage && staged && <CardOverlay member={staged} cue={stage.cue} onClose={() => setStage(null)}/>}
     </main>
+  );
+};
+
+interface LoungeMessage {
+  id: string;
+  at: string;
+  fromHouse: boolean;
+  byName: string;
+  kind: string;
+  text: string;
+  meta: {date?: string; guests?: number};
+  readAt: string | null;
+}
+
+const KIND_LABEL: Record<string, string> = {'privat-sarok': 'PRIVÁT SAROK', rendezveny: 'RENDEZVÉNY', 'a-haz-egy-estere': 'A HÁZ EGY ESTÉRE'};
+
+/** The house's side of a member's line: what they wrote, and the reply. Opening it counts as reading. */
+const MemberThread: React.FC<{member: Member; onRead: () => void}> = ({member, onRead}) => {
+  const {data, mutate} = useLiveData<{messages: LoungeMessage[]}>(`/api/members/${member.id}/messages`, {intervalMs: 60000, topics: ['content']});
+  const [text, setText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const scroller = useRef<HTMLDivElement>(null);
+  const readRef = useRef(onRead);
+  readRef.current = onRead;
+
+  useEffect(() => {
+    if (data) readRef.current();
+  }, [data]);
+
+  useEffect(() => {
+    const node = scroller.current;
+    if (node) node.scrollTop = node.scrollHeight;
+  }, [data?.messages.length]);
+
+  const send = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const value = text.trim();
+    if (!value || busy) return;
+    setBusy(true);
+    try {
+      const reply = await apiSend<{message: LoungeMessage}>(`/api/members/${member.id}/messages`, 'POST', {text: value});
+      mutate((current) => (current ? {messages: [...current.messages, reply.message]} : current));
+      setText('');
+      playSfx('chat_message');
+    } catch (err) {
+      toast.error('Nem ment el', (err as Error).message);
+      playSfx('error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="rm-mcthread mt-5 border-t border-white/[0.06] pt-5" style={{'--mc-ink': tierMeta(member.tier).ink} as React.CSSProperties}>
+      <span className="rm-label">A HÁZ VONALA · {member.name}</span>
+      <div ref={scroller} className="rm-lounge-thread mt-3 border border-white/[0.06]">
+        {!data && <p className="text-[11px] text-[#8d8584]">Betöltés…</p>}
+        {data && !data.messages.length && <p className="text-[11px] leading-[1.8] text-[#8d8584]">Még nem írt. Te kezdheted — a válasz a belső szobájában várja.</p>}
+        {data?.messages.map((message) => (
+          <div key={message.id} className={`rm-lounge-msg${message.fromHouse ? ' is-house' : ''}`}>
+            <div className="rm-lounge-msg-meta">
+              <b>{message.fromHouse ? message.byName || 'A ház' : member.name}</b>
+              {KIND_LABEL[message.kind] && <span className="rm-lounge-kind">{KIND_LABEL[message.kind]}</span>}
+              <span>
+                {formatDate(message.at)} · {formatTime(message.at)}
+              </span>
+            </div>
+            {(message.meta.date || message.meta.guests) && (
+              <p className="rm-lounge-msg-facts">
+                {message.meta.date ? `Mikor: ${message.meta.date}` : ''}
+                {message.meta.guests ? ` · ${message.meta.guests} fő` : ''}
+              </p>
+            )}
+            <p>{message.text}</p>
+          </div>
+        ))}
+      </div>
+      <form onSubmit={send} className="mt-3 flex gap-2">
+        <input value={text} onChange={(event) => setText(event.target.value)} maxLength={600} placeholder="Válasz a tagnak…" className={inputClass}/>
+        <Btn type="submit" variant="red" disabled={busy || !text.trim()}>
+          <Send size={12}/> KÜLDÉS
+        </Btn>
+      </form>
+    </div>
   );
 };

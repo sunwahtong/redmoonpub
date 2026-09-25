@@ -355,11 +355,13 @@
     box-shadow: 0 0 12px rgba(255, 43, 79, 0.35);
 }
 
+/* The track holds --copies identical lines and slides exactly one of them, so the loop is seamless at any width. */
 .rm-ticker-track {
+    --copies: 2;
     display: flex;
     width: max-content;
     will-change: transform;
-    animation: rmMarquee 38s linear infinite;
+    animation: rmMarquee 42s linear infinite;
 }
 
 .rm-ticker-track > span {
@@ -395,7 +397,7 @@
 
 @keyframes rmMarquee {
     from { transform: translate3d(0, 0, 0); }
-    to { transform: translate3d(-50%, 0, 0); }
+    to { transform: translate3d(calc(-100% / var(--copies)), 0, 0); }
 }
 
 @media (prefers-reduced-motion: reduce) {

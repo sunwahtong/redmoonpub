@@ -5,6 +5,7 @@ import {Btn, BtnLink} from '../ui/Btn';
 import {CardActions, CardScene, type CardCue, type CardSceneHandle} from './CardStage';
 import {apiSend} from '../../lib/api';
 import {tierMeta, type Tier, type TierStep} from '../../lib/houseCard';
+import {clearHouseSession, storeHouseSession} from '../../lib/houseSession';
 import {playSfx} from '../../lib/sfx';
 
 const STORAGE_KEY = 'rm-house-card';
@@ -32,12 +33,18 @@ export function storedHouseCard(): {code: string; phone: string} | null {
   }
 }
 
+interface Props {
+  /** Called once a card opens; the inner rooms switch to it without showing the card here. */
+  onCard?: () => void;
+}
+
 /**
  * "Are you a member?" — a code and the phone on file open the card itself:
- * the drawing the house issued, front and back, to keep as a picture. A
- * booking link carries the code on.
+ * the drawing the house issued, front and back, to keep as a picture. The
+ * answer also carries a session the browser keeps, which opens the House's
+ * inner rooms and marks the member in the club.
  */
-export const HouseLookup: React.FC = () => {
+export const HouseLookup: React.FC<Props> = ({onCard}) => {
   const [params] = useSearchParams();
   const urlCode = (params.get('code') || '').trim().toUpperCase();
   const stored = useRef(storedHouseCard());
@@ -48,6 +55,8 @@ export const HouseLookup: React.FC = () => {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const handle = useRef<CardSceneHandle>(null);
+  const onCardRef = useRef(onCard);
+  onCardRef.current = onCard;
 
   const digits = phone.startsWith(PHONE_PREFIX) ? phone.slice(PHONE_PREFIX.length).replace(/\D/g, '').slice(0, 7) : '';
 
@@ -57,13 +66,22 @@ export const HouseLookup: React.FC = () => {
     setBusy(true);
     setError('');
     try {
-      const reply = await apiSend<{member: HouseCard}>('/api/public/member-lookup', 'POST', {code: clean, phone: phoneDigits});
+      const reply = await apiSend<{member: HouseCard; token: string}>('/api/public/member-lookup', 'POST', {code: clean, phone: phoneDigits});
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({code: clean, phone: phoneDigits}));
+      if (reply.token) storeHouseSession({token: reply.token, code: reply.member.code, name: reply.member.name, tier: reply.member.tier});
+      if (onCardRef.current) {
+        if (!quiet) playSfx('success');
+        onCardRef.current();
+        return;
+      }
       setCard(reply.member);
       setCue({play: 'issue', key: Date.now()});
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({code: clean, phone: phoneDigits}));
     } catch (err) {
       const status = (err as {status?: number}).status;
-      if (status === 404 || status === 403) localStorage.removeItem(STORAGE_KEY);
+      if (status === 404 || status === 403) {
+        localStorage.removeItem(STORAGE_KEY);
+        clearHouseSession();
+      }
       if (!quiet) {
         setError((err as Error).message);
         playSfx('error');
@@ -81,6 +99,7 @@ export const HouseLookup: React.FC = () => {
 
   const forget = () => {
     localStorage.removeItem(STORAGE_KEY);
+    clearHouseSession();
     setCard(null);
     setCue(null);
     setCode('');
@@ -96,9 +115,10 @@ export const HouseLookup: React.FC = () => {
         <p className="rm-mcpublic-hint">KOPPINTS A KÁRTYÁRA A HÁTLAPÉRT · A KÉPET LETÖLTHETED ÉS ELMENTHETED</p>
         <CardActions member={card} handle={handle}/>
         <div className="rm-mcpublic-foot">
-          <BtnLink to={`/reservations?member=${encodeURIComponent(card.code)}`} variant="red">
-            FOGLALÁS A KÓDDAL ↗
+          <BtnLink to="/house" variant="red">
+            A BELSŐ SZOBA ↗
           </BtnLink>
+          <BtnLink to={`/reservations?member=${encodeURIComponent(card.code)}`}>FOGLALÁS A KÓDDAL ↗</BtnLink>
           <button type="button" onClick={forget} className="inline-flex items-center gap-2 text-[8px] tracking-[0.25em] text-[#777] hover:text-white">
             <LogOut size={11}/> KILÉPÉS
           </button>
@@ -117,7 +137,7 @@ export const HouseLookup: React.FC = () => {
     >
       <span className="rm-label">A KÁRTYÁD</span>
       <h3 className="mt-3 font-heading text-[24px] text-white">Tag vagy? Mutasd a kódod.</h3>
-      <p className="mt-2 text-[11px] leading-[1.8] text-[#8d8584]">A kódot a bejáratnál kaptad. A telefonszám az, amit a háznak megadtál — a kettő együtt nyitja a kártyát, amit képként el is menthetsz.</p>
+      <p className="mt-2 text-[11px] leading-[1.8] text-[#8d8584]">A kódot a bejáratnál kaptad. A telefonszám az, amit a háznak megadtál — a kettő együtt nyitja a kártyát, a képet és a House belső szobáját.</p>
       <div className="mt-6 grid grid-cols-1 gap-3.5 sm:grid-cols-2">
         <label className="flex flex-col gap-2">
           <span className="text-[8px] tracking-[0.25em] text-[#777]">TAGSÁGI KÓD</span>

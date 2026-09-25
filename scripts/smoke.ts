@@ -478,6 +478,85 @@ if (raisedCard.data?.member?.tierHistory?.length !== 2 || 'by' in (raisedCard.da
   console.log('FAIL the guest card should carry the climb without names', raisedCard.data?.member);
   failures += 1;
 }
+// ---------- the inner rooms ----------
+// The lookup is rate limited per network (12 in ten minutes); a re-run may hit it, and then the rooms are skipped.
+const opened = await call('guest', 'POST', '/api/public/member-lookup', {code: black.data.member.code, phone: '3334445'}, {expect: [200, 429]});
+const houseToken = String(opened.data?.token || '');
+if (!houseToken && opened.status !== 429) {
+  console.log('FAIL the lookup should hand out a session token', opened.data);
+  failures += 1;
+}
+await call('guest', 'GET', '/api/lounge?token=nope', undefined, {expect: 401});
+if (houseToken) {
+const lounge = await call('guest', 'GET', `/api/lounge?token=${encodeURIComponent(houseToken)}`);
+if (lounge.data?.member?.code !== black.data.member.code || !lounge.data?.rooms?.line || lounge.data?.rooms?.guestList) {
+  console.log('FAIL a Black card should open the line but not the guest list', lounge.data?.rooms);
+  failures += 1;
+}
+if (raisedCard.data?.token) await call('guest', 'POST', '/api/lounge/message', {token: raisedCard.data.token, text: 'Szia', kind: 'uzenet'}, {expect: 403});
+const sent = await call('guest', 'POST', '/api/lounge/message', {token: houseToken, text: 'Smoke üzenet a háznak', kind: 'privat-sarok', meta: {date: 'szombat', guests: 4}}, {expect: 201});
+await call('guest', 'POST', '/api/lounge/message', {token: houseToken, text: 'Nincs dátum', kind: 'rendezveny'}, {expect: 400});
+await call('guest', 'POST', '/api/lounge/message', {token: houseToken, text: 'A ház', kind: 'a-haz-egy-estere', meta: {date: 'vasárnap'}}, {expect: 403});
+const rosterUnread = await call('mgr', 'GET', '/api/members?q=smoke');
+const blackRow = (rosterUnread.data?.members || []).find((entry: {id: string}) => entry.id === black.data.member.id);
+if (blackRow?.unread !== 1) {
+  console.log('FAIL the roster should count the unread line', blackRow);
+  failures += 1;
+}
+const thread = await call('mgr', 'GET', `/api/members/${black.data.member.id}/messages`);
+if (!(thread.data?.messages || []).some((entry: {id: string}) => entry.id === sent.data?.message?.id)) {
+  console.log('FAIL the console should read the member line', thread.data);
+  failures += 1;
+}
+await call('mgr', 'POST', `/api/members/${black.data.member.id}/messages`, {text: 'Rendben, várunk.'}, {expect: 201});
+const loungeAgain = await call('guest', 'GET', `/api/lounge?token=${encodeURIComponent(houseToken)}`);
+if (loungeAgain.data?.unread !== 1 || (loungeAgain.data?.messages || []).length !== 2) {
+  console.log('FAIL the member should see the reply, unread', loungeAgain.data?.unread, (loungeAgain.data?.messages || []).length);
+  failures += 1;
+}
+await call('guest', 'POST', '/api/lounge/read', {token: houseToken});
+await call(owner, 'PATCH', `/api/members/${black.data.member.id}`, {tier: 'royal'});
+// The booking rate limit can hit on a re-run; the guest list is checked when there is a booking to put it on.
+const royalBooking = await call('guest', 'POST', '/api/reservations', {name: 'Smoke Black', phone: '3334445', guests: 4, at: new Date(Date.now() + 6 * 3600000).toISOString(), occasion: 'este', memberCode: black.data.member.code, note: '', visitorToken: memberToken}, {expect: [201, 429]});
+if (royalBooking.data?.reservation?.id) {
+  const listed = await call('guest', 'POST', '/api/lounge/guest-list', {token: houseToken, reservationId: royalBooking.data.reservation.id, names: ['Lin Tho Gua', 'Yuanzhe Guan']});
+  if ((listed.data?.booking?.guestList || []).length !== 2) {
+    console.log('FAIL a Royal should list their guests', listed.data);
+    failures += 1;
+  }
+  const book = await call(owner, 'GET', '/api/reservations');
+  const booked = (book.data?.reservations || []).find((entry: {id: string}) => entry.id === royalBooking.data.reservation.id);
+  if ((booked?.guestList || []).length !== 2) {
+    console.log('FAIL the booking book should show the guest list', booked);
+    failures += 1;
+  }
+  await call('guest', 'DELETE', `/api/reservations/${royalBooking.data.reservation.id}`, {visitorToken: memberToken});
+}
+await call('guest', 'POST', '/api/lounge/guest-list', {token: houseToken, reservationId: '00000000-0000-0000-0000-000000000000', names: ['Senki']}, {expect: 404});
+const invite = await call(owner, 'POST', '/api/events', {title: 'Smoke zárt este', startsAt: new Date(Date.now() + 48 * 3600000).toISOString(), minTier: 'gold'}, {expect: 201});
+const secret = await call(owner, 'POST', '/api/products', {name: 'Smoke Secret', price: 1000, minTier: 'gold'}, {expect: 201});
+const publicEvents = await call('guest', 'GET', '/api/public-events');
+const publicProducts = await call('guest', 'GET', '/api/public-products');
+if ((publicEvents.data?.events || []).some((entry: {id: string}) => entry.id === invite.data?.event?.id) || (publicProducts.data?.products || []).some((entry: {id: string}) => entry.id === secret.data?.product?.id)) {
+  console.log('FAIL an invitation and a secret drink must stay off the public lists');
+  failures += 1;
+}
+const rooms = await call('guest', 'GET', `/api/lounge?token=${encodeURIComponent(houseToken)}`);
+if (!(rooms.data?.invitations || []).some((entry: {id: string}) => entry.id === invite.data?.event?.id) || !(rooms.data?.secretMenu || []).some((entry: {id: string}) => entry.id === secret.data?.product?.id)) {
+  console.log('FAIL the rooms should hold the invitation and the secret drink', rooms.data?.invitations?.length, rooms.data?.secretMenu?.length);
+  failures += 1;
+}
+await call(owner, 'DELETE', `/api/events/${invite.data.event.id}`);
+await call(owner, 'DELETE', `/api/products/${secret.data.product.id}`);
+if (named.data?.status === 'accepted') {
+  const crest = await call('guest', 'POST', '/api/club/chat', {name: 'SmokeListener', text: 'A House itt van', token: named.data.token, houseToken}, {expect: [201, 429]});
+  if (crest.data?.message && crest.data.message.tier !== 'royal') {
+    console.log('FAIL a chat line should carry the House crest', crest.data.message);
+    failures += 1;
+  }
+}
+}
+
 await call('mgr', 'PATCH', `/api/members/${black.data.member.id}`, {active: false}, {expect: 403});
 await call('mgr', 'PATCH', `/api/members/${silver.data.member.id}`, {active: false});
 await call('guest', 'POST', '/api/public/member-lookup', {code: silver.data.member.code, phone: '2223334'}, {expect: 404});

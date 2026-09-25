@@ -358,3 +358,148 @@
     .rm-mcs-ring, .rm-mcs-banner, .rm-mcs-printline { display: none; }
     .rm-mcs-tilt, .rm-mcs-body, .rm-mcs-face { transition: none; }
 }
+
+/* ---------------------------------------------------------------- */
+/* Plays that grow with the tier: Gold bursts, Black eclipses,       */
+/* Royal is crowned                                                  */
+/* ---------------------------------------------------------------- */
+
+.rm-mcs { --ring-at: 0.5s; }
+.rm-mcs-ring { animation-delay: calc(var(--ring-at) + var(--i, 0) * 0.35s); }
+.rm-mcs.is-issue { --ring-at: 1.9s; }
+.rm-mcs.is-upgrade.is-l3 { --ring-at: 1.9s; }
+.rm-mcs.is-upgrade.is-l4 { --ring-at: 1s; }
+
+/* The finale of an issued card, by tier. */
+.rm-mcs.is-issue.is-l3 .rm-mcs-flash, .rm-mcs.is-issue.is-l4 .rm-mcs-flash { animation: rmMcFlash 0.7s ease 1.9s both; }
+.rm-mcs.is-issue.is-l3 .rm-mcs-tilt { animation: rmMcIssue 1.25s cubic-bezier(0.2, 0.85, 0.25, 1.05) both, rmMcShake 0.45s ease 1.95s; }
+.rm-mcs.is-issue.is-l4 .rm-mcs-tilt { animation: rmMcIssue 1.25s cubic-bezier(0.2, 0.85, 0.25, 1.05) both, rmMcHover 2.2s ease-in-out 1.9s; }
+.rm-mcs.is-issue.is-l4 .rm-mcs-crown { animation: rmMcCrownIn 0.8s cubic-bezier(0.2, 1.1, 0.3, 1) 1.9s both, rmMcCrownOut 0.7s ease 3.5s forwards; }
+.rm-mcs.is-issue.is-l4 .rm-mcs-halo { animation: rmMcBloom 3s ease 0.3s both; }
+
+/* Black: an eclipse crosses the card with the new metal behind it, then a rim of light. */
+.rm-mcs.is-upgrade.is-l3 .rm-mcs-next { clip-path: inset(0 100% 0 0); animation: rmMcWipe 1.6s cubic-bezier(0.7, 0, 0.3, 1) 0.3s forwards; }
+.rm-mcs.is-upgrade.is-l3 .rm-mcs-tilt { animation: rmMcShake 0.5s ease 1.9s; }
+.rm-mcs.is-upgrade.is-l3 .rm-mcs-flash { animation: rmMcFlash 0.7s ease 1.9s both; }
+.rm-mcs.is-upgrade.is-l3 .rm-mcs-banner { animation-delay: 2.2s; }
+.rm-mcs-eclipse {
+    position: absolute;
+    left: -125%;
+    top: 50%;
+    width: 120%;
+    aspect-ratio: 1;
+    margin-top: -60%;
+    border-radius: 50%;
+    background: radial-gradient(circle, #000 58%, rgba(0, 0, 0, 0.92) 70%, transparent 71%);
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.4), 0 0 60px 14px rgba(0, 0, 0, 0.85);
+    z-index: 3;
+    pointer-events: none;
+    animation: rmMcEclipse 1.9s cubic-bezier(0.7, 0, 0.3, 1) 0.25s both;
+}
+
+/* Royal: the card lifts and turns, a crown descends, three rings, the metal pours from the top. */
+.rm-mcs.is-upgrade.is-l4 .rm-mcs-next { clip-path: circle(0% at 50% 0%); animation: rmMcSpreadTop 1.5s cubic-bezier(0.3, 0.7, 0.2, 1) 0.9s forwards; }
+.rm-mcs.is-upgrade.is-l4 .rm-mcs-tilt { animation: rmMcOrbit 3.2s cubic-bezier(0.4, 0, 0.2, 1) 0.4s; }
+.rm-mcs.is-upgrade.is-l4 .rm-mcs-flash { animation: rmMcFlashTwice 1.4s ease 1s both; }
+.rm-mcs.is-upgrade.is-l4 .rm-mcs-crown { animation: rmMcCrownIn 0.8s cubic-bezier(0.2, 1.1, 0.3, 1) 0.6s both, rmMcCrownOut 0.7s ease 3.9s forwards; }
+.rm-mcs.is-upgrade.is-l4 .rm-mcs-halo { animation: rmMcBloom 3s ease 0.5s both; }
+.rm-mcs.is-upgrade.is-l4 .rm-mcs-banner { animation-delay: 1.9s; animation-duration: 2.6s; }
+/* The crown comes down onto the card itself and dissolves into it, clear of the stage's heading. */
+.rm-mcs-crown {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    z-index: 5;
+    transform: translate(-50%, -50%);
+    font-family: Cinzel, serif;
+    font-size: clamp(64px, 12vw, 120px);
+    line-height: 1;
+    color: var(--mc-ink);
+    text-shadow: 0 0 30px var(--mc-glow), 0 0 80px var(--mc-glow);
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* The room answers too: darker for Black, red for Royal. */
+.rm-mco.is-l3.is-play-upgrade .rm-mco-backdrop { background: radial-gradient(ellipse at 50% 35%, rgba(22, 22, 28, 0.7), #000 62%); }
+.rm-mco.is-l4.is-play-upgrade .rm-mco-backdrop, .rm-mco.is-l4.is-play-issue .rm-mco-backdrop { background: radial-gradient(ellipse at 50% 35%, rgba(120, 10, 34, 0.75), rgba(3, 2, 3, 0.96) 62%); }
+.rm-mco.is-l4.is-play-upgrade .rm-mco-aurora, .rm-mco.is-l4.is-play-issue .rm-mco-aurora { opacity: 0.95; animation-duration: 9s; }
+
+@keyframes rmMcWipe { to { clip-path: inset(0 0 0 0); } }
+@keyframes rmMcEclipse { 0% { transform: translateX(0); opacity: 0; } 8% { opacity: 1; } 92% { opacity: 1; } 100% { transform: translateX(190%); opacity: 0; } }
+@keyframes rmMcSpreadTop { to { clip-path: circle(160% at 50% 0%); } }
+@keyframes rmMcOrbit {
+    0% { transform: none; }
+    25% { transform: translateY(-16px) rotateY(-16deg) rotateX(6deg) scale(1.04); }
+    60% { transform: translateY(-20px) rotateY(16deg) rotateX(4deg) scale(1.06); }
+    100% { transform: none; }
+}
+@keyframes rmMcHover { 0%, 100% { transform: none; } 50% { transform: translateY(-14px) scale(1.03); } }
+@keyframes rmMcFlashTwice { 0% { opacity: 0; } 12% { opacity: 0.8; } 40% { opacity: 0; } 70% { opacity: 0.6; } 100% { opacity: 0; } }
+@keyframes rmMcCrownIn {
+    0% { opacity: 0; transform: translate(-50%, -160%) scale(3); filter: blur(6px); }
+    60% { opacity: 1; transform: translate(-50%, -50%) scale(0.94); filter: none; }
+    100% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+@keyframes rmMcCrownOut { to { opacity: 0; transform: translate(-50%, -50%) scale(2.2); filter: blur(6px); } }
+
+/* ---------------------------------------------------------------- */
+/* The crest a member's name carries: club chat, requests, the rooms */
+/* ---------------------------------------------------------------- */
+
+.rm-tier-chip {
+    --chip: var(--rm-red-bright);
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 7px;
+    border: 1px solid color-mix(in srgb, var(--chip) 55%, transparent);
+    background: color-mix(in srgb, var(--chip) 10%, transparent);
+    font-family: Cinzel, serif;
+    font-size: 8px;
+    letter-spacing: 0.2em;
+    color: var(--chip);
+    text-shadow: 0 0 10px color-mix(in srgb, var(--chip) 50%, transparent);
+    vertical-align: middle;
+    white-space: nowrap;
+}
+.rm-tier-chip i { font-style: normal; }
+.rm-bubble-meta .rm-tier-chip, .rm-board-row .rm-tier-chip { padding: 1px 5px; font-size: 7px; }
+.rm-bubble.is-tiered .rm-bubble-avatar { box-shadow: 0 0 0 2px color-mix(in srgb, var(--chip) 70%, transparent), 0 0 12px color-mix(in srgb, var(--chip) 50%, transparent); }
+.rm-board-row.is-priority { background: linear-gradient(90deg, color-mix(in srgb, var(--chip) 9%, transparent), transparent 60%); }
+
+/* ---------------------------------------------------------------- */
+/* The inner rooms                                                   */
+/* ---------------------------------------------------------------- */
+
+.rm-lounge-glow { position: absolute; inset: 0; background: radial-gradient(ellipse at 75% 30%, var(--mc-glow), transparent 55%); opacity: 0.5; pointer-events: none; }
+.rm-lounge-card { max-width: 520px; }
+.rm-lounge-thread { display: flex; flex-direction: column; gap: 10px; min-height: 220px; max-height: 460px; overflow-y: auto; padding: 16px 18px; }
+.rm-lounge-msg {
+    align-self: flex-end;
+    max-width: 86%;
+    padding: 12px 14px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.03);
+    animation: rmMcRise 0.3s ease both;
+}
+.rm-lounge-msg.is-house { align-self: flex-start; border-color: color-mix(in srgb, var(--mc-ink) 45%, transparent); background: color-mix(in srgb, var(--mc-ink) 7%, transparent); }
+.rm-lounge-msg p { font-size: 12px; line-height: 1.7; color: #e6dfdd; white-space: pre-wrap; }
+.rm-lounge-msg-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 5px; font-size: 9px; letter-spacing: 0.12em; color: #8d8584; }
+.rm-lounge-msg-meta b { color: #fff; }
+.rm-lounge-kind { padding: 2px 6px; border: 1px solid var(--mc-ink); font-size: 7px; letter-spacing: 0.2em; color: var(--mc-ink); }
+.rm-lounge-msg .rm-lounge-msg-facts { margin-bottom: 4px; font-size: 10px; color: var(--mc-ink); }
+.rm-lounge-step { position: relative; padding: 24px; border: 1px solid var(--rm-line); background: var(--rm-bg-card); opacity: 0.55; transition: opacity 0.3s ease; }
+.rm-lounge-step.is-open { opacity: 1; border-color: color-mix(in srgb, var(--chip) 45%, transparent); box-shadow: inset 0 0 40px color-mix(in srgb, var(--chip) 8%, transparent); }
+.rm-lounge-lock { border-style: dashed; }
+.rm-lounge-lock-glyph { font-family: Cinzel, serif; font-size: 44px; line-height: 1; color: var(--chip); opacity: 0.5; }
+
+/* The console's side of the line: the member on the left, the house on the right. */
+.rm-mcthread .rm-lounge-msg { align-self: flex-start; }
+.rm-mcthread .rm-lounge-msg.is-house { align-self: flex-end; }
+
+@media (prefers-reduced-motion: reduce) {
+    .rm-mcs-crown, .rm-mcs-eclipse { display: none; }
+    .rm-mcs.is-issue .rm-mcs-tilt, .rm-mcs.is-upgrade .rm-mcs-tilt, .rm-mcs.is-issue .rm-mcs-flash, .rm-mcs.is-upgrade .rm-mcs-flash { animation: none; }
+    .rm-lounge-msg { animation: none; }
+}

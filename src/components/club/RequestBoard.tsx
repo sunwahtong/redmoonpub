@@ -1,7 +1,12 @@
 import React, {useState} from 'react';
 import {Check, Disc3, Music2, ThumbsUp, Trash2, X} from 'lucide-react';
 import type {MusicRequest} from '../../hooks/useClub';
+import {TierChip} from '../house/TierChip';
 import {formatTime} from '../../lib/api';
+import {RANK, tierMeta, type Tier} from '../../lib/houseCard';
+
+/** Gold and above ask the booth first. */
+const priorityOf = (tier: string | undefined): number => (tier && RANK[tier as Tier] >= 2 ? 1 : 0);
 
 export type RequestAction = 'accept' | 'decline' | 'played' | 'delete';
 
@@ -39,7 +44,7 @@ export const RequestBoard: React.FC<Props> = ({requests, requestsOpen, votedIds,
   const base = requests.filter((request) => showDeclined || request.status !== 'declined');
   const visible = canModerate && view !== 'all' ? base.filter((request) => request.status === view) : base;
   const order = (status: string) => (status === 'pending' ? 0 : status === 'accepted' ? 1 : status === 'played' ? 2 : 3);
-  const sorted = [...visible].sort((a, b) => order(a.status) - order(b.status) || b.votes - a.votes || a.at.localeCompare(b.at));
+  const sorted = [...visible].sort((a, b) => order(a.status) - order(b.status) || priorityOf(b.tier) - priorityOf(a.tier) || b.votes - a.votes || a.at.localeCompare(b.at));
 
   return (
     <div className="rm-card p-0">
@@ -68,8 +73,13 @@ export const RequestBoard: React.FC<Props> = ({requests, requestsOpen, votedIds,
         {sorted.map((request) => {
           const voted = votedIds.includes(request.id);
           const closed = request.status === 'played' || request.status === 'declined';
+          const priority = priorityOf(request.tier) > 0 && request.status === 'pending';
           return (
-            <div key={request.id} className={`rm-board-row${closed ? ' is-closed' : ''}${request.status === 'accepted' ? ' is-accepted' : ''}`} style={{'--bubble': request.color || '#ff5c7a'} as React.CSSProperties}>
+            <div
+              key={request.id}
+              className={`rm-board-row${closed ? ' is-closed' : ''}${request.status === 'accepted' ? ' is-accepted' : ''}${priority ? ' is-priority' : ''}`}
+              style={{'--bubble': request.color || '#ff5c7a', ...(request.tier && RANK[request.tier as Tier] ? {'--chip': tierMeta(request.tier as Tier).ink} : {})} as React.CSSProperties}
+            >
               <button
                 type="button"
                 onClick={() => onVote?.(request.id)}
@@ -85,6 +95,7 @@ export const RequestBoard: React.FC<Props> = ({requests, requestsOpen, votedIds,
               <div className="min-w-0 flex-1">
                 <strong className="block truncate text-[11px] text-white">{request.item?.name || '—'}</strong>
                 <span className="text-[9px]" style={{color: request.color || '#8d8584'}}>{request.name}</span>
+                {request.tier && <TierChip tier={request.tier} className="ml-1.5"/>}
                 <span className="text-[9px] text-[#777]"> · {formatTime(request.at)}</span>
               </div>
               <span className={`rm-board-status is-${request.status}`}>{STATUS_LABEL[request.status] || request.status}</span>

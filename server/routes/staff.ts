@@ -302,7 +302,7 @@ export function registerStaffRoutes(router: Router): void {
     const shift = await db.query(`select id, started_at, started_by_name from public.shifts where status = 'open' limit 1`);
     const me = user!;
     const counts = (
-      await db.query<{reservations_today: number; reservations_pending: number; applications_pending: number; orders_open: number; unread: number}>(
+      await db.query<{reservations_today: number; reservations_pending: number; applications_pending: number; orders_open: number; unread: number; member_messages: number}>(
         `select
            (select count(*)::int from public.reservations where starts_at >= date_trunc('day', now()) and starts_at < date_trunc('day', now()) + interval '1 day'
               and status in ('pending','reviewing','waitlist','confirmed','seated')) as reservations_today,
@@ -310,7 +310,8 @@ export function registerStaffRoutes(router: Router): void {
            (select count(*)::int from public.applications where status in ('pending','interview')) as applications_pending,
            (select count(*)::int from public.supply_orders where status = 'open') as orders_open,
            (select count(*)::int from public.notifications n where $1 = any(n.audience)
-              and not exists (select 1 from public.notification_reads r where r.notification_id = n.id and r.user_id = $2)) as unread`,
+              and not exists (select 1 from public.notification_reads r where r.notification_id = n.id and r.user_id = $2)) as unread,
+           (select count(*)::int from public.member_messages where not from_house and read_at is null) as member_messages`,
         [me.role, me.id]
       )
     ).rows[0];
@@ -321,7 +322,8 @@ export function registerStaffRoutes(router: Router): void {
         applicationsPending: counts.applications_pending,
         ordersOpen: counts.orders_open,
         unread: counts.unread,
-        lowStock: low.rows.length
+        lowStock: low.rows.length,
+        memberMessages: counts.member_messages
       },
       today: {revenue: today.rows[0].revenue, items: today.rows[0].items, salesCount: today.rows[0].sales_count},
       overallRevenue: overall.rows[0].revenue,

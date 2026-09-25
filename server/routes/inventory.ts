@@ -24,7 +24,11 @@ const productCreate = z.object({
   image: z.string().trim().max(600).default(''),
   imagePublicId: z.string().trim().max(200).default(''),
   subtitle: z.string().trim().max(180).default(''),
-  description: z.string().trim().max(600).default('')
+  description: z.string().trim().max(600).default(''),
+  /** A tier makes it a secret of the House, off the public list from that tier up. */
+  minTier: z.enum(['', 'silver', 'gold', 'black', 'royal']).default(''),
+  /** A member's code makes it their own named drink, shown to them alone. */
+  memberCode: z.string().trim().toUpperCase().max(20).default('')
 });
 
 const productPatch = z.object({
@@ -37,7 +41,9 @@ const productPatch = z.object({
   imagePublicId: z.string().trim().max(200).optional(),
   subtitle: z.string().trim().max(180).optional(),
   description: z.string().trim().max(600).optional(),
-  sortOrder: z.coerce.number().int().min(0).max(10000).optional()
+  sortOrder: z.coerce.number().int().min(0).max(10000).optional(),
+  minTier: z.enum(['', 'silver', 'gold', 'black', 'royal']).optional(),
+  memberCode: z.string().trim().toUpperCase().max(20).optional()
 });
 
 const restockBody = z.object({
@@ -91,6 +97,8 @@ export const productFromRow = (row: Row) => ({
   description: row.description || '',
   active: row.active !== false,
   sortOrder: row.sort_order,
+  minTier: row.min_tier || '',
+  memberCode: row.member_code || '',
   updatedAt: iso(row.updated_at)
 });
 
@@ -175,9 +183,9 @@ export function registerInventoryRoutes(router: Router): void {
     const id = `p_${crypto.randomBytes(6).toString('hex')}`;
     const order = (await db.query<{n: number}>('select coalesce(max(sort_order), 0)::int + 1 as n from public.products')).rows[0].n;
     const {rows} = await db.query(
-      `insert into public.products (id, name, category, section, price, stock, min_stock, image, image_public_id, subtitle, description, sort_order)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) returning *`,
-      [id, body.name, body.category, body.section, Math.round(body.price), body.stock, body.minStock, body.image, body.image ? body.imagePublicId : '', body.subtitle, body.description, order]
+      `insert into public.products (id, name, category, section, price, stock, min_stock, image, image_public_id, subtitle, description, sort_order, min_tier, member_code)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) returning *`,
+      [id, body.name, body.category, body.section, Math.round(body.price), body.stock, body.minStock, body.image, body.image ? body.imagePublicId : '', body.subtitle, body.description, order, body.minTier, body.memberCode]
     );
     await audit(db, me, 'PRODUCT_CREATE', body.name);
     return created({product: productFromRow(rows[0])});
@@ -211,6 +219,8 @@ export function registerInventoryRoutes(router: Router): void {
     if (body.subtitle !== undefined) set('subtitle', body.subtitle);
     if (body.description !== undefined) set('description', body.description);
     if (body.sortOrder !== undefined) set('sort_order', body.sortOrder);
+    if (body.minTier !== undefined) set('min_tier', body.minTier);
+    if (body.memberCode !== undefined) set('member_code', body.memberCode);
     if (!fields.length) return {product: productFromRow(existing)};
     const {rows} = await db.query(`update public.products set ${fields.join(', ')} where id = $1 returning *`, values);
     // The replaced picture leaves the store with the reference.

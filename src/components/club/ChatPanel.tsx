@@ -1,7 +1,11 @@
 import React, {useEffect, useMemo, useRef} from 'react';
 import {Disc3, MessageSquare, Pin, Trash2} from 'lucide-react';
 import type {ClubChatMessage, ClubPerson} from '../../hooks/useClub';
+import {TierChip} from '../house/TierChip';
 import {formatTime} from '../../lib/api';
+import {tierMeta, type Tier} from '../../lib/houseCard';
+
+const TIERS = new Set(['silver', 'gold', 'black', 'royal']);
 
 const PALETTE_FALLBACK = '#ff5c7a';
 const DJ_COLOR = '#ff2b4f';
@@ -66,10 +70,11 @@ export const Bubble: React.FC<{
   }
   const dj = message.kind === 'dj';
   const color = dj ? DJ_COLOR : message.color || PALETTE_FALLBACK;
+  const tiered = !dj && !!message.tier && TIERS.has(message.tier);
   return (
     <div
-      className={`rm-bubble${self ? ' is-self' : ''}${dj ? ' is-dj' : ''}${message.kind === 'request' ? ' is-request' : ''}${mentioned ? ' is-mentioned' : ''}`}
-      style={{'--bubble': color} as React.CSSProperties}
+      className={`rm-bubble${self ? ' is-self' : ''}${dj ? ' is-dj' : ''}${message.kind === 'request' ? ' is-request' : ''}${mentioned ? ' is-mentioned' : ''}${tiered ? ' is-tiered' : ''}`}
+      style={{'--bubble': color, ...(tiered ? {'--chip': tierMeta(message.tier as Tier).ink} : {})} as React.CSSProperties}
     >
       <span className="rm-bubble-avatar" aria-hidden="true">
         {dj ? <Disc3 size={13}/> : initialOf(message.name)}
@@ -77,6 +82,7 @@ export const Bubble: React.FC<{
       <div className="rm-bubble-body">
         <div className="rm-bubble-meta">
           <span className="rm-bubble-name">{message.name}</span>
+          {tiered && <TierChip tier={message.tier}/>}
           <span className="rm-bubble-time">{formatTime(message.at)}</span>
         </div>
         <p className="rm-bubble-text">

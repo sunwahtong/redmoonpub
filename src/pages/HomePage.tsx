@@ -26,7 +26,9 @@ import type {GalleryItem, Post, PublicHouse, RedMoonEvent, Review, SignatureDrin
 
 const PHONE_PREFIX = '+38-76-';
 const REVIEW_MAX_CHARS = 140;
-const TICKER_TEXT = 'PRÉMIUM ITALOK · VÖRÖS FÉNYEK · ZENE · ELEGANCIA · ÉJSZAKAI ÉLMÉNY ·';
+const TICKER_TEXT = 'PRÉMIUM ITALOK · VÖRÖS FÉNYEK · ZENE · ELEGANCIA · ÉJSZAKAI ÉLMÉNY · ASZTALFOGLALÁS · ÉLŐ DJ SHOW · REMEK HANGULAT · LÉGY A RÉSZE ·';
+/** Copies of the line in the strip: enough to cover the widest screen twice, so the loop never shows its seam. */
+const TICKER_COPIES = 6;
 
 export const HomePage: React.FC = () => {
   const {data: drinkData} = useLiveData<{drinks: SignatureDrink[]}>('/api/public-signature-drinks');
@@ -166,9 +168,9 @@ export const HomePage: React.FC = () => {
       {/* NEON TICKER */}
       <div className="rm-ticker" aria-label="Red Moon ticker">
         <div className="rm-ticker-line" aria-hidden="true"/>
-        <div className="rm-ticker-track">
-          {[0, 1].map((copy) => (
-            <span key={copy} aria-hidden={copy === 1}>
+        <div className="rm-ticker-track" style={{'--copies': TICKER_COPIES} as React.CSSProperties}>
+          {Array.from({length: TICKER_COPIES}, (_, copy) => (
+            <span key={copy} aria-hidden={copy > 0}>
               RED <b>MOON</b> · 夜 · {TICKER_TEXT}&nbsp;
             </span>
           ))}

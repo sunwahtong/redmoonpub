@@ -10,6 +10,8 @@ export interface PublicProduct {
   subtitle: string;
   description?: string;
   section: DrinkSection;
+  /** Empty on the open list; a tier on the House's secret list. */
+  minTier?: string;
 }
 
 export interface SignatureDrink {
@@ -39,6 +41,8 @@ export interface RedMoonEvent {
   /** Pinned to the top of the home page. */
   featured?: boolean;
   active?: boolean;
+  /** Empty for an open evening; the lowest House tier invited otherwise. */
+  minTier?: string;
   createdByName?: string;
   /** Guests who said they will be there. */
   going?: number;

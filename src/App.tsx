@@ -42,6 +42,7 @@ const load = <T extends Record<string, React.ComponentType<any>>>(loader: () => 
   lazy(() => loader().then((module) => ({default: module[name] as React.ComponentType<any>})));
 
 const LocationPage = load(() => import('./pages/LocationPage'), 'LocationPage');
+const HousePage = load(() => import('./pages/HousePage'), 'HousePage');
 const DjPage = load(() => import('./pages/DjPage'), 'DjPage');
 const DashboardPage = load(() => import('./pages/staff/DashboardPage'), 'DashboardPage');
 const ProfilePage = load(() => import('./pages/staff/ProfilePage'), 'ProfilePage');
@@ -133,6 +134,7 @@ export const App: React.FC = () => {
                 <Route path="/location" element={<LocationPage/>}/>
                 <Route path="/reservations" element={<ReservationsPage/>}/>
                 <Route path="/vip" element={<VipPage/>}/>
+                <Route path="/house" element={<HousePage/>}/>
                 <Route path="/careers" element={<CareersPage/>}/>
                 <Route path="/hirek" element={<NewsPage/>}/>
 

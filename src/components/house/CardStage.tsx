@@ -4,7 +4,7 @@ import {Copy, Download, RefreshCw, Share2, X} from 'lucide-react';
 import {Btn} from '../ui/Btn';
 import {Embers} from '../effects/Embers';
 import {MemberCard, StampMark} from './MemberCard';
-import {CARD_H, CARD_W, cardFileName, tierMeta, type CardMember, type Tier} from '../../lib/houseCard';
+import {CARD_H, CARD_W, RANK, cardFileName, tierMeta, type CardMember, type Tier} from '../../lib/houseCard';
 import {canShareFiles, cardToPng, downloadBlob, shareBlob} from '../../lib/cardImage';
 import {playSfx} from '../../lib/sfx';
 import {toast} from '../../stores/useToastStore';
@@ -39,6 +39,14 @@ interface Spark {
   hot: boolean;
 }
 
+/**
+ * How long each play holds the stage, by the tier it ends on: a Gold card
+ * gets a burst, a Black one an eclipse, a Royal one a coronation.
+ */
+const RISE_MS: Record<number, number> = {1: 3000, 2: 3000, 3: 3900, 4: 5200};
+const ISSUE_MS: Record<number, number> = {1: 2800, 2: 2900, 3: 3400, 4: 4300};
+const RISE_LABEL: Record<number, string> = {2: 'SZINTLÉPÉS', 3: 'A BELSŐ KÖR', 4: 'KORONÁZÁS'};
+
 const spawn = (mode: Exclude<SparkMode, null>, w: number, h: number): Spark => {
   const hot = Math.random() < 0.25;
   if (mode === 'burst') {
@@ -56,7 +64,7 @@ const spawn = (mode: Exclude<SparkMode, null>, w: number, h: number): Spark => {
 };
 
 /** One canvas of particles for a moment: embers rising, a burst, or dust falling. */
-const Sparks: React.FC<{mode: SparkMode; color: string}> = ({mode, color}) => {
+const Sparks: React.FC<{mode: SparkMode; color: string; count: number}> = ({mode, color, count}) => {
   const ref = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -71,7 +79,7 @@ const Sparks: React.FC<{mode: SparkMode; color: string}> = ({mode, color}) => {
     context.scale(dpr, dpr);
     const w = rect.width;
     const h = rect.height;
-    const parts = Array.from({length: mode === 'burst' ? 150 : 70}, () => spawn(mode, w, h));
+    const parts = Array.from({length: mode === 'burst' ? count : Math.round(count * 0.5)}, () => spawn(mode, w, h));
     const started = performance.now();
     const span = 2400;
     let frame = 0;
@@ -103,7 +111,7 @@ const Sparks: React.FC<{mode: SparkMode; color: string}> = ({mode, color}) => {
       cancelAnimationFrame(frame);
       context.clearRect(0, 0, w, h);
     };
-  }, [mode, color]);
+  }, [mode, color, count]);
 
   return <canvas ref={ref} className="rm-mcs-sparks" aria-hidden="true"/>;
 };
@@ -119,8 +127,10 @@ interface SceneProps {
 /**
  * The card in three dimensions: it turns toward the pointer, flips on a tap,
  * and acts out what just happened to it — issued, raised or lowered a tier,
- * suspended, restored, torn up. While a play runs the faces show the member
- * as they were, and switch to what they are now at the right beat.
+ * suspended, restored, torn up. A rise grows with the tier reached: Gold
+ * spreads with a burst, Black is an eclipse passing over the card, Royal a
+ * coronation. While a play runs the faces show the member as they were, and
+ * switch to what they are now at the right beat.
  */
 export const CardScene: React.FC<SceneProps> = ({member, cue, onDone, handle, className = ''}) => {
   const root = useRef<HTMLDivElement>(null);
@@ -149,6 +159,7 @@ export const CardScene: React.FC<SceneProps> = ({member, cue, onDone, handle, cl
     const timers: number[] = [];
     const at = (ms: number, fn: () => void) => timers.push(window.setTimeout(fn, ms));
     const current = memberRef.current;
+    const level = RANK[current.tier];
     const end = (ms: number) =>
       at(ms, () => {
         setPhase(null);
@@ -156,6 +167,10 @@ export const CardScene: React.FC<SceneProps> = ({member, cue, onDone, handle, cl
         setSparks(null);
         doneRef.current?.(cue.play);
       });
+    const commit = () => {
+      setShown(current);
+      setMorph(null);
+    };
     setFlipped(false);
     setPhase(cue.play);
     switch (cue.play) {
@@ -164,20 +179,49 @@ export const CardScene: React.FC<SceneProps> = ({member, cue, onDone, handle, cl
         setDim(false);
         setSparks('rise');
         at(400, () => playSfx('success'));
-        end(2700);
+        if (level >= 2) at(1900, () => setSparks('burst'));
+        if (level >= 4) {
+          at(2300, () => playSfx('live_start'));
+          at(2700, () => setSparks('rise'));
+        }
+        end(ISSUE_MS[level] || 2800);
         break;
       case 'upgrade':
+        setShown({...current, tier: cue.fromTier || current.tier});
+        setMorph(current);
+        if (level >= 4) {
+          at(600, () => playSfx('open'));
+          at(1000, () => {
+            setSparks('burst');
+            playSfx('success');
+          });
+          at(2000, () => playSfx('live_start'));
+          at(2500, () => setSparks('rise'));
+          at(2700, commit);
+        } else if (level === 3) {
+          at(300, () => playSfx('open'));
+          at(1900, () => {
+            setSparks('burst');
+            playSfx('success');
+          });
+          at(2300, commit);
+        } else {
+          at(500, () => {
+            setSparks('burst');
+            playSfx('success');
+          });
+          at(1900, commit);
+        }
+        end(RISE_MS[level] || 3000);
+        break;
       case 'downgrade':
         setShown({...current, tier: cue.fromTier || current.tier});
         setMorph(current);
         at(500, () => {
-          setSparks(cue.play === 'upgrade' ? 'burst' : 'fall');
-          playSfx(cue.play === 'upgrade' ? 'success' : 'decline');
+          setSparks('fall');
+          playSfx('decline');
         });
-        at(1900, () => {
-          setShown(current);
-          setMorph(null);
-        });
+        at(1900, commit);
         end(3000);
         break;
       case 'suspend':
@@ -252,21 +296,33 @@ export const CardScene: React.FC<SceneProps> = ({member, cue, onDone, handle, cl
 
   const meta = tierMeta(shown.tier);
   const target = morph ? tierMeta(morph.tier) : meta;
+  const level = RANK[morph ? morph.tier : shown.tier];
   const vars = {'--mc-ink': target.ink, '--mc-glow': target.glow} as React.CSSProperties;
   const svgStamp = phase !== 'suspend' && phase !== 'restore';
   const shards = phase === 'remove' ? Array.from({length: 9}, (_, i) => i) : [];
-  const classes = ['rm-mcs', flipped ? 'is-flipped' : '', phase ? `is-${phase}` : '', dim ? 'is-dim' : '', className].filter(Boolean).join(' ');
+  const rings = phase === 'upgrade' ? (level >= 4 ? 3 : level === 3 ? 2 : 1) : phase === 'issue' ? (level >= 4 ? 3 : level === 3 ? 2 : level === 2 ? 1 : 0) : 0;
+  const crown = level >= 4 && (phase === 'issue' || phase === 'upgrade');
+  const eclipse = level === 3 && phase === 'upgrade';
+  const classes = ['rm-mcs', `is-l${level}`, flipped ? 'is-flipped' : '', phase ? `is-${phase}` : '', dim ? 'is-dim' : '', className].filter(Boolean).join(' ');
 
   return (
     <div ref={root} className={classes} style={vars} onPointerMove={onPointerMove} onPointerLeave={onPointerLeave}>
       <div className="rm-mcs-halo" aria-hidden="true"/>
-      <Sparks mode={sparks} color={target.ink}/>
+      <Sparks mode={sparks} color={target.ink} count={level >= 4 ? 230 : level === 3 ? 170 : 130}/>
       {morph && (phase === 'upgrade' || phase === 'downgrade') && (
         <div className="rm-mcs-banner" aria-live="polite">
-          {phase === 'upgrade' ? 'SZINTLÉPÉS' : 'VISSZASOROLVA'} · <b>{target.name}</b>
+          {phase === 'upgrade' ? RISE_LABEL[level] || 'SZINTLÉPÉS' : 'VISSZASOROLVA'} · <b>{target.name}</b>
         </div>
       )}
-      {phase === 'upgrade' && <div className="rm-mcs-ring" aria-hidden="true"/>}
+      {Array.from({length: rings}, (_, i) => (
+        <div key={i} className="rm-mcs-ring" style={{'--i': i} as React.CSSProperties} aria-hidden="true"/>
+      ))}
+      {crown && (
+        <div className="rm-mcs-crown" aria-hidden="true">
+          <span>王</span>
+        </div>
+      )}
+      {eclipse && <div className="rm-mcs-eclipse" aria-hidden="true"/>}
 
       <div className="rm-mcs-tilt">
         <div
@@ -406,6 +462,7 @@ export const CardActions: React.FC<{member: CardMember; handle: React.RefObject<
 export const CardOverlay: React.FC<{member: CardMember; cue?: CardCue | null; onClose: () => void; onDone?: (play: CardPlay) => void}> = ({member, cue, onClose, onDone}) => {
   const handle = useRef<CardSceneHandle>(null);
   const meta = tierMeta(member.tier);
+  const level = RANK[member.tier];
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -426,6 +483,8 @@ export const CardOverlay: React.FC<{member: CardMember; cue?: CardCue | null; on
       case 'issue':
         return {kicker: `KIADVA · ${member.code}`, title: <>Üdv a House-ban, <em>{first}.</em></>};
       case 'upgrade':
+        if (level >= 4) return {kicker: 'KORONÁZÁS', title: <>{first} mostantól <em>Royal.</em> A ház a tiéd.</>};
+        if (level === 3) return {kicker: 'A BELSŐ KÖRBE LÉPETT', title: <>{first} a belső körben: <em>Black.</em></>};
         return {kicker: 'SZINTLÉPÉS', title: <>{first} mostantól <em>{meta.name}.</em></>};
       case 'downgrade':
         return {kicker: 'VISSZASOROLÁS', title: <>{first} kártyája <em>{meta.name}</em> lett.</>};
@@ -442,10 +501,10 @@ export const CardOverlay: React.FC<{member: CardMember; cue?: CardCue | null; on
 
   /* On the body, above the page's own stacking: a console page's footer would otherwise paint over the stage. */
   return createPortal(
-    <div className="rm-mco" role="dialog" aria-modal="true" aria-label={`${member.name} kártyája`} style={{'--mc-ink': meta.ink, '--mc-glow': meta.glow} as React.CSSProperties}>
+    <div className={`rm-mco is-l${level}${cue ? ` is-play-${cue.play}` : ''}`} role="dialog" aria-modal="true" aria-label={`${member.name} kártyája`} style={{'--mc-ink': meta.ink, '--mc-glow': meta.glow} as React.CSSProperties}>
       <div className="rm-mco-backdrop" onClick={onClose} aria-hidden="true"/>
       <div className="rm-mco-aurora" aria-hidden="true"/>
-      <Embers density={24} className="rm-mco-embers"/>
+      <Embers density={level >= 4 ? 48 : 24} className="rm-mco-embers"/>
       <button type="button" className="rm-mco-close" onClick={onClose} aria-label="Bezárás">
         <X size={16}/>
       </button>
