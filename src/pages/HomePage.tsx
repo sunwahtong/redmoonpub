@@ -133,6 +133,7 @@ export const HomePage: React.FC = () => {
               </BtnLink>
             </Magnetic>
             <BtnLink to="/menu">FELFEDEZEM ↗</BtnLink>
+            {houseData?.video && <BtnAnchor href="#film">▶ A HÁZ FILMJE</BtnAnchor>}
             <BtnAnchor href="#tonight">MA ESTE A RED MOONBAN ↓</BtnAnchor>
           </div>
 

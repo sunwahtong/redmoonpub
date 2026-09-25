@@ -11,7 +11,10 @@ export interface FeaturedClip {
 
 const HOST = 'https://www.youtube-nocookie.com';
 /** YouTube fades its title bar and centre controls a few seconds into playback; the preview is revealed after that. */
-const REVEAL_DELAY_MS = 3200;
+const REVEAL_DELAY_MS = 1100;
+/** How long after landing the first-visit teaser slides in. */
+const TEASER_DELAY_MS = 2600;
+const TEASER_KEY = 'rm-film-teased';
 
 /** Player commands over the IFrame API's postMessage channel, no script needed. */
 function command(frame: HTMLIFrameElement | null, func: 'playVideo' | 'pauseVideo' | 'mute' | 'unMute'): void {
@@ -38,6 +41,8 @@ export const FeaturedVideo: React.FC<{clip: FeaturedClip}> = ({clip}) => {
   const [revealed, setRevealed] = useState(false);
   const [open, setOpen] = useState(false);
   const [muted, setMuted] = useState(true);
+  /* Once per browser: a card that points at the film, for those who never scroll. */
+  const [teaser, setTeaser] = useState(false);
   const musicWasOn = useRef(false);
   const {isPlaying, togglePlay} = useAudioStore();
 
@@ -67,8 +72,9 @@ export const FeaturedVideo: React.FC<{clip: FeaturedClip}> = ({clip}) => {
             : null;
       if (state === null || Number.isNaN(state)) return;
       // 1 playing, 3 buffering (keep whatever it was); anything else is a still frame with chrome on it.
+      // Once playing it stays revealed through pauses; only a stop or end hides it again.
       if (state === 1) setPlaying(true);
-      else if (state !== 3) setPlaying(false);
+      else if (state === 0 || state === -1 || state === 5) setPlaying(false);
     };
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
@@ -83,10 +89,25 @@ export const FeaturedVideo: React.FC<{clip: FeaturedClip}> = ({clip}) => {
     return () => window.clearTimeout(timer);
   }, [playing]);
 
+  /* Plays from page load so it is already running when the visitor reaches it; pauses only once seen and scrolled past. */
+  const seen = useRef(false);
   useEffect(() => {
     if (!loaded) return;
+    if (inView) seen.current = true;
+    if (!inView && !seen.current && !open) return;
     command(previewRef.current, inView && !open ? 'playVideo' : 'pauseVideo');
   }, [inView, loaded, open]);
+
+  useEffect(() => {
+    if (localStorage.getItem(TEASER_KEY) === clip.id) return;
+    const timer = window.setTimeout(() => setTeaser(true), TEASER_DELAY_MS);
+    return () => window.clearTimeout(timer);
+  }, [clip.id]);
+
+  const dismissTeaser = () => {
+    localStorage.setItem(TEASER_KEY, clip.id);
+    setTeaser(false);
+  };
 
   const onPreviewLoad = () => {
     setLoaded(true);
@@ -133,20 +154,36 @@ export const FeaturedVideo: React.FC<{clip: FeaturedClip}> = ({clip}) => {
   };
 
   return (
-    <section className="rm-film" aria-label={clip.title || 'A ház filmje'}>
+    <section id="film" className="rm-film" aria-label={clip.title || 'A ház filmje'}>
+      {teaser && !open && (
+        <div className="rm-film-teaser" role="dialog" aria-label="A ház filmje">
+          <button type="button" className="rm-film-teaser-poster" style={{backgroundImage: poster}} onClick={() => {dismissTeaser(); openFilm();}} aria-label="Film megnyitása">
+            <span className="rm-film-play-disc"><Play size={16}/></span>
+          </button>
+          <div className="rm-film-teaser-body">
+            <span className="rm-label">ÚJ · A HÁZ FILMJE</span>
+            <strong>{clip.title || 'Red Moon'}</strong>
+            {clip.caption && <p>{clip.caption}</p>}
+            <div className="rm-film-teaser-actions">
+              <button type="button" className="rm-btn is-red" onClick={() => {dismissTeaser(); openFilm();}}>MEGNÉZEM</button>
+              <button type="button" className="rm-film-teaser-later" onClick={dismissTeaser}>KÉSŐBB</button>
+            </div>
+          </div>
+          <button type="button" className="rm-film-teaser-close" onClick={dismissTeaser} aria-label="Bezárás"><X size={13}/></button>
+        </div>
+      )}
       <div ref={shellRef} className={`rm-film-frame${revealed && !open ? ' is-loaded' : ''}`} style={{backgroundImage: poster}}>
-        {inView || loaded ? (
+        {(
           <iframe
             ref={previewRef}
             src={preview}
             title={clip.title || 'Red Moon'}
             allow="autoplay; encrypted-media; picture-in-picture"
-            loading="lazy"
             onLoad={onPreviewLoad}
             tabIndex={-1}
             aria-hidden="true"
           />
-        ) : null}
+        )}
         <div className="rm-film-shade" aria-hidden="true"/>
         <div className="rm-film-grain" aria-hidden="true"/>
 
