@@ -16,6 +16,7 @@ import './styles/premium.css';
 import './styles/console.css';
 import './styles/club.css';
 import './styles/floor.css';
+import './styles/cards.css';
 
 installMediaVariables();
 

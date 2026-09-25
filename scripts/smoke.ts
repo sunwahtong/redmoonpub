@@ -462,6 +462,22 @@ if (visited.data?.member?.visits !== 1) {
   console.log('FAIL the visit should count', visited.data?.member);
   failures += 1;
 }
+const grantHistory = silver.data?.member?.tierHistory;
+if (!Array.isArray(grantHistory) || grantHistory.length !== 1 || grantHistory[0]?.tier !== 'silver') {
+  console.log('FAIL a grant should open the tier history', grantHistory);
+  failures += 1;
+}
+const raised = await call(owner, 'PATCH', `/api/members/${silver.data.member.id}`, {tier: 'gold'});
+const raisedHistory = raised.data?.member?.tierHistory;
+if (raised.data?.member?.tier !== 'gold' || !Array.isArray(raisedHistory) || raisedHistory.length !== 2 || raisedHistory[1]?.tier !== 'gold') {
+  console.log('FAIL a tier change should append to the history', raisedHistory);
+  failures += 1;
+}
+const raisedCard = await call('guest', 'POST', '/api/public/member-lookup', {code: silver.data.member.code, phone: '2223334'});
+if (raisedCard.data?.member?.tierHistory?.length !== 2 || 'by' in (raisedCard.data?.member?.tierHistory?.[0] || {})) {
+  console.log('FAIL the guest card should carry the climb without names', raisedCard.data?.member);
+  failures += 1;
+}
 await call('mgr', 'PATCH', `/api/members/${black.data.member.id}`, {active: false}, {expect: 403});
 await call('mgr', 'PATCH', `/api/members/${silver.data.member.id}`, {active: false});
 await call('guest', 'POST', '/api/public/member-lookup', {code: silver.data.member.code, phone: '2223334'}, {expect: 404});
@@ -577,7 +593,9 @@ await call(owner, 'POST', `/api/users/${manager.data.user.id}/signature`, {}, {e
 await call('mgr', 'POST', '/api/logout', {});
 const closing = await call(owner, 'POST', '/api/shifts/close', {closingCash: 9000, notes: 'smoke'});
 const report = closing.data?.report;
-if (!report || typeof report.amount !== 'number' || !/^M-\d+, \S+ \d+\.( \d+\/\d+)? - Red M\. O\.$/.test(String(report.transfer?.memo))) {
+const [ownerFirst, ...ownerRest] = String(me.name || '').trim().split(/\s+/);
+const ownerShort = [ownerFirst, ...ownerRest.map((part: string) => `${part[0].toUpperCase()}.`)].join(' ').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+if (!report || typeof report.amount !== 'number' || !new RegExp(`^M-\\d+, \\S+ \\d+\\.( \\d+/\\d+)? - ${ownerShort}$`).test(String(report.transfer?.memo))) {
   console.log('FAIL the closer should get a closing report with the transfer memo', report);
   failures += 1;
 }

@@ -1,8 +1,10 @@
 import React, {useCallback, useEffect, useRef, useState} from 'react';
-import {Check, KeyRound, LogOut} from 'lucide-react';
+import {KeyRound, LogOut} from 'lucide-react';
+import {useSearchParams} from 'react-router-dom';
 import {Btn, BtnLink} from '../ui/Btn';
-import {apiSend, formatDate} from '../../lib/api';
-import {MEMBERSHIP} from '../../lib/content';
+import {CardActions, CardScene, type CardCue, type CardSceneHandle} from './CardStage';
+import {apiSend} from '../../lib/api';
+import {tierMeta, type Tier, type TierStep} from '../../lib/houseCard';
 import {playSfx} from '../../lib/sfx';
 
 const STORAGE_KEY = 'rm-house-card';
@@ -11,10 +13,11 @@ const PHONE_PREFIX = '+38-76-';
 export interface HouseCard {
   code: string;
   name: string;
-  tier: 'silver' | 'gold' | 'black' | 'royal';
+  tier: Tier;
   visits: number;
   lastVisitAt: string | null;
   grantedAt: string;
+  tierHistory?: TierStep[];
 }
 
 /** The code and phone the browser last opened a card with, so it opens by itself next time. */
@@ -29,19 +32,22 @@ export function storedHouseCard(): {code: string; phone: string} | null {
   }
 }
 
-const TIER_GLYPH = {silver: '銀', gold: '金', black: '黑', royal: '王'} as const;
-
 /**
- * "Are you a member?" — a code and the phone on file open the card: tier,
- * visits, what the tier gives, and a booking link that carries the code.
+ * "Are you a member?" — a code and the phone on file open the card itself:
+ * the drawing the house issued, front and back, to keep as a picture. A
+ * booking link carries the code on.
  */
 export const HouseLookup: React.FC = () => {
+  const [params] = useSearchParams();
+  const urlCode = (params.get('code') || '').trim().toUpperCase();
   const stored = useRef(storedHouseCard());
-  const [code, setCode] = useState(stored.current?.code || '');
+  const [code, setCode] = useState(urlCode || stored.current?.code || '');
   const [phone, setPhone] = useState(PHONE_PREFIX + (stored.current?.phone || ''));
   const [card, setCard] = useState<HouseCard | null>(null);
+  const [cue, setCue] = useState<CardCue | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const handle = useRef<CardSceneHandle>(null);
 
   const digits = phone.startsWith(PHONE_PREFIX) ? phone.slice(PHONE_PREFIX.length).replace(/\D/g, '').slice(0, 7) : '';
 
@@ -53,8 +59,8 @@ export const HouseLookup: React.FC = () => {
     try {
       const reply = await apiSend<{member: HouseCard}>('/api/public/member-lookup', 'POST', {code: clean, phone: phoneDigits});
       setCard(reply.member);
+      setCue({play: 'issue', key: Date.now()});
       localStorage.setItem(STORAGE_KEY, JSON.stringify({code: clean, phone: phoneDigits}));
-      if (!quiet) playSfx('success');
     } catch (err) {
       const status = (err as {status?: number}).status;
       if (status === 404 || status === 403) localStorage.removeItem(STORAGE_KEY);
@@ -67,58 +73,35 @@ export const HouseLookup: React.FC = () => {
     }
   }, []);
 
-  /* A card opened before opens again by itself. */
+  /* A card opened before opens again by itself — unless the link names another code. */
   useEffect(() => {
     const remembered = stored.current;
-    if (remembered?.code) lookup(remembered.code, remembered.phone, true);
-  }, [lookup]);
+    if (remembered?.code && (!urlCode || urlCode === remembered.code)) lookup(remembered.code, remembered.phone, true);
+  }, [lookup, urlCode]);
 
   const forget = () => {
     localStorage.removeItem(STORAGE_KEY);
     setCard(null);
+    setCue(null);
     setCode('');
     setPhone(PHONE_PREFIX);
     playSfx('ui_click');
   };
 
   if (card) {
-    const tier = MEMBERSHIP.find((entry) => entry.id === card.tier) || MEMBERSHIP[0];
+    const meta = tierMeta(card.tier);
     return (
-      <div className="rm-house-card" data-tier={card.tier}>
-        <span className="rm-house-card-glyph" aria-hidden="true">
-          {TIER_GLYPH[card.tier]}
-        </span>
-        <div className="relative">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <span className="rm-label">RED MOON · THE HOUSE</span>
-            <span className="rm-tier-crest">{tier.name}</span>
-          </div>
-          <strong className="mt-6 block font-heading text-[30px] leading-none text-white">{card.name}</strong>
-          <span className="rm-house-card-code mt-3 block">{card.code}</span>
-          <div className="mt-5 flex flex-wrap gap-x-6 gap-y-1.5 text-[9px] tracking-[0.2em] text-[#8d8584]">
-            <span>
-              <b className="text-white">{card.visits}</b> LÁTOGATÁS
-            </span>
-            {card.lastVisitAt && <span>UTOLJÁRA {formatDate(card.lastVisitAt).toUpperCase()}</span>}
-            <span>TAG {formatDate(card.grantedAt).toUpperCase()} ÓTA</span>
-          </div>
-          <div className="rm-gilt my-6"/>
-          <ul className="flex flex-col gap-2">
-            {tier.perks.map((perk) => (
-              <li key={perk} className="flex gap-2.5 text-[10px] leading-[1.7] text-[#c9c2c1]">
-                <Check size={12} className="mt-[2px] shrink-0 text-[color:var(--rm-red)]"/>
-                {perk}
-              </li>
-            ))}
-          </ul>
-          <div className="mt-7 flex flex-wrap items-center gap-3">
-            <BtnLink to={`/reservations?member=${encodeURIComponent(card.code)}`} variant="red">
-              FOGLALÁS A KÓDDAL ↗
-            </BtnLink>
-            <button type="button" onClick={forget} className="inline-flex items-center gap-2 text-[8px] tracking-[0.25em] text-[#777] hover:text-white">
-              <LogOut size={11}/> KILÉPÉS
-            </button>
-          </div>
+      <div className="rm-mcpublic" style={{'--mc-ink': meta.ink, '--mc-glow': meta.glow} as React.CSSProperties}>
+        <CardScene member={card} cue={cue} handle={handle}/>
+        <p className="rm-mcpublic-hint">KOPPINTS A KÁRTYÁRA A HÁTLAPÉRT · A KÉPET LETÖLTHETED ÉS ELMENTHETED</p>
+        <CardActions member={card} handle={handle}/>
+        <div className="rm-mcpublic-foot">
+          <BtnLink to={`/reservations?member=${encodeURIComponent(card.code)}`} variant="red">
+            FOGLALÁS A KÓDDAL ↗
+          </BtnLink>
+          <button type="button" onClick={forget} className="inline-flex items-center gap-2 text-[8px] tracking-[0.25em] text-[#777] hover:text-white">
+            <LogOut size={11}/> KILÉPÉS
+          </button>
         </div>
       </div>
     );
@@ -134,7 +117,7 @@ export const HouseLookup: React.FC = () => {
     >
       <span className="rm-label">A KÁRTYÁD</span>
       <h3 className="mt-3 font-heading text-[24px] text-white">Tag vagy? Mutasd a kódod.</h3>
-      <p className="mt-2 text-[11px] leading-[1.8] text-[#8d8584]">A kódot a bejáratnál kaptad. A telefonszám az, amit a háznak megadtál — a kettő együtt nyitja a kártyát.</p>
+      <p className="mt-2 text-[11px] leading-[1.8] text-[#8d8584]">A kódot a bejáratnál kaptad. A telefonszám az, amit a háznak megadtál — a kettő együtt nyitja a kártyát, amit képként el is menthetsz.</p>
       <div className="mt-6 grid grid-cols-1 gap-3.5 sm:grid-cols-2">
         <label className="flex flex-col gap-2">
           <span className="text-[8px] tracking-[0.25em] text-[#777]">TAGSÁGI KÓD</span>

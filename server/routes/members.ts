@@ -19,6 +19,22 @@ export type MemberTier = (typeof MEMBER_TIERS)[number];
 
 const RANK: Record<string, number> = {silver: 1, gold: 2, black: 3, royal: 4};
 
+/** One step of a member's climb: the tier, when it was reached, who gave it. */
+interface TierStep {
+  tier: MemberTier;
+  at: string;
+  by: string;
+}
+
+/** The steps stored on the row, oldest first; a row without any starts at its grant. */
+function historyOf(row: Row): TierStep[] {
+  const raw: unknown[] = Array.isArray(row.tier_history) ? row.tier_history : [];
+  const steps = raw
+    .filter((step): step is Record<string, unknown> => !!step && typeof step === 'object' && RANK[String((step as Record<string, unknown>).tier)] !== undefined)
+    .map((step) => ({tier: step.tier as MemberTier, at: iso(step.at as string) || '', by: String(step.by || '')}));
+  return steps.length ? steps : [{tier: row.tier as MemberTier, at: iso(row.granted_at) || '', by: row.granted_by_name || ''}];
+}
+
 const memberBody = z.object({
   name: z.string().trim().min(2, 'Add meg a nevet.').max(80),
   phone: z.string().trim().max(40).default(''),
@@ -39,7 +55,8 @@ export const memberOf = (row: Row) => ({
   lastVisitAt: iso(row.last_visit_at),
   grantedByName: row.granted_by_name || '',
   grantedAt: iso(row.granted_at),
-  updatedAt: iso(row.updated_at)
+  updatedAt: iso(row.updated_at),
+  tierHistory: historyOf(row)
 });
 
 /** What a guest sees of their own card. */
@@ -49,7 +66,8 @@ const cardOf = (row: Row) => ({
   tier: row.tier as MemberTier,
   visits: Number(row.visits) || 0,
   lastVisitAt: iso(row.last_visit_at),
-  grantedAt: iso(row.granted_at)
+  grantedAt: iso(row.granted_at),
+  tierHistory: historyOf(row).map(({tier, at}) => ({tier, at}))
 });
 
 /** RM-H-XXXX: easy to say at the door, no lookalike characters. */
@@ -133,9 +151,11 @@ export function registerMemberRoutes(router: Router): void {
       if (!clash) break;
       code = memberCode();
     }
+    const by = me.nickname || me.name;
     const {rows} = await db.query(
-      'insert into public.members (code, name, phone, tier, note, granted_by, granted_by_name) values ($1, $2, $3, $4, $5, $6, $7) returning *',
-      [code, body.name, phone, body.tier, body.note, me.id, me.nickname || me.name]
+      `insert into public.members (code, name, phone, tier, note, granted_by, granted_by_name, tier_history)
+       values ($1, $2, $3, $4, $5, $6, $7, $8::jsonb) returning *`,
+      [code, body.name, phone, body.tier, body.note, me.id, by, JSON.stringify([{tier: body.tier, at: new Date().toISOString(), by}])]
     );
     await audit(db, me, 'MEMBER_GRANT', `${body.name} · ${body.tier} · ${code}`);
     await broadcast('content', 'members');
@@ -154,9 +174,12 @@ export function registerMemberRoutes(router: Router): void {
       phone = body.phone ? normalizePhone(body.phone) : '';
       if (body.phone && !phone) throw bad('A telefonszám 7 számjegyű legyen.');
     }
+    const tier = body.tier ?? existing.tier;
+    const history = historyOf(existing);
+    if (tier !== existing.tier) history.push({tier, at: new Date().toISOString(), by: me.nickname || me.name});
     const {rows} = await db.query(
-      `update public.members set name = $2, phone = $3, tier = $4, note = $5, active = $6, updated_at = now() where id = $1 returning *`,
-      [existing.id, body.name ?? existing.name, phone ?? existing.phone, body.tier ?? existing.tier, body.note ?? existing.note, body.active ?? existing.active]
+      `update public.members set name = $2, phone = $3, tier = $4, note = $5, active = $6, tier_history = $7::jsonb, updated_at = now() where id = $1 returning *`,
+      [existing.id, body.name ?? existing.name, phone ?? existing.phone, tier, body.note ?? existing.note, body.active ?? existing.active, JSON.stringify(history)]
     );
     await audit(db, me, body.active === false ? 'MEMBER_REVOKE' : 'MEMBER_UPDATE', `${rows[0].name} · ${rows[0].tier} · ${rows[0].code}`);
     await broadcast('content', 'members');

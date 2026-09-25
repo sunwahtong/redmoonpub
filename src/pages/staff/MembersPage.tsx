@@ -1,16 +1,17 @@
-import React, {useMemo, useState} from 'react';
-import {Check, Copy, Pencil, Plus, Trash2, UserCheck, X} from 'lucide-react';
+import React, {useMemo, useRef, useState} from 'react';
+import {Check, Copy, CreditCard, Pencil, Plus, Trash2, UserCheck, X} from 'lucide-react';
 import {Btn} from '../../components/ui/Btn';
 import {Chips, Field, inputClass, PageHeader, Panel, SearchField, Stat} from '../../components/ui/console';
+import {MemberCard} from '../../components/house/MemberCard';
+import {CardOverlay, type CardCue, type CardPlay} from '../../components/house/CardStage';
 import {useLiveData} from '../../hooks/useLiveData';
 import {apiSend, formatDate} from '../../lib/api';
 import {MEMBERSHIP} from '../../lib/content';
+import {RANK, tierMeta, type Tier, type TierStep} from '../../lib/houseCard';
 import {playSfx} from '../../lib/sfx';
 import {dialog} from '../../stores/useDialogStore';
 import {toast} from '../../stores/useToastStore';
 import {roleAtLeast, useAuthStore} from '../../stores/useAuthStore';
-
-type Tier = 'silver' | 'gold' | 'black' | 'royal';
 
 interface Member {
   id: string;
@@ -25,6 +26,7 @@ interface Member {
   grantedByName: string;
   grantedAt: string;
   updatedAt: string;
+  tierHistory: TierStep[];
 }
 
 interface Feed {
@@ -54,7 +56,9 @@ const TierMark: React.FC<{tier: Tier; className?: string}> = ({tier, className =
 /**
  * The House, from the inside: who is a member, at which tier, how often they
  * come. Managers grant Silver and Gold; Black and Royal are the owner's.
- * The door marks visits; a member's code is what they book with.
+ * The door marks visits; a member's code is what they book with. Every
+ * member has a card, shown small in the roster and large on the stage,
+ * where a grant, a tier change or a suspension is acted out.
  */
 export const MembersPage: React.FC = () => {
   const user = useAuthStore((state) => state.user);
@@ -75,7 +79,17 @@ export const MembersPage: React.FC = () => {
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState<Member | null>(null);
   const [edit, setEdit] = useState({name: '', phone: PHONE_PREFIX, tier: 'silver' as Tier, note: ''});
-  const [justGranted, setJustGranted] = useState<Member | null>(null);
+  const [stage, setStage] = useState<{member: Member; cue: CardCue | null} | null>(null);
+  const cueKey = useRef(0);
+
+  /* The card on the stage follows the roster, so a visit marked meanwhile shows; a torn-up card keeps its last state. */
+  const staged = stage ? members.find((entry) => entry.id === stage.member.id) || stage.member : null;
+
+  const openCard = (member: Member, play?: CardPlay, fromTier?: Tier) => {
+    cueKey.current += 1;
+    setStage({member, cue: play ? {play, fromTier, key: cueKey.current} : null});
+    if (!play) playSfx('open');
+  };
 
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -99,6 +113,8 @@ export const MembersPage: React.FC = () => {
     }
   };
 
+  const replace = (member: Member) => mutate((current) => (current ? {...current, members: current.members.map((entry) => (entry.id === member.id ? member : entry))} : current));
+
   const grant = async (event: React.FormEvent) => {
     event.preventDefault();
     if (busy) return;
@@ -110,12 +126,12 @@ export const MembersPage: React.FC = () => {
     setBusy(true);
     try {
       const reply = await apiSend<{member: Member}>('/api/members', 'POST', {name: name.trim(), phone: digits, tier, note: note.trim()});
-      setJustGranted(reply.member);
       setName('');
       setPhone(PHONE_PREFIX);
       setNote('');
       setTier('silver');
-      playSfx('success');
+      setGranting(false);
+      openCard(reply.member, 'issue');
       refresh();
     } catch (err) {
       toast.error('Nem sikerült', (err as Error).message);
@@ -142,12 +158,16 @@ export const MembersPage: React.FC = () => {
     setBusy(true);
     try {
       const body: Record<string, unknown> = {name: edit.name.trim(), phone: digits, note: edit.note.trim()};
-      if (edit.tier !== editing.tier) body.tier = edit.tier;
+      const moved = edit.tier !== editing.tier;
+      if (moved) body.tier = edit.tier;
       const reply = await apiSend<{member: Member}>(`/api/members/${editing.id}`, 'PATCH', body);
-      mutate((current) => (current ? {...current, members: current.members.map((entry) => (entry.id === reply.member.id ? reply.member : entry))} : current));
+      replace(reply.member);
       setEditing(null);
-      toast.success('Mentve.');
-      playSfx('success');
+      if (moved) openCard(reply.member, RANK[reply.member.tier] > RANK[editing.tier] ? 'upgrade' : 'downgrade', editing.tier);
+      else {
+        toast.success('Mentve.');
+        playSfx('success');
+      }
       refresh();
     } catch (err) {
       toast.error('Nem sikerült', (err as Error).message);
@@ -160,7 +180,7 @@ export const MembersPage: React.FC = () => {
   const visit = async (member: Member) => {
     try {
       const reply = await apiSend<{member: Member}>(`/api/members/${member.id}/visit`, 'POST', {});
-      mutate((current) => (current ? {...current, members: current.members.map((entry) => (entry.id === reply.member.id ? reply.member : entry))} : current));
+      replace(reply.member);
       toast.success(`${member.name}: ${reply.member.visits}. látogatás.`);
       playSfx('success');
     } catch (err) {
@@ -180,9 +200,8 @@ export const MembersPage: React.FC = () => {
     }
     try {
       const reply = await apiSend<{member: Member}>(`/api/members/${member.id}`, 'PATCH', {active: !member.active});
-      mutate((current) => (current ? {...current, members: current.members.map((entry) => (entry.id === reply.member.id ? reply.member : entry))} : current));
-      toast.success(member.active ? 'Tagság felfüggesztve.' : 'Tagság visszaállítva.');
-      playSfx(member.active ? 'delete' : 'success');
+      replace(reply.member);
+      openCard(reply.member, member.active ? 'suspend' : 'restore');
       refresh();
     } catch (err) {
       toast.error('Nem sikerült', (err as Error).message);
@@ -200,8 +219,7 @@ export const MembersPage: React.FC = () => {
     try {
       await apiSend(`/api/members/${member.id}`, 'DELETE');
       mutate((current) => (current ? {...current, members: current.members.filter((entry) => entry.id !== member.id)} : current));
-      toast.success('Tag törölve.');
-      playSfx('delete');
+      openCard(member, 'remove');
       refresh();
     } catch (err) {
       toast.error('Nem sikerült', (err as Error).message);
@@ -218,7 +236,7 @@ export const MembersPage: React.FC = () => {
               A ház <em>tagsága.</em>
             </>
           }
-          lead="Kód, szint, látogatások. Silver és Gold szintet a managerek adnak; Black és Royal a tulajdonosé. A tag a kódjával foglal, és a foglalása a szintjével érkezik."
+          lead="Kód, szint, látogatások. Silver és Gold szintet a managerek adnak; Black és Royal a tulajdonosé. A tag a kódjával foglal, és a foglalása a szintjével érkezik. Minden tagnak kártyája van: kiadáskor megjelenik, képként elküldhető, és a szintjével együtt változik."
           actions={
             <Btn variant="red" onClick={() => setGranting((value) => !value)}>
               {granting ? <X size={13}/> : <Plus size={13}/>} {granting ? 'MÉGSE' : 'ÚJ TAG'}
@@ -276,27 +294,6 @@ export const MembersPage: React.FC = () => {
           </Panel>
         )}
 
-        {justGranted && (
-          <div className="rm-card mt-3.5 flex flex-wrap items-center gap-5 border-[color:var(--rm-line-red)] p-6">
-            <span className="font-heading text-[40px] leading-none" style={{color: TIER_INK[justGranted.tier]}} aria-hidden="true">
-              {TIER_GLYPH[justGranted.tier]}
-            </span>
-            <div className="min-w-0 flex-1">
-              <span className="rm-label">KIADVA</span>
-              <strong className="mt-1 block font-heading text-[20px] text-white">
-                {justGranted.name} · {TIER_NAME[justGranted.tier]}
-              </strong>
-              <p className="mt-1 text-[11px] text-[#8d8584]">A kódot mondd el a vendégnek — ezzel foglal, és ezzel nézi meg a kártyáját a House oldalon.</p>
-            </div>
-            <button type="button" onClick={() => copy(justGranted.code, 'A kód')} className="flex items-center gap-3 border border-[color:var(--rm-line-red)] px-5 py-3 font-heading text-[22px] tracking-[0.15em] text-white hover:bg-[rgba(213,31,60,0.12)]">
-              {justGranted.code} <Copy size={14} className="text-[color:var(--rm-red)]"/>
-            </button>
-            <button type="button" onClick={() => setJustGranted(null)} aria-label="Bezárás" className="text-[#777] hover:text-white">
-              <X size={14}/>
-            </button>
-          </div>
-        )}
-
         <div className="mt-10 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <Chips
             value={filter}
@@ -314,11 +311,11 @@ export const MembersPage: React.FC = () => {
           {!data && <p className="text-[11px] text-[#8d8584]">Betöltés…</p>}
           {data && !shown.length && <p className="rm-card p-6 text-[11px] text-[#8d8584]">{members.length ? 'Nincs találat.' : 'A House még üres. Az első tagot az ÚJ TAG gombbal veszed fel.'}</p>}
           {shown.map((member) => (
-            <article key={member.id} className={`rm-card p-5${member.active ? '' : ' opacity-60'}`}>
+            <article key={member.id} className={`rm-card p-5${member.active ? '' : ' opacity-70'}`}>
               <div className="flex flex-wrap items-start gap-4">
-                <span className="grid h-12 w-12 shrink-0 place-items-center border font-heading text-[22px]" style={{color: TIER_INK[member.tier], borderColor: `${TIER_INK[member.tier]}55`}} aria-hidden="true">
-                  {TIER_GLYPH[member.tier]}
-                </span>
+                <button type="button" className="rm-mcthumb" style={{'--mc-glow': tierMeta(member.tier).glow} as React.CSSProperties} onClick={() => openCard(member)} title="A kártya" aria-label={`${member.name} kártyája`}>
+                  <MemberCard member={member} detail="lite"/>
+                </button>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-3">
                     <strong className="font-heading text-[18px] text-white">{member.name}</strong>
@@ -335,11 +332,15 @@ export const MembersPage: React.FC = () => {
                     </span>
                     <span className="text-[#8d8584]">
                       {member.grantedByName || 'a ház'} · {formatDate(member.grantedAt)}
+                      {member.tierHistory.length > 1 ? ` · ${member.tierHistory.length - 1} szintváltás` : ''}
                     </span>
                   </div>
                   {member.note && <p className="mt-2 text-[10px] leading-[1.6] text-[#8d8584]">{member.note}</p>}
                 </div>
                 <div className="flex flex-wrap gap-2">
+                  <Btn onClick={() => openCard(member)} title="A kártya nagyban, képként letölthető">
+                    <CreditCard size={12}/> KÁRTYA
+                  </Btn>
                   {member.active && (
                     <Btn onClick={() => visit(member)} title="Itt van ma este">
                       <Check size={12}/> +1 LÁTOGATÁS
@@ -377,6 +378,7 @@ export const MembersPage: React.FC = () => {
                         );
                       })}
                     </div>
+                    {edit.tier !== member.tier && <p className="mt-2 text-[10px] text-[#8d8584]">Mentéskor a kártya {RANK[edit.tier] > RANK[member.tier] ? 'szintet lép' : 'visszasorolódik'} — a színpadon látod.</p>}
                   </div>
                   <Field label="JEGYZET">
                     <input value={edit.note} onChange={(event) => setEdit({...edit, note: event.target.value})} maxLength={400} className={inputClass}/>
@@ -395,6 +397,8 @@ export const MembersPage: React.FC = () => {
           ))}
         </div>
       </section>
+
+      {stage && staged && <CardOverlay member={staged} cue={stage.cue} onClose={() => setStage(null)}/>}
     </main>
   );
 };

@@ -1,0 +1,360 @@
+/**
+ * The House card.
+ *
+ * One SVG drawing (MemberCard) shown three ways: small in the console's
+ * roster, large on the stage that presents it, and on the member's own page.
+ * The drawing itself is still; everything that moves is here, on classes —
+ * the sheen, the tilt and flip, and the plays the stage acts out: issued,
+ * raised, lowered, suspended, restored, torn up.
+ */
+
+.rm-mc {
+    display: block;
+    width: 100%;
+    height: auto;
+    border-radius: 2.8% / 4.4%;
+}
+
+.rm-mc-sheen { animation: rmMcSheen 7s ease-in-out infinite; }
+
+/* ---------------------------------------------------------------- */
+/* Roster thumbnail                                                  */
+/* ---------------------------------------------------------------- */
+
+.rm-mcthumb {
+    position: relative;
+    display: block;
+    width: 132px;
+    flex-shrink: 0;
+    border-radius: 4px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+    transition: transform 0.3s cubic-bezier(0.2, 0.9, 0.25, 1.05), box-shadow 0.3s ease;
+}
+.rm-mcthumb:hover, .rm-mcthumb:focus-visible {
+    transform: translateY(-3px) rotate(-1.5deg) scale(1.05);
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.7), 0 0 30px var(--mc-glow, rgba(227, 40, 78, 0.3));
+}
+.rm-mcthumb .rm-mc-sheen { animation: none; }
+.rm-mcthumb:hover .rm-mc-sheen { animation: rmMcSheen 1.6s ease-out 1; }
+
+/* ---------------------------------------------------------------- */
+/* The scene: tilt, flip, glare                                      */
+/* ---------------------------------------------------------------- */
+
+.rm-mcs {
+    --rx: 0deg;
+    --ry: 0deg;
+    --flip: 0deg;
+    --gx: 50%;
+    --gy: 50%;
+    --mc-ink: var(--rm-red-bright);
+    --mc-glow: rgba(255, 70, 104, 0.4);
+    position: relative;
+    width: 100%;
+    max-width: 760px;
+    margin: 0 auto;
+    perspective: 1600px;
+}
+.rm-mcs.is-flipped { --flip: 180deg; }
+
+.rm-mcs-halo {
+    position: absolute;
+    inset: 8% -6% -16% -6%;
+    border-radius: 50%;
+    background: radial-gradient(ellipse at 50% 60%, var(--mc-glow), transparent 62%);
+    filter: blur(28px);
+    opacity: 0.8;
+    pointer-events: none;
+    animation: rmMcHalo 5s ease-in-out infinite alternate;
+}
+
+.rm-mcs-tilt {
+    position: relative;
+    transform-style: preserve-3d;
+    transform: rotateX(var(--rx)) rotateY(var(--ry));
+    transition: transform 0.14s ease-out;
+}
+.rm-mcs:not(.is-live) .rm-mcs-tilt { transition: transform 0.7s cubic-bezier(0.2, 0.8, 0.2, 1); }
+
+.rm-mcs-body {
+    position: relative;
+    aspect-ratio: 1000 / 630;
+    transform-style: preserve-3d;
+    transform: rotateY(var(--flip));
+    transition: transform 0.9s cubic-bezier(0.2, 0.8, 0.2, 1);
+    cursor: pointer;
+    outline: none;
+}
+.rm-mcs-body:focus-visible { outline: 1px solid var(--mc-ink); outline-offset: 8px; }
+
+.rm-mcs-face {
+    position: absolute;
+    inset: 0;
+    border-radius: 2.8% / 4.4%;
+    overflow: hidden;
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+    box-shadow: 0 40px 90px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.04);
+    transform: translateZ(1px);
+    transition: filter 0.8s ease;
+}
+.rm-mcs-face.is-back { transform: rotateY(180deg) translateZ(1px); }
+.rm-mcs.is-dim .rm-mcs-face { filter: grayscale(0.9) brightness(0.72); }
+
+.rm-mcs-glare {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle at var(--gx) var(--gy), rgba(255, 255, 255, 0.17), rgba(255, 255, 255, 0.04) 30%, transparent 55%);
+    opacity: 0;
+    transition: opacity 0.35s ease;
+    pointer-events: none;
+    mix-blend-mode: screen;
+}
+.rm-mcs-face.is-back .rm-mcs-glare { background: radial-gradient(circle at calc(100% - var(--gx)) var(--gy), rgba(255, 255, 255, 0.17), rgba(255, 255, 255, 0.04) 30%, transparent 55%); }
+.rm-mcs.is-live .rm-mcs-glare { opacity: 1; }
+
+.rm-mcs-next, .rm-mcs-flash, .rm-mcs-stamp {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+.rm-mcs-next { border-radius: 2.8% / 4.4%; overflow: hidden; }
+.rm-mcs-flash { background: #fff; opacity: 0; mix-blend-mode: screen; }
+.rm-mcs-stamp { width: 100%; height: 100%; transform-origin: 50% 52%; }
+
+.rm-mcs-sparks {
+    position: absolute;
+    left: -12%;
+    top: -22%;
+    width: 124%;
+    height: 150%;
+    pointer-events: none;
+    z-index: 2;
+}
+
+/* ---------------------------------------------------------------- */
+/* The plays                                                         */
+/* ---------------------------------------------------------------- */
+
+/* Issued: the card rises out of the dark, the foil prints across it, the code appears letter by letter. */
+.rm-mcs.is-issue .rm-mcs-tilt { animation: rmMcIssue 1.25s cubic-bezier(0.2, 0.85, 0.25, 1.05) both; }
+.rm-mcs.is-issue .rm-mcs-face.is-front { animation: rmMcPrint 1.3s cubic-bezier(0.65, 0.05, 0.35, 1) 0.55s both; }
+.rm-mcs.is-issue .rm-mcs-halo { animation: rmMcBloom 2.4s ease 0.3s both; }
+.rm-mcs.is-issue .rm-mc-ch { opacity: 0; animation: rmMcChar 0.4s ease forwards; animation-delay: calc(1.3s + var(--i, 0) * 0.06s); }
+.rm-mcs-printline {
+    position: absolute;
+    top: -4%;
+    bottom: -4%;
+    left: 0;
+    width: 3px;
+    background: #fff;
+    box-shadow: 0 0 18px 4px rgba(255, 255, 255, 0.85), 0 0 60px 10px var(--mc-glow);
+    opacity: 0;
+    animation: rmMcPrintLine 1.3s cubic-bezier(0.65, 0.05, 0.35, 1) 0.55s both;
+}
+
+/* Raised: the new metal spreads from the centre like ink in water, with a ring and a burst. */
+.rm-mcs.is-upgrade .rm-mcs-next { clip-path: circle(0% at 50% 55%); animation: rmMcSpread 1.15s cubic-bezier(0.3, 0.7, 0.2, 1) 0.5s forwards; }
+.rm-mcs.is-upgrade .rm-mcs-tilt { animation: rmMcPulse 1.2s cubic-bezier(0.2, 0.9, 0.25, 1) 0.5s; }
+.rm-mcs.is-upgrade .rm-mcs-flash { animation: rmMcFlash 0.6s ease 0.5s both; }
+.rm-mcs-ring {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 60%;
+    aspect-ratio: 1;
+    margin: -30% 0 0 -30%;
+    border-radius: 50%;
+    border: 2px solid var(--mc-ink);
+    box-shadow: 0 0 40px var(--mc-glow), inset 0 0 40px var(--mc-glow);
+    opacity: 0;
+    pointer-events: none;
+    z-index: 3;
+    animation: rmMcRing 1.2s ease-out 0.5s both;
+}
+
+/* Lowered: a shadow falls from the top, the colour drains for a moment and the card dips. */
+.rm-mcs.is-downgrade .rm-mcs-next { clip-path: inset(0 0 100% 0); animation: rmMcFall 1.2s cubic-bezier(0.6, 0.05, 0.3, 1) 0.5s forwards; }
+.rm-mcs.is-downgrade .rm-mcs-tilt { animation: rmMcDip 1.5s ease 0.45s; }
+
+.rm-mcs-banner {
+    position: absolute;
+    left: 50%;
+    bottom: 11%;
+    z-index: 4;
+    padding: 9px 18px;
+    border: 1px solid var(--mc-ink);
+    background: rgba(6, 4, 6, 0.88);
+    font-family: Cinzel, serif;
+    font-size: 11px;
+    letter-spacing: 0.34em;
+    color: #fff;
+    white-space: nowrap;
+    box-shadow: 0 0 30px var(--mc-glow);
+    opacity: 0;
+    transform: translate(-50%, 14px);
+    animation: rmMcBanner 1.9s ease 1.05s both;
+}
+.rm-mcs-banner b { color: var(--mc-ink); }
+
+/* Suspended: the stamp slams down and the colour goes out; restored: it lifts off and the colour returns. */
+.rm-mcs.is-suspend .rm-mcs-tilt { animation: rmMcShake 0.45s ease 0.72s; }
+.rm-mcs-stamp.is-stamping { animation: rmMcStamp 0.55s cubic-bezier(0.2, 1.3, 0.3, 1) 0.3s both; }
+.rm-mcs-stamp.is-lifting { animation: rmMcLift 0.6s ease 0.15s both; }
+
+/* Torn up: the card breaks into slices that fall away. */
+.rm-mcs.is-remove .rm-mcs-body { visibility: hidden; }
+.rm-mcs.is-remove .rm-mcs-flash { animation: none; }
+.rm-mcs.is-remove .rm-mcs-halo { animation: rmMcHaloOut 1.6s ease 0.3s both; }
+.rm-mcs-shards { position: absolute; inset: 0; pointer-events: none; }
+.rm-mcs-shard {
+    position: absolute;
+    inset: 0;
+    animation: rmMcShard 1.05s cubic-bezier(0.4, 0, 0.8, 0.4) both;
+    animation-delay: calc(0.3s + var(--i, 0) * 0.055s);
+}
+
+/* ---------------------------------------------------------------- */
+/* Actions and the console's overlay                                 */
+/* ---------------------------------------------------------------- */
+
+.rm-mca { display: flex; flex-wrap: wrap; gap: 10px; }
+
+.rm-mco {
+    position: fixed;
+    inset: 0;
+    z-index: 1850;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+    overflow-y: auto;
+}
+.rm-mco-backdrop {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at 50% 35%, rgba(50, 10, 22, 0.55), rgba(3, 2, 3, 0.95) 62%);
+    backdrop-filter: blur(12px);
+    animation: rmMcFade 0.5s ease both;
+}
+.rm-mco-aurora {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 140vmax;
+    height: 140vmax;
+    margin: -70vmax 0 0 -70vmax;
+    background: conic-gradient(from 0deg, transparent 0 20%, var(--mc-glow) 30%, transparent 40%, transparent 60%, rgba(255, 255, 255, 0.05) 70%, transparent 80%);
+    filter: blur(50px);
+    opacity: 0.5;
+    animation: rmMcSpin 30s linear infinite;
+    pointer-events: none;
+}
+.rm-mco-embers { position: absolute; inset: 0; pointer-events: none; }
+.rm-mco-inner {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 26px;
+    width: min(820px, 100%);
+}
+.rm-mco-head { text-align: center; animation: rmMcRise 0.6s ease 0.15s both; }
+.rm-mco-head h2 { margin-top: 8px; font-family: Cinzel, serif; font-size: clamp(22px, 4vw, 34px); line-height: 1.15; color: #fff; }
+.rm-mco-head h2 em { font-style: normal; color: var(--mc-ink); text-shadow: 0 0 24px var(--mc-glow); }
+.rm-mco-scene { width: 100%; }
+.rm-mco-actions { justify-content: center; animation: rmMcRise 0.6s ease 0.5s both; }
+.rm-mco-close {
+    position: absolute;
+    right: 18px;
+    top: 18px;
+    z-index: 2;
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    background: rgba(0, 0, 0, 0.5);
+    color: #fff;
+    transition: border-color 0.2s ease, color 0.2s ease;
+}
+.rm-mco-close:hover { border-color: var(--rm-red); color: var(--rm-red-bright); }
+
+/* The member's own page */
+.rm-mcpublic { display: flex; flex-direction: column; gap: 18px; }
+.rm-mcpublic-hint { font-size: 9px; letter-spacing: 0.25em; color: #777170; text-align: center; }
+.rm-mcpublic-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 18px; }
+
+/* ---------------------------------------------------------------- */
+/* Keyframes                                                         */
+/* ---------------------------------------------------------------- */
+
+@keyframes rmMcSheen { 0%, 55% { transform: skewX(-16deg) translateX(0); } 100% { transform: skewX(-16deg) translateX(1900px); } }
+@keyframes rmMcHalo { from { opacity: 0.6; transform: scale(0.96); } to { opacity: 0.95; transform: scale(1.04); } }
+@keyframes rmMcHaloOut { to { opacity: 0; transform: scale(0.6); } }
+@keyframes rmMcFade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes rmMcSpin { to { transform: rotate(360deg); } }
+@keyframes rmMcRise { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+
+@keyframes rmMcIssue {
+    from { opacity: 0; transform: translateY(160px) rotateX(58deg) scale(0.72); }
+    55% { opacity: 1; }
+    to { opacity: 1; transform: none; }
+}
+@keyframes rmMcPrint { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+@keyframes rmMcPrintLine { 0% { left: 0; opacity: 0; } 8% { opacity: 1; } 92% { opacity: 1; } 100% { left: 100%; opacity: 0; } }
+@keyframes rmMcChar { to { opacity: 1; } }
+@keyframes rmMcBloom { from { opacity: 0; transform: scale(0.5); } 55% { opacity: 1; transform: scale(1.18); } to { opacity: 0.85; transform: none; } }
+
+@keyframes rmMcSpread { to { clip-path: circle(125% at 50% 55%); } }
+@keyframes rmMcFall { to { clip-path: inset(0 0 0 0); } }
+@keyframes rmMcPulse { 0% { transform: none; } 30% { transform: scale(1.045) rotateX(4deg); } 100% { transform: none; } }
+@keyframes rmMcFlash { 0% { opacity: 0; } 25% { opacity: 0.75; } 100% { opacity: 0; } }
+@keyframes rmMcRing { 0% { opacity: 0.95; transform: scale(0.25); } 100% { opacity: 0; transform: scale(2.1); } }
+@keyframes rmMcDip {
+    0% { transform: none; filter: none; }
+    35% { transform: translateY(14px) rotateX(-5deg); filter: saturate(0.35) brightness(0.75); }
+    100% { transform: none; filter: none; }
+}
+@keyframes rmMcBanner {
+    0% { opacity: 0; transform: translate(-50%, 18px) scale(0.96); }
+    14% { opacity: 1; transform: translate(-50%, 0) scale(1); }
+    82% { opacity: 1; transform: translate(-50%, 0) scale(1); }
+    100% { opacity: 0; transform: translate(-50%, -12px) scale(1); }
+}
+
+@keyframes rmMcShake {
+    0%, 100% { transform: none; }
+    20% { transform: translate(-6px, 3px) rotate(-0.6deg); }
+    40% { transform: translate(5px, -3px) rotate(0.5deg); }
+    60% { transform: translate(-3px, 2px); }
+    80% { transform: translate(2px, -1px); }
+}
+@keyframes rmMcStamp {
+    from { opacity: 0; transform: scale(2.8) rotate(-8deg); }
+    70% { opacity: 1; transform: scale(0.96); }
+    to { opacity: 1; transform: none; }
+}
+@keyframes rmMcLift { from { opacity: 1; transform: none; } to { opacity: 0; transform: scale(1.6) rotate(6deg); } }
+
+@keyframes rmMcShard {
+    0% { opacity: 1; transform: none; }
+    20% { opacity: 1; transform: translateY(-2%) rotate(calc((var(--i, 0) - 4) * 0.4deg)); }
+    100% { opacity: 0; transform: translateY(70%) rotate(calc((var(--i, 0) - 4) * 3deg)); }
+}
+
+@media (max-width: 640px) {
+    .rm-mco { padding: 12px; align-items: start; }
+    .rm-mco-inner { gap: 18px; padding-top: 44px; }
+    .rm-mcs-banner { font-size: 9px; padding: 7px 12px; }
+    .rm-mcthumb { width: 104px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .rm-mc-sheen, .rm-mcs-halo, .rm-mco-aurora, .rm-mco-backdrop, .rm-mco-head, .rm-mco-actions,
+    .rm-mcs.is-issue .rm-mcs-tilt, .rm-mcs.is-issue .rm-mcs-face.is-front, .rm-mcs.is-issue .rm-mc-ch, .rm-mcs-printline,
+    .rm-mcs.is-upgrade .rm-mcs-tilt, .rm-mcs.is-upgrade .rm-mcs-flash, .rm-mcs-ring,
+    .rm-mcs.is-downgrade .rm-mcs-tilt, .rm-mcs-banner, .rm-mcs.is-suspend .rm-mcs-tilt, .rm-mcs-stamp, .rm-mcs-shard { animation: none; opacity: 1; transform: none; }
+    .rm-mcs.is-upgrade .rm-mcs-next, .rm-mcs.is-downgrade .rm-mcs-next { animation: none; clip-path: none; }
+    .rm-mcs-ring, .rm-mcs-banner, .rm-mcs-printline { display: none; }
+    .rm-mcs-tilt, .rm-mcs-body, .rm-mcs-face { transition: none; }
+}
