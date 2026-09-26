@@ -97,8 +97,13 @@ export const Footer: React.FC = () => {
         <div className="rm-gilt my-10"/>
 
         <div className="flex flex-col items-center justify-between gap-3 text-[10px] tracking-[0.15em] text-[#5f5959] md:flex-row">
-          <span>SEE CITY · AZ ÉJSZAKA A TIÉD</span>
-          <span className="font-heading text-[13px] text-[rgba(227,40,78,0.5)]" aria-hidden="true">
+          <div className="flex flex-col gap-1.5 max-w-3xl">
+            <span>© 2026 Red Moon Pub. Minden jog fenntartva.</span>
+            <span className="leading-relaxed">
+              A weboldalon található tartalom kizárólag a SeeRPG roleplay játékszerver világához kapcsolódik, és nem minősül valós életbeli, hivatalos tájékoztatásnak.
+            </span>
+          </div>
+          <span className="font-heading text-[13px] text-[rgba(227,40,78,0.5)] shrink-0 self-center md:self-auto" aria-hidden="true">
             月
           </span>
         </div>
