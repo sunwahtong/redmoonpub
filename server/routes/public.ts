@@ -28,6 +28,7 @@ import {
   type Router
 } from '../http.ts';
 import {dbKind} from '../db.ts';
+import {cached} from '../cache.ts';
 import {mediaProvider} from '../media.ts';
 import {broadcast, realtimeEnabled} from '../realtime.ts';
 import {config} from '../config.ts';
@@ -260,6 +261,11 @@ export async function houseStatus(db: Queryable) {
 /* Routes                                                              */
 /* ------------------------------------------------------------------ */
 
+/** How long one answer serves every poll of a public read. A broadcast drops it sooner. */
+const STATUS_TTL_MS = 15 * 1000;
+const EVENTS_TTL_MS = 30 * 1000;
+const CONTENT_TTL_MS = 60 * 1000;
+
 export function registerPublicRoutes(router: Router): void {
   router.get('/api/health', async () => ({
     ok: true,
@@ -272,9 +278,13 @@ export function registerPublicRoutes(router: Router): void {
     database: dbKind()
   }));
 
-  router.get('/api/public/status', async ({db}) => houseStatus(db));
+  router.get('/api/public/status', async ({db}) => {
+    // The station keeps its own 20-second rhythm even while the answer comes from memory.
+    await syncStation(db);
+    return {...(await cached('status', STATUS_TTL_MS, () => houseStatus(db))), serverNow: new Date().toISOString()};
+  });
 
-  router.get('/api/public/house', async ({db}) => {
+  router.get('/api/public/house', ({db}) => cached('house', CONTENT_TTL_MS, async () => {
     const [house, people] = await Promise.all([
       db.query('select name, address, phone, registration, featured_video, featured_video_title, featured_video_caption from public.house where id = 1'),
       db.query('select id, name, title, note, monogram, tier, sort_order from public.house_people where active order by sort_order, name')
@@ -293,7 +303,7 @@ export function registerPublicRoutes(router: Router): void {
         tier: row.tier
       }))
     };
-  });
+  }));
 
   router.get('/api/public-products', async ({db}) => {
     const {rows} = await db.query(`select * from public.products where active and category = 'drink' and min_tier = '' and member_code = '' order by sort_order, name`);
@@ -316,22 +326,22 @@ export function registerPublicRoutes(router: Router): void {
     };
   });
 
-  router.get('/api/public-events', async ({db}) => {
+  router.get('/api/public-events', ({db}) => cached('events', EVENTS_TTL_MS, async () => {
     const {rows} = await db.query(
       `select e.*, (select count(*)::int from public.event_rsvps r where r.event_id = e.id) as going from public.events e where e.active and e.min_tier = '' order by e.starts_at asc limit 60`
     );
     return {events: rows.map(eventFromRow)};
-  });
+  }));
 
-  router.get('/api/public-map-blips', async ({db}) => {
+  router.get('/api/public-map-blips', ({db}) => cached('blips', CONTENT_TTL_MS, async () => {
     const {rows} = await db.query('select * from public.map_blips where active order by created_at desc');
     return {blips: rows.map(blipFromRow)};
-  });
+  }));
 
-  router.get('/api/public/gallery', async ({db}) => {
+  router.get('/api/public/gallery', ({db}) => cached('gallery', CONTENT_TTL_MS, async () => {
     const {rows} = await db.query('select * from public.gallery_items where active order by sort_order, created_at limit 120');
     return {items: rows.map(galleryPublic)};
-  });
+  }));
 
   /* ---------------- reviews ---------------- */
 

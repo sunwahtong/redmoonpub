@@ -1,0 +1,23 @@
+# Red Moon Pub as a system service. Installed by deploy/install.sh.
+[Unit]
+Description=Red Moon Pub (API + site)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=redmoon
+Group=redmoon
+WorkingDirectory=/opt/redmoon
+# Configuration comes from /opt/redmoon/.env, read by the server itself.
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node server/index.ts
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

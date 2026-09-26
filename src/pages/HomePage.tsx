@@ -32,7 +32,7 @@ const TICKER_COPIES = 6;
 
 export const HomePage: React.FC = () => {
   const {data: drinkData} = useLiveData<{drinks: SignatureDrink[]}>('/api/public-signature-drinks');
-  const {data: eventData} = useLiveData<{events: RedMoonEvent[]}>('/api/public-events', {intervalMs: 45000});
+  const {data: eventData} = useLiveData<{events: RedMoonEvent[]}>('/api/public-events', {intervalMs: 45000, topics: ['events']});
   const {data: reviewData, refresh: refreshReviews} = useLiveData<{
     reviews: Review[];
     average: number;

@@ -13,6 +13,7 @@
  * the secret key is used when configured.
  */
 import {config} from './config.ts';
+import {invalidate} from './cache.ts';
 
 export type Topic = 'house' | 'club' | 'reservations' | 'events' | 'content' | 'staff';
 
@@ -26,6 +27,8 @@ export const realtimeEnabled = (): boolean => !!(config.supabaseUrl && (config.s
  * a missed push only means the next poll catches up.
  */
 export async function broadcast(topic: Topic, event: string, payload: Record<string, unknown> = {}): Promise<void> {
+  // Every browser refetches on the push; none of them may get the answer from before the write.
+  invalidate();
   if (!realtimeEnabled()) return;
   const key = config.supabaseSecretKey || config.supabasePublishableKey;
   try {

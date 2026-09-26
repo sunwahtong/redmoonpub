@@ -41,7 +41,11 @@ async function createPgBackend(): Promise<Db> {
     // A serverless instance may serve several requests at once; the Supabase
     // pooler multiplexes these onto far fewer server connections.
     max: config.serverless ? 4 : 8,
-    idleTimeoutMillis: config.serverless ? 10000 : 30000,
+    // A long-lived process keeps its connections: every reconnect through the
+    // pooler is a TLS handshake plus an auth round trip, which is what spent
+    // the database's egress on serverless (thousands of connections a day).
+    idleTimeoutMillis: config.serverless ? 10000 : 10 * 60 * 1000,
+    keepAlive: true,
     connectionTimeoutMillis: 10000
   });
   pool.on('error', (error) => console.error('[db] pool error', error.message));

@@ -22,6 +22,8 @@ import type {Queryable, Row} from './types.ts';
 
 export const DEFAULT_STATION_URL = 'https://gocast.fm/station/red-moon-pub';
 const FETCH_TIMEOUT_MS = 4000;
+/** How often the station is asked. The claim below enforces it across processes, the timestamp within one. */
+const CHECK_INTERVAL_MS = 20 * 1000;
 /** A show started by hand survives this much station silence before it ends by itself. */
 const SILENCE_GRACE_MS = 10 * 60 * 1000;
 /** No show runs longer than this without anyone pressing stop. */
@@ -113,9 +115,14 @@ async function noteStationTrack(db: Queryable, status: StationStatus): Promise<v
 /**
  * Refreshes the station snapshot when it is older than 20 seconds and applies
  * the transitions. Cheap enough to sit in front of every status read: one
- * small fetch per 20 seconds across all instances, nothing otherwise.
+ * small fetch per 20 seconds across all instances, and within one process
+ * not even a query in between.
  */
+let nextCheckAt = 0;
+
 export async function syncStation(db: Queryable): Promise<void> {
+  if (Date.now() < nextCheckAt) return;
+  nextCheckAt = Date.now() + CHECK_INTERVAL_MS;
   const claimed = await db.query<Row>(
     `update public.club_state set station_checked_at = now()
       where id = 1 and (station_checked_at is null or station_checked_at < now() - interval '20 seconds') returning *`

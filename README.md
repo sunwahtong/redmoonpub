@@ -44,43 +44,77 @@ Node's built-in type stripping, so there is no build step for it.
 | `npm run user:create -- --username x --password y --role owner` | Create or `--reset` an account from the CLI |
 | `npm run data:reset -- --apply` | Wipe transactional data (dry run without `--apply`) |
 | `npm run media:upload` | Mirror `public/assets` (pictures, background music) to Cloudinary, once |
-| `npm run tiles:upload` | One-off upload of the map tile pack to Supabase Storage (Cloudflare Pages is the better home, see Map tiles) |
+| `npm run tiles:upload` | One-off upload of the map tile pack to Supabase Storage (unused: the VPS serves the pack itself, see Map tiles) |
 
-## Deployment (Render + Supabase + Cloudinary, all free tiers)
+## Deployment (a Linux VPS + Supabase + Cloudinary)
 
 The site runs as one long-lived Node process (`npm start` = `node
 server/index.ts`): the API, the built site from `dist/`, `public/` and the map
-tiles. `render.yaml` describes it as a Render Blueprint.
+tiles. In production it lives on a small Ubuntu VPS behind nginx (TLS from
+Let's Encrypt), with the database on Supabase's free tier and pictures on
+Cloudinary's. `deploy/` holds everything the server needs:
 
-1. Push the repository to GitHub. In Render: New → Blueprint → pick the
-   repository. Render reads `render.yaml` and asks for the secrets marked
-   `sync: false`:
-   - `DATABASE_URL`: Supabase → Project Settings → Database → connection
-     string, *session pooler* (port 5432; the process keeps a small pool).
+| File | What it is |
+|---|---|
+| `deploy/install.sh` | First-time setup on Ubuntu 24.04: packages, Node 24, swap, the `redmoon` user, the checkout under `/opt/redmoon`, the build, the service, nginx, the firewall, the certificate. Safe to run again. |
+| `deploy/update.sh` | Deploys the latest commit: pull, `npm ci`, build, restart. |
+| `deploy/redmoon.service` | The systemd unit: runs as `redmoon`, restarts on failure, reads `/opt/redmoon/.env`. |
+| `deploy/nginx.conf` | The site: TLS termination, the tile pack straight from disk, everything else to `127.0.0.1:3000`. |
+
+1. Point the domain's A record at the server. Sign in as root and fetch the
+   repository:
+   ```bash
+   apt-get install -y git
+   git clone --depth 1 https://github.com/sunwahtong/redmoonpub.git /opt/redmoon
+   cp /opt/redmoon/.env.example /opt/redmoon/.env
+   nano /opt/redmoon/.env
+   ```
+2. Fill in `/opt/redmoon/.env`:
+   - `DATABASE_URL`: Supabase → Connect → *Session pooler* (port 5432; the
+     process keeps a few connections open, which is what that mode is for).
    - `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`, and the
      same URL + publishable key as `VITE_SUPABASE_URL` /
      `VITE_SUPABASE_PUBLISHABLE_KEY` (instant updates; without them the site
      polls).
    - `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`
      (uploads), and `VITE_CLOUDINARY_CLOUD_NAME` so pictures and the music
-     come from Cloudinary rather than from this service (run
+     come from Cloudinary rather than from the server (run
      `npm run media:upload` once, locally, if not done yet).
-   - `VITE_MAP_TILE_BASE`: the tile host (below), or empty to serve the tiles
-     from this service.
-   `VITE_*` values are baked in at build time: change one, redeploy.
-2. Migrations apply themselves on the first request (`public.app_migrations`
+   - `HOST=127.0.0.1` (only nginx reaches Node), `PORT=3000`,
+     `VITE_MAP_TILE_BASE` empty (the tiles are served from this server).
+   `VITE_*` values are baked into the bundle: change one, run `update.sh`.
+3. Run the installer with the domain(s):
+   ```bash
+   CERT_EMAIL=you@example.com bash /opt/redmoon/deploy/install.sh redmoonpub.hu www.redmoonpub.hu
+   ```
+   Migrations apply themselves on the first request (`public.app_migrations`
    remembers which). `OWNER_*` are only needed on an empty database.
-3. The free instance sleeps after 15 minutes without a request and wakes on
-   the next one (about half a minute). To keep it awake, have a free
-   monitor (cron-job.org, UptimeRobot) fetch `/api/health` every 10
-   minutes; one always-on service fits in Render's 750 free hours a month.
-4. Custom domain: Render → Settings → Custom Domains, then a CNAME at the
-   registrar. TLS is automatic.
+4. Later deployments: `bash /opt/redmoon/deploy/update.sh`. Logs:
+   `journalctl -u redmoon -f`. Health: `https://<domain>/api/health`.
 
-Vercel is no longer the target: its Hobby fair-use pool was exhausted by the
-tile pack being deployed and served with the site, and by one function
-invocation per poll. `vercel.json` and `api/index.ts` still work if ever
-needed, with the tiles served from the static host.
+The earlier hosts are gone for good reasons: Vercel's Hobby fair-use pool was
+exhausted by the tile pack being deployed and served with the site and by one
+function invocation (and a fresh database connection) per poll; Render's free
+tier was already used up. `vercel.json` and `api/index.ts` still work if ever
+needed, with the tiles on a static host.
+
+### Keeping Supabase's egress small
+
+The free database allows 5 GB of egress a month, and the wire cost is not the
+rows — it is connections and polls. Three things keep it low, all in the
+server:
+
+- one process, one pool: `server/db.ts` keeps its connections open (a
+  reconnect through the pooler is a TLS handshake plus an auth round trip; on
+  serverless that happened about 17,000 times a day);
+- one answer per poll window: `server/cache.ts` keeps the public reads
+  (status, club state, events, house, gallery, posts, map markers) for a few
+  seconds and drops them on every broadcast, so ten open tabs cost one read;
+- one station check per 20 seconds, no matter how many pages poll
+  (`server/station.ts`).
+
+For the same reason local development should use the embedded database
+(`DATABASE_URL` empty): every local poll against Supabase counts.
 
 ### Map tiles
 
@@ -88,27 +122,17 @@ needed, with the tiles served from the static host.
 (`styleAtlas`, `styleGrid`, `styleSatelite`, `{z}/{x}/{y}`). It lives
 outside `public/` on purpose: Vite copies `public/` into `dist/` on every
 build, and the pack would make `dist/` 480 MB. The Node server serves the
-folder at `/assets/map` (locally and on Render), so nothing else is needed
-to run the map.
-
-To spare the web service's bandwidth, publish the pack once to Cloudflare
-Pages (free, unlimited bandwidth, no build) and point the site at it:
-
-```bash
-npx wrangler@latest login
-npx wrangler@latest pages project create redmoon-tiles --production-branch main
-npx wrangler@latest pages deploy map-tiles --project-name redmoon-tiles
-```
-
-Then set `VITE_MAP_TILE_BASE=https://redmoon-tiles.pages.dev` (or the custom
-domain) and redeploy. `map-tiles/_headers` gives the files a year of caching
-and the CORS header the map's tile probe needs. GitHub Pages works the same
-way (a repository with the three folders at its root).
+folder at `/assets/map`; on the VPS nginx serves it straight from disk
+(`deploy/nginx.conf`) with a year of caching. The VPS's traffic allowance
+covers it many times over, so no separate tile host is needed. If one is ever
+wanted (a static host with the three folders at its root), set
+`VITE_MAP_TILE_BASE` to it and rebuild.
 
 ## How it fits together
 
 ```
-api/index.ts            Vercel entry → server/index.ts
+api/index.ts            Vercel entry → server/index.ts (kept, not the target)
+deploy/                 the VPS: install.sh, update.sh, the systemd unit, the nginx site
 server/
   index.ts              router, request lifecycle, static site for a VPS
   db.ts                 pg (DATABASE_URL) or PGlite; migrations

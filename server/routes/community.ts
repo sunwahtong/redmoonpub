@@ -7,8 +7,12 @@ import {z} from 'zod';
 import {audit, rateLimit, requireRole, requireUser, roleAtLeast} from '../auth.ts';
 import {bad, clientIp, created, forbidden, iso, notFound, parse, readJson, visitorFingerprint, type Router} from '../http.ts';
 import {acceptImage, destroyMedia} from '../media.ts';
+import {cached} from '../cache.ts';
 import {broadcast} from '../realtime.ts';
 import type {Row} from '../types.ts';
+
+/** How long one answer of the public posts serves every poll. A broadcast drops it sooner. */
+const POSTS_TTL_MS = 60 * 1000;
 
 const postBody = z.object({
   title: z.string().trim().min(2, 'Cím kötelező.').max(140),
@@ -51,10 +55,10 @@ const parseDate = (value: string | undefined): Date | null => {
 export function registerCommunityRoutes(router: Router): void {
   /* ---------------- news ---------------- */
 
-  router.get('/api/public/posts', async ({db}) => {
+  router.get('/api/public/posts', ({db}) => cached('posts', POSTS_TTL_MS, async () => {
     const {rows} = await db.query('select * from public.posts where active and published_at <= now() order by pinned desc, published_at desc limit 40');
     return {posts: rows.map(postOf)};
-  });
+  }));
 
   router.get('/api/posts', async ({db, user}) => {
     requireRole({user}, 'owner');

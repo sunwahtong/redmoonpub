@@ -22,6 +22,8 @@ export const config = Object.freeze({
   migrationsDir: path.join(ROOT, 'supabase', 'migrations'),
 
   port: Number(process.env.PORT || 3000),
+  /** Interface to listen on; empty means every interface. Behind nginx: 127.0.0.1. */
+  host: text(process.env.HOST),
   production: process.env.NODE_ENV === 'production' || !!process.env.VERCEL,
   /** One short-lived invocation per request (Vercel), or a long-lived process. */
   serverless: !!process.env.VERCEL || bool(process.env.RM_SERVERLESS),

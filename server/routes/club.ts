@@ -19,6 +19,7 @@ import {z} from 'zod';
 import {audit, capabilitiesOf, rateLimit, requireUser} from '../auth.ts';
 import {bad, clientIp, conflict, created, forbidden, iso, notFound, parse, readJson, readRaw, sha256, tooMany, type Router} from '../http.ts';
 import {AUDIO_TYPES, cloudinaryEnabled, extensionOf, firstFilePart, isOurCloudinaryUrl, destroyMedia, localStoreAllowed, sanitizeFilename, signUpload, storeLocal} from '../media.ts';
+import {cached} from '../cache.ts';
 import {broadcast} from '../realtime.ts';
 import {config} from '../config.ts';
 import {effectiveStreamUrl, onAir, stationEmbedUrl, stationSlug, syncStation} from '../station.ts';
@@ -28,6 +29,8 @@ import type {Queryable, Row, SessionUser, UserCtx} from '../types.ts';
 const NAME_TTL_MS = 3 * 24 * 60 * 60 * 1000;
 const DECLINE_RETRY_MS = 5 * 60 * 1000;
 const CHAT_KEEP = 250;
+/** How long one answer of the club state serves every poll. A broadcast drops it sooner. */
+const STATE_TTL_MS = 10 * 1000;
 const SLOW_MODES = [0, 5, 15, 30, 60];
 const REACTIONS = ['🔥', '❤️', '🍻', '🎉', '👏', '🙌'];
 /** Reactions pushed to every open page per minute, across the whole room. Beyond it they still count, quietly. */
@@ -296,6 +299,8 @@ const chatModeBody = z.object({
 
 export function registerClubRoutes(router: Router): void {
   const moderatorState = (db: Queryable) => clubState(db, {moderator: true});
+  /** The polled reads: the floor and the booth each share one answer for a few seconds. */
+  const sharedState = (db: Queryable, moderator: boolean) => cached(moderator ? 'club:booth' : 'club:floor', STATE_TTL_MS, () => clubState(db, {moderator}));
   const pushClub = (event: string, payload: Record<string, unknown> = {}) => broadcast('club', event, payload);
 
   const houseLine = async (db: Queryable, text: string, kind = 'system', extra: {requestId?: string | null} = {}) => {
@@ -306,7 +311,8 @@ export function registerClubRoutes(router: Router): void {
 
   router.get('/api/club/state', async ({db, user}) => {
     const moderator = !!user && capabilitiesOf(user).dj;
-    return {state: await clubState(db, {moderator})};
+    await syncStation(db);
+    return {state: {...(await sharedState(db, moderator)), serverNow: Date.now()}};
   });
 
   /** Presence heartbeat; also keeps the show's peak. */
@@ -632,7 +638,8 @@ export function registerClubRoutes(router: Router): void {
 
   router.get('/api/dj/state', async ({db, user}) => {
     const me = requireModerator({user});
-    return {state: await moderatorState(db), me: {id: me.id, name: me.name, nickname: me.nickname, role: me.role}};
+    await syncStation(db);
+    return {state: {...(await sharedState(db, true)), serverNow: Date.now()}, me: {id: me.id, name: me.name, nickname: me.nickname, role: me.role}};
   });
 
   /**

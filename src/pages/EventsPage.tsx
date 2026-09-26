@@ -20,7 +20,7 @@ function phaseOf(event: RedMoonEvent, now: number): EventPhase {
 }
 
 export const EventsPage: React.FC = () => {
-  const {data, error, loading} = useLiveData<{events: RedMoonEvent[]}>('/api/public-events', {intervalMs: 45000});
+  const {data, error, loading} = useLiveData<{events: RedMoonEvent[]}>('/api/public-events', {intervalMs: 45000, topics: ['events']});
 
   // Re-evaluated on a slow tick so an event flips to "live" without a reload.
   const [now, setNow] = useState(() => Date.now());

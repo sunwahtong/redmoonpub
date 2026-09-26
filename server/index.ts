@@ -258,8 +258,8 @@ const isMain = !!process.argv[1] && path.resolve(process.argv[1]) === fileURLToP
 if (isMain) {
   ready()
     .then(() => {
-      createServer().listen(config.port, () => {
-        console.log(`Red Moon Pub server on http://localhost:${config.port} · ${config.databaseUrl ? 'PostgreSQL' : 'embedded PGlite'}${config.serverless ? ' · function mode' : ''}`);
+      createServer().listen(config.port, config.host || undefined, () => {
+        console.log(`Red Moon Pub server on http://${config.host || 'localhost'}:${config.port} · ${config.databaseUrl ? 'PostgreSQL' : 'embedded PGlite'}${config.serverless ? ' · function mode' : ''}`);
       });
     })
     .catch((error) => {

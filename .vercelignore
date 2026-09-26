@@ -1,5 +1,5 @@
-# Files not uploaded to Vercel. This does not affect the VPS or Render
-# deployments, which still serve everything from the repository.
+# Files not uploaded to Vercel. This does not affect the VPS, which serves
+# everything from the repository.
 
 node_modules
 dist
@@ -8,9 +8,9 @@ dist
 LEGACY_PROJECT
 tsconfig.tsbuildinfo
 
-# The GTA V tile pack: 313 MB across 4098 files, never changing. It is not
-# deployed here: it is published once to a static host (README → Map tiles)
-# and the frontend is pointed at it with VITE_MAP_TILE_BASE.
+# The GTA V tile pack: 313 MB across 4098 files, never changing. The VPS
+# serves it itself; a Vercel deployment would need it on a static host, with
+# VITE_MAP_TILE_BASE pointing there (README → Map tiles).
 map-tiles
 
 # Unused leftover from an earlier map iteration. red-moon-map-v8.png is kept:
